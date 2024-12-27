@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Greg's Memory Master!</title>
+    <style>
+        canvas {
+            border: 2px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game-canvas" width="400" height="600"></canvas>
+
+    <script>
+        // ===== PASTE JAVASCRIPT PART 1 HERE (EVERYTHING BETWEEN THE START AND END MARKERS) =====
+        // ================ JAVASCRIPT PART 1 START ================
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game layouts configuration
+        const GAME_LAYOUTS = {
+            3: {
+                boxes: 3,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const centerX = canvas.width / 2;
+                    const centerY = canvas.height / 2;
+                    const radius = boxSize * 1.2;
+
+                    return [
+                        { x: centerX - boxSize / 2, y: centerY - radius },
+                        { x: centerX - radius * Math.cos(Math.PI/6), y: centerY + radius * Math.sin(Math.PI/6) },
+                        { x: centerX + radius * Math.cos(Math.PI/6), y: centerY + radius * Math.sin(Math.PI/6) }
+                    ];
+                }
+            },
+            4: {
+                boxes: 4,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (2 * boxSize + spacing)) / 2;
+                    const startY = (canvas.height - (2 * boxSize + spacing)) / 2;
+                    return [
+                        { x: startX, y: startY },
+                        { x: startX + boxSize + spacing, y: startY },
+                        { x: startX, y: startY + boxSize + spacing },
+                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing }
+                    ];
+                }
+            },
+            5: {
+                boxes: 5,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
+                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
+                    return [
+                        { x: startX, y: startY },
+                        { x: startX + 2 * (boxSize + spacing), y: startY },
+                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
+                        { x: startX, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
+                    ];
+                }
+            },
+            6: {
+                boxes: 6,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
+                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
+                    return [
+                        { x: startX + 2 * (boxSize + spacing), y: startY },
+                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
+                        { x: startX, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
+                    ];
+                }
+            },
+            7: {
+                boxes: 7,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
+                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
+                    return [
+                        { x: startX + boxSize + spacing, y: startY },
+                        { x: startX + 2 * (boxSize + spacing), y: startY },
+                        { x: startX, y: startY + boxSize + spacing },
+                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
+                        { x: startX, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) }
+                    ];
+                }
+            },
+            8: {
+                boxes: 8,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (4 * boxSize + 3 * spacing)) / 2;
+                    const startY = (canvas.height - (2 * boxSize + spacing)) / 2;
+                    const positions = [];
+                    for (let i = 0; i < 2; i++) {
+                        for (let j = 0; j < 4; j++) {
+                            positions.push({
+                                x: startX + j * (boxSize + spacing),
+                                y: startY + i * (boxSize + spacing)
+                            });
+                        }
+                    }
+                    return positions;
+                }
+            },
+            9: {
+                boxes: 9,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
+                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
+                    const positions = [];
+                    for (let i = 0; i < 3; i++) {
+                        for (let j = 0; j < 3; j++) {
+                            positions.push({
+                                x: startX + j * (boxSize + spacing),
+                                y: startY + i * (boxSize + spacing)
+                            });
+                        }
+                    }
+                    return positions;
+                }
+            },
+            10: {
+                boxes: 10,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (4 * boxSize + 3 * spacing)) / 2;
+                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
+                    return [
+                        { x: startX + boxSize + spacing, y: startY },
+                        { x: startX + 2 * (boxSize + spacing), y: startY },
+                        { x: startX, y: startY + boxSize + spacing },
+                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
+                        { x: startX + 3 * (boxSize + spacing), y: startY + boxSize + spacing },
+                        { x: startX, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) },
+                        { x: startX + 3 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
+                    ];
+                }
+            },
+            12: {
+                boxes: 12,
+                getPositions: (canvas, boxSize, spacing) => {
+                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
+                    const startY = (canvas.height - (4 * boxSize + 3 * spacing)) / 2;
+                    const positions = [];
+                    for (let i = 0; i < 4; i++) {
+                        for (let j = 0; j < 3; j++) {
+                            positions.push({
+                                x: startX + j * (boxSize + spacing),
+                                y: startY + i * (boxSize + spacing)
+                            });
+                        }
+                    }
+                    return positions;
+                }
+            }
+        };
+
+        // Next round rules for Low to High mode
+        const PROGRESSION_RULES = {
+            4: { win: 5, lose: 4 },
+            5: { win: 6, lose: 4 },
+            6: { win: 7, lose: 5 },
+            7: { win: 8, lose: 6 },
+            8: { win: 9, lose: 7 },
+            9: { win: 10, lose: 8 },
+            10: { win: 12, lose: 9 },
+            12: { win: 12, lose: 10 }
+        };
+
+        // Game States
+        const TITLE_SCREEN = 0;
+        const PRACTICE_SCREEN = 1;
+        const COUNTDOWN_SCREEN = 2;
+        const GAME_SCREEN = 3;
+        const END_SCREEN = 4;
+        const FINISH_SCREEN = 5;
+
+        // Timer constants
+        const GAME_TIMER = 60;
+        const ROUND_TIMER = 2;
+        const COUNTDOWN_TIMER = 3;
+
+        // Game variables
+        let currentState = TITLE_SCREEN;
+        let countdown = COUNTDOWN_TIMER;
+        let boxes = [];
+        let currentBox = 1;
+        let lastUpdateTime = 0;
+        let memorizePhase = true;
+        let currentGameMode = 9;
+        let boxPositions = [];
+        let gameTimeRemaining = GAME_TIMER;
+        let roundTimeRemaining = ROUND_TIMER;
+        let gameScore = 0;
+        let isLowToHigh = false;
+        let isCountingDown = true;
+        // ================ JAVASCRIPT PART 1 END ================
+
+        // ===== PASTE JAVASCRIPT PART 2 HERE (EVERYTHING BETWEEN THE START AND END MARKERS) =====
+
+        // ================ JAVASCRIPT PART 2 START ================
+        function titleScreen() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = '32px Georgia';
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("Greg's Memory Master!", canvas.width / 2, 100);
+
+            ctx.strokeStyle = '#000000';
+            ctx.strokeRect(20, 60, 360, 80);
+
+            ctx.font = '24px Georgia';
+            ctx.fillText('Practice', canvas.width / 2, 240);
+            ctx.strokeRect(100, 210, 200, 60);
+
+            ctx.fillText('Low to High', canvas.width / 2, 360);
+            ctx.strokeRect(100, 330, 200, 60);
+        }
+
+        function practiceScreen() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const leftColumn = [2, 3, 4, 5, 6];
+            const rightColumn = [7, 8, 9, 10, 12];
+
+            leftColumn.forEach((num, index) => {
+                ctx.font = '24px Georgia';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(num.toString(), 100, 100 + index * 80);
+                ctx.strokeStyle = '#000000';
+                ctx.strokeRect(50, 70 + index * 80, 100, 60);
+            });
+
+            rightColumn.forEach((num, index) => {
+                ctx.font = '24px Georgia';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.fillText(num.toString(), 300, 100 + index * 80);
+                ctx.strokeRect(250, 70 + index * 80, 100, 60);
+            });
+
+            ctx.font = '18px Georgia';
+            ctx.fillText('Return to Title Screen', canvas.width / 2, 540);
+            ctx.strokeRect(100, 520, 200, 40);
+        }
+
+        function countdownScreen() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 120, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.font = '120px Verdana';
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.ceil(countdown).toString(), canvas.width / 2, canvas.height / 2);
+
+            if (isLowToHigh) {
+                ctx.font = '18px Verdana';
+                ctx.fillText(`Time Remaining: ${Math.ceil(gameTimeRemaining)}s`, canvas.width / 2, canvas.height - 30);
+            }
+        }
+
+        function gameScreen() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            boxPositions.forEach((pos, index) => {
+                if (index < boxes.length) {
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(pos.x, pos.y, 80, 80);
+
+                    if (boxes[index].revealed || memorizePhase) {
+                        ctx.font = '32px Georgia';
+                        ctx.fillStyle = '#000000';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(boxes[index].number.toString(),
+                                   pos.x + 40, pos.y + 40);
+                    }
+                }
+            });
+
+            if (memorizePhase) {
+                ctx.font = '24px Verdana';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(`Memorize: ${Math.ceil(roundTimeRemaining)}s`, 20, canvas.height - 20);
+            }
+
+            if (isLowToHigh) {
+                ctx.font = '18px Verdana';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(`Time: ${Math.ceil(gameTimeRemaining)}s`, canvas.width - 20, canvas.height - 20);
+                ctx.fillText(`Score: ${gameScore}`, canvas.width - 20, canvas.height - 45);
+            }
+        }
+
+        function endScreen() {
+            if (isLowToHigh && gameTimeRemaining > 0) {
+                const isWin = currentBox > currentGameMode;
+                if (isWin) {
+                    gameScore += currentGameMode;
+                }
+
+                const nextMode = PROGRESSION_RULES[currentGameMode][isWin ? 'win' : 'lose'];
+                countdown = COUNTDOWN_TIMER;
+                isCountingDown = true;
+                initializeGame(nextMode);
+                currentState = COUNTDOWN_SCREEN;
+                lastUpdateTime = performance.now();
+            } else {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.font = '36px Georgia';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const message = currentBox > currentGameMode ? 'You Win!' : 'You Lose!';
+                ctx.fillText(message, canvas.width / 2, canvas.height / 2 - 50);
+
+                if (!isLowToHigh) {
+                    ctx.font = '24px Georgia';
+                    ctx.fillText('Return to Title Screen', canvas.width / 2, canvas.height / 2 + 50);
+                    ctx.strokeRect(50, canvas.height / 2 + 20, 300, 60);
+                }
+            }
+        }
+
+        function finishScreen() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = '36px Georgia';
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`Game Over, you scored`, canvas.width / 2, canvas.height / 2 - 50);
+            ctx.fillText(`${gameScore} points!`, canvas.width / 2, canvas.height / 2);
+
+            ctx.font = '24px Georgia';
+            ctx.fillText('Return to Title Screen', canvas.width / 2, canvas.height / 2 + 50);
+            ctx.strokeRect(50, canvas.height / 2 + 20, 300, 60);
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function initializeGame(mode) {
+            currentGameMode = mode;
+            boxes = Array.from({ length: mode }, (_, i) => ({
+                number: i + 1,
+                revealed: false
+            }));
+            shuffle(boxes);
+            currentBox = 1;
+            memorizePhase = true;
+            roundTimeRemaining = ROUND_TIMER;
+
+            const layout = GAME_LAYOUTS[mode];
+            if (layout) {
+                boxPositions = layout.getPositions(canvas, 80, 20);
+            }
+        }
+
+        function initializeLowToHighGame() {
+            isLowToHigh = true;
+            gameTimeRemaining = GAME_TIMER;
+            gameScore = 0;
+            countdown = COUNTDOWN_TIMER;
+            isCountingDown = true;
+            initializeGame(4);
+            currentState = COUNTDOWN_SCREEN;
+            lastUpdateTime = performance.now();
+        }
+
+        function checkBoxClick(x, y) {
+            for (let i = 0; i < boxPositions.length; i++) {
+                const pos = boxPositions[i];
+                if (x >= pos.x && x < pos.x + 80 &&
+                    y >= pos.y && y < pos.y + 80) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function handleInput(x, y) {
+            if (currentState === TITLE_SCREEN) {
+                if (x >= 100 && x <= 300 && y >= 210 && y <= 270) {
+                    isLowToHigh = false;
+                    currentState = PRACTICE_SCREEN;
+                } else if (x >= 100 && x <= 300 && y >= 330 && y <= 390) {
+                    initializeLowToHighGame();
+                }
+            } else if (currentState === PRACTICE_SCREEN) {
+                const leftColumn = [2, 3, 4, 5, 6];
+                const rightColumn = [7, 8, 9, 10, 12];
+
+                leftColumn.forEach((num, index) => {
+                    if (x >= 50 && x <= 150 && y >= 70 + index * 80 && y <= 130 + index * 80) {
+                        isLowToHigh = false;
+                        initializeGame(num);
+                        currentState = COUNTDOWN_SCREEN;
+                        countdown = COUNTDOWN_TIMER;
+                        isCountingDown = true;
+                        lastUpdateTime = performance.now();
+                    }
+                });
+
+                rightColumn.forEach((num, index) => {
+                    if (x >= 250 && x <= 350 && y >= 70 + index * 80 && y <= 130 + index * 80) {
+                        isLowToHigh = false;
+                        initializeGame(num);
+                        currentState = COUNTDOWN_SCREEN;
+                        countdown = COUNTDOWN_TIMER;
+                        isCountingDown = true;
+                        lastUpdateTime = performance.now();
+                    }
+                });
+
+                if (x >= 100 && x <= 300 && y >= 520 && y <= 560) {
+                    currentState = TITLE_SCREEN;
+                }
+            } else if (currentState === GAME_SCREEN && !memorizePhase) {
+                const clickedBox = checkBoxClick(x, y);
+                if (clickedBox !== -1 && !boxes[clickedBox].revealed) {
+                    if (boxes[clickedBox].number === currentBox) {
+                        boxes[clickedBox].revealed = true;
+                        currentBox++;
+                        if (currentBox > currentGameMode) {
+                            currentState = END_SCREEN;
+                        }
+                    } else {
+                        currentState = END_SCREEN;
+                    }
+                }
+            } else if ((currentState === END_SCREEN && !isLowToHigh) || currentState === FINISH_SCREEN) {
+                if (x >= 50 && x <= 350 && y >= canvas.height / 2 + 20 && y <= canvas.height / 2 + 80) {
+                    currentState = TITLE_SCREEN;
+                    isLowToHigh = false;
+                }
+            }
+        }
+
+        function handleClick(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            handleInput(x, y);
+        }
+
+        function handleTouch(event) {
+            event.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = event.touches[0].clientX - rect.left;
+            const y = event.touches[0].clientY - rect.top;
+            handleInput(x, y);
+        }
+
+        function updateTimers(currentTime) {
+            const elapsed = (currentTime - lastUpdateTime) / 1000;
+            lastUpdateTime = currentTime;
+
+            if (isLowToHigh && !isCountingDown) {
+                gameTimeRemaining -= elapsed;
+                if (gameTimeRemaining <= 0) {
+                    gameTimeRemaining = 0;
+                    currentState = FINISH_SCREEN;
+                    return;
+                }
+            }
+
+            if (currentState === COUNTDOWN_SCREEN) {
+                if (isCountingDown) {
+                    countdown -= elapsed;
+                    if (countdown <= 0) {
+                        countdown = 0;
+                        isCountingDown = false;
+                        currentState = GAME_SCREEN;
+                        memorizePhase = true;
+                        roundTimeRemaining = ROUND_TIMER;
+                    }
+                }
+            } else if (currentState === GAME_SCREEN && memorizePhase) {
+                roundTimeRemaining -= elapsed;
+                if (roundTimeRemaining <= 0) {
+                    roundTimeRemaining = 0;
+                    memorizePhase = false;
+                }
+            }
+        }
+
+        function gameLoop(currentTime) {
+            updateTimers(currentTime);
+
+            switch (currentState) {
+                case TITLE_SCREEN:
+                    titleScreen();
+                    break;
+
+                case PRACTICE_SCREEN:
+                    practiceScreen();
+                    break;
+
+                case COUNTDOWN_SCREEN:
+                    countdownScreen();
+                    break;
+
+                case GAME_SCREEN:
+                    gameScreen();
+                    break;
+
+                case END_SCREEN:
+                    endScreen();
+                    break;
+
+                case FINISH_SCREEN:
+                    finishScreen();
+                    break;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event Listeners
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', handleTouch);
+
+        // Start the game
+        lastUpdateTime = performance.now();
+        gameLoop(lastUpdateTime);
+
+        // ================ JAVASCRIPT PART 2 END ================
+
+
+    </script>
+</body>
+</html>

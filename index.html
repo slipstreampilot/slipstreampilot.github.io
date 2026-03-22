@@ -254,7 +254,7 @@
     /* 3-D flip wrapper */
     .mc-card-inner {
       position: relative; width: 100%; height: 100%;
-      transform-style: preserve-3d;
+      transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
       transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
     }
     .mc-card.flipped .mc-card-inner,
@@ -275,7 +275,9 @@
     .mc-card-brain {
       position: relative; z-index: 1; line-height: 1;
       font-size: calc(var(--mc-cw,60px) * 0.32);
-      filter: grayscale(1) brightness(0.1);
+      /* text-shadow silhouette avoids filter stacking-context issues on iOS */
+      color: transparent;
+      text-shadow: 0 0 0 rgba(50,50,50,0.7);
     }
     /* Card front — pre-rotated so it faces away until the flip */
     .mc-card-front { background: #fff; transform: rotateY(180deg); }
@@ -560,6 +562,10 @@
 <!-- MM Finish -->
 <div id="screen-mm-finish" class="screen">
   <div class="finish-score" id="mm-finish-score-text"></div>
+  <div class="gm-benchmark" id="mm-benchmark"></div>
+  <div class="gm-speed-lane" id="mm-speed-lane" style="display:none">
+    <div class="gm-speed-icon" id="mm-speed-icon"></div>
+  </div>
   <div class="finish-congrats" id="mm-finish-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
   <table class="mc-stats" id="mm-finish-stats" style="display:none">
     <tbody id="mm-finish-stats-body"></tbody>
@@ -719,6 +725,10 @@
 <!-- MC Finish -->
 <div id="screen-mc-finish" class="screen">
   <div class="mc-finish-title" id="mc-finish-title">Game Over</div>
+  <div class="gm-benchmark" id="mc-benchmark"></div>
+  <div class="gm-speed-lane" id="mc-speed-lane" style="display:none">
+    <div class="gm-speed-icon" id="mc-speed-icon"></div>
+  </div>
   <div class="finish-congrats" id="mc-finish-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
   <table class="mc-stats" id="mc-stats-table">
     <tbody>
@@ -1230,6 +1240,18 @@ const MMFinish = {
   show(score){
     const pl = score===1 ? 'point' : 'points';
     document.getElementById('mm-finish-score-text').textContent = `You scored ${score} ${pl}`;
+    // Speed benchmark
+    const benchEl = document.getElementById('mm-benchmark');
+    const laneEl  = document.getElementById('mm-speed-lane');
+    const iconEl  = document.getElementById('mm-speed-icon');
+    if(score > 0){
+      const bench = mm_benchmark(score);
+      if(benchEl) benchEl.textContent = bench.label;
+      startSpeedAnim(laneEl, iconEl, bench);
+    } else {
+      if(benchEl) benchEl.textContent = '';
+      if(laneEl) laneEl.style.display = 'none';
+    }
     // Congrats
     const congrats = document.getElementById('mm-finish-congrats');
     congrats.style.display = (MMState.wrongTaps===0 && score>0) ? '' : 'none';
@@ -1735,6 +1757,18 @@ const MCFinish = {
     const acc = total>0 ? Math.round(MCState.totalPairs/total*100)+'%' : '\u2014';
     document.getElementById('mc-stat-accuracy').textContent=acc;
     document.getElementById('mc-stat-combo').textContent=MCState.longestCombo;
+    // Speed benchmark
+    const benchEl = document.getElementById('mc-benchmark');
+    const laneEl  = document.getElementById('mc-speed-lane');
+    const iconEl  = document.getElementById('mc-speed-icon');
+    if(MCState.score > 0){
+      const bench = mc_benchmark(MCState.score);
+      if(benchEl) benchEl.textContent = bench.label;
+      startSpeedAnim(laneEl, iconEl, bench);
+    } else {
+      if(benchEl) benchEl.textContent = '';
+      if(laneEl) laneEl.style.display = 'none';
+    }
     // Congrats
     const congrats=document.getElementById('mc-finish-congrats');
     congrats.style.display=(MCState.mismatches===0&&MCState.totalPairs>0)?'':'none';
@@ -2191,6 +2225,41 @@ const GM_BENCHMARKS = [
 ];
 function gm_benchmark(score){ for(const b of GM_BENCHMARKS){ if(score>=b.min) return b; } return GM_BENCHMARKS[GM_BENCHMARKS.length-1]; }
 
+/* ── Memory Master speed benchmarks (score = sum of roundSize × multiplier) ── */
+const MM_BENCHMARKS = [
+  { min:100, label:'Rocket speed',     icon:'\uD83D\uDE80', dur:'0.64s',  bottom:'30px' },
+  { min:75,  label:'Jet plane speed',  icon:'\u2708\uFE0F', dur:'1.04s',  bottom:'24px' },
+  { min:55,  label:'Helicopter speed', icon:'\uD83D\uDE81', dur:'1.60s',  bottom:'16px' },
+  { min:38,  label:'Car speed',        icon:'\uD83D\uDE97', dur:'2.60s',  bottom:'4px'  },
+  { min:24,  label:'Bicycle speed',    icon:'\uD83D\uDEB2', dur:'4.00s',  bottom:'4px'  },
+  { min:12,  label:'Jogging speed',    icon:'\uD83C\uDFC3', dur:'6.40s',  bottom:'4px'  },
+  { min:0,   label:'Walking speed',    icon:'\uD83D\uDEB6', dur:'11.00s', bottom:'4px'  },
+];
+function mm_benchmark(score){ for(const b of MM_BENCHMARKS){ if(score>=b.min) return b; } return MM_BENCHMARKS[MM_BENCHMARKS.length-1]; }
+
+/* ── Memory Cards speed benchmarks (score = sum of 100 × multiplier per pair) ── */
+const MC_BENCHMARKS = [
+  { min:4000, label:'Rocket speed',     icon:'\uD83D\uDE80', dur:'0.64s',  bottom:'30px' },
+  { min:2800, label:'Jet plane speed',  icon:'\u2708\uFE0F', dur:'1.04s',  bottom:'24px' },
+  { min:1800, label:'Helicopter speed', icon:'\uD83D\uDE81', dur:'1.60s',  bottom:'16px' },
+  { min:1100, label:'Car speed',        icon:'\uD83D\uDE97', dur:'2.60s',  bottom:'4px'  },
+  { min:600,  label:'Bicycle speed',    icon:'\uD83D\uDEB2', dur:'4.00s',  bottom:'4px'  },
+  { min:250,  label:'Jogging speed',    icon:'\uD83C\uDFC3', dur:'6.40s',  bottom:'4px'  },
+  { min:0,    label:'Walking speed',    icon:'\uD83D\uDEB6', dur:'11.00s', bottom:'4px'  },
+];
+function mc_benchmark(score){ for(const b of MC_BENCHMARKS){ if(score>=b.min) return b; } return MC_BENCHMARKS[MC_BENCHMARKS.length-1]; }
+
+/* ── Shared speed lane animation helper ── */
+function startSpeedAnim(laneEl, iconEl, bench){
+  if(!laneEl||!iconEl) return;
+  laneEl.style.display='';
+  iconEl.textContent=bench.icon;
+  iconEl.style.bottom=bench.bottom;
+  iconEl.style.animation='none';
+  void iconEl.offsetWidth;
+  iconEl.style.animation=`gm-speed-scroll ${bench.dur} linear infinite`;
+}
+
 const GMFinish = {
   show(){
     const isPractice = GMState.mode === 'practice';
@@ -2215,15 +2284,7 @@ const GMFinish = {
       timeEl.textContent  = score;
       benchEl.textContent = bench.label;
       // Animate the speed silhouette
-      if(laneEl && iconEl){
-        laneEl.style.display = '';
-        iconEl.textContent = bench.icon;
-        iconEl.style.bottom = bench.bottom;
-        // Force animation restart with new duration
-        iconEl.style.animation = 'none';
-        void iconEl.offsetWidth; // trigger reflow
-        iconEl.style.animation = `gm-speed-scroll ${bench.dur} linear infinite`;
-      }
+      startSpeedAnim(laneEl, iconEl, bench);
       const scores  = GMScores.load();
       const isTop   = GMScores.isTopScore(score);
       if(isTop){

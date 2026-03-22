@@ -1,581 +1,2405 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Greg's Memory Master!</title>
-    <style>
-        canvas {
-            border: 2px solid black;
-            display: block;
-            margin: 0 auto;
-        }
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#ffffff">
+  <title>Greg's Games</title>
+  <style>
+    /* ─── Reset & Base ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; min-height: 100%;
+      background: #fff; color: #000;
+      font-family: Georgia, 'Times New Roman', serif;
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ─── Screen System ─────────────────────────────────────────────── */
+    .screen {
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      padding: max(40px, env(safe-area-inset-top))
+               max(20px, env(safe-area-inset-right))
+               max(40px, env(safe-area-inset-bottom))
+               max(20px, env(safe-area-inset-left));
+      text-align: center; overflow-y: auto;
+      position: relative;
+    }
+    .screen.active { display: flex; }
+
+    /* ─── Typography ────────────────────────────────────────────────── */
+    .game-title {
+      font-size: clamp(22px, 5.5vw, 44px); font-weight: normal;
+      letter-spacing: 0.02em; margin-bottom: 44px; line-height: 1.2;
+    }
+    .game-subtitle {
+      font-size: clamp(11px, 2.5vw, 13px); letter-spacing: 0.12em;
+      text-transform: uppercase; color: #999; margin-top: -36px; margin-bottom: 44px;
+    }
+    .screen-heading {
+      font-size: clamp(18px, 4vw, 30px); font-weight: normal;
+      letter-spacing: 0.03em; margin-bottom: 32px;
+    }
+
+    /* ─── Buttons ───────────────────────────────────────────────────── */
+    .btn {
+      display: block; background: #fff; color: #000; border: 1.5px solid #000;
+      font-family: Georgia, 'Times New Roman', serif; font-size: clamp(13px, 3.2vw, 17px);
+      padding: 13px 36px; min-width: 210px; min-height: 48px; cursor: pointer;
+      letter-spacing: 0.04em; transition: background 0.1s; text-align: center;
+      margin: 7px 0; -webkit-appearance: none; border-radius: 0;
+      touch-action: manipulation;
+    }
+    .btn:hover  { background: #f5f5f5; }
+    .btn:active { background: #e8e8e8; }
+    .btn-back {
+      position: absolute;
+      top: max(16px, env(safe-area-inset-top));
+      left: max(16px, env(safe-area-inset-left));
+      min-width: 0; padding: 8px 16px;
+      font-size: 12px; letter-spacing: 0.08em; color: #666; border-color: #bbb;
+      margin: 0;
+    }
+    .btn-back:hover { color: #000; border-color: #000; }
+    .btn-menu {
+      position: absolute;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      min-width: 0; padding: 8px 20px;
+      font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+      color: #aaa; border-color: #ddd;
+      margin: 0; z-index: 5; white-space: nowrap;
+    }
+    .btn-menu:hover  { color: #555; border-color: #999; background: #fff; }
+    .btn-menu:active { background: #f5f5f5; }
+
+    /* ─── Hub ───────────────────────────────────────────────────────── */
+    .hub-games { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 380px; }
+    .hub-game-btn {
+      display: flex; flex-direction: column; align-items: flex-start;
+      background: #fff; border: 1.5px solid #000;
+      padding: 20px 24px; cursor: pointer; text-align: left;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+      transition: background 0.1s;
+    }
+    .hub-game-btn:hover  { background: #f5f5f5; }
+    .hub-game-btn:active { background: #e8e8e8; }
+    .hub-game-name { font-size: clamp(16px, 4vw, 20px); letter-spacing: 0.03em; }
+    .hub-game-desc { font-size: 12px; color: #888; margin-top: 5px; letter-spacing: 0.02em; font-style: italic; }
+
+    /* ─── Practice Select Grid ──────────────────────────────────────── */
+    .practice-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+      max-width: 460px; width: 100%; margin-bottom: 8px;
+    }
+    .practice-grid .btn { min-width: 0; margin: 0; }
+    .btn-full { grid-column: 1 / -1; }
+
+    /* ─── HTP shared ────────────────────────────────────────────────── */
+    .htp-diagram { display: flex; align-items: center; gap: clamp(14px,4vw,28px); margin-bottom: 32px; }
+    .htp-mini-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; }
+    .htp-mini-box {
+      width: clamp(36px,9vw,50px); height: clamp(36px,9vw,50px);
+      border: 1.5px solid #000; display: flex; align-items: center; justify-content: center;
+      font-size: clamp(14px,3.5vw,20px);
+    }
+    .htp-arrow { font-size: clamp(20px,5vw,30px); flex-shrink: 0; }
+    .htp-diagram-label { font-size: clamp(10px,2.2vw,12px); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; color: #555; }
+    .htp-diagram-col { display: flex; flex-direction: column; align-items: center; }
+    .htp-steps { max-width: 520px; width: 100%; text-align: left; margin-bottom: 32px; }
+    .htp-step { display: flex; align-items: flex-start; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e0e0e0; }
+    .htp-step:last-child { border-bottom: none; }
+    .htp-step-num {
+      flex-shrink: 0; width: 28px; height: 28px; border: 1.5px solid #000; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: bold; margin-top: 1px;
+    }
+    .htp-step-body { flex: 1; }
+    .htp-step-title { font-size: clamp(13px,3vw,15px); font-weight: bold; letter-spacing: 0.02em; margin-bottom: 3px; }
+    .htp-step-desc { font-size: clamp(12px,2.8vw,14px); line-height: 1.6; color: #222; }
+    .htp-step-desc strong { font-weight: bold; color: #000; }
+    @media (max-width: 380px) {
+      .htp-step { gap: 12px; }
+      .htp-step-num { width: 24px; height: 24px; font-size: 11px; }
+    }
+
+    /* ─── GM How-to-Play diagram ─────────────────────────────────── */
+    .gm-htp-rows {
+      width: clamp(120px, 30vw, 170px);
+      border: 1px solid #ddd; overflow: hidden;
+    }
+    .gm-htp-row {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(10px, 2.5vw, 13px);
+      padding: 5px 9px; white-space: nowrap;
+    }
+    .gm-htp-row + .gm-htp-row { border-top: 1px solid #eee; }
+    .gm-htp-row.gm-htp-active { outline: 1.5px solid #000; outline-offset: -1.5px; }
+    .gm-htp-row.gm-htp-dim    { opacity: 0.28; }
+
+    /* ─── Countdown ─────────────────────────────────────────────────── */
+    .countdown-circle {
+      display: flex; align-items: center; justify-content: center;
+      width: clamp(110px,28vmin,180px); height: clamp(110px,28vmin,180px);
+      border: 5px solid #000; border-radius: 50%;
+      font-family: Arial, Helvetica, sans-serif; font-size: clamp(54px,14vmin,96px);
+      font-weight: bold; color: #000; line-height: 1;
+    }
+
+    /* ─── You Win ───────────────────────────────────────────────────── */
+    .you-win-text { font-size: clamp(30px,8vw,60px); font-weight: normal; letter-spacing: 0.03em; }
+
+    /* ─── Shared Finish / Scores ────────────────────────────────────── */
+    .finish-score { font-size: clamp(22px,5.5vw,42px); margin-bottom: 32px; line-height: 1.3; }
+    .name-entry-section { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .name-entry-section p { font-size: clamp(13px,3vw,16px); margin-bottom: 4px; }
+    .name-input {
+      font-family: Georgia, 'Times New Roman', serif; font-size: 17px;
+      border: 1.5px solid #000; border-radius: 0; padding: 10px 16px;
+      width: 200px; text-align: center; background: #fff; color: #000;
+      outline: none; -webkit-appearance: none;
+    }
+    .name-input:focus { border-width: 2px; }
+    .scores-table { width: 100%; max-width: 480px; border-collapse: collapse; margin: 4px 0 16px; }
+    .scores-table th {
+      border-bottom: 1.5px solid #000; padding: 10px 14px; text-align: left;
+      font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; font-weight: normal;
+    }
+    .scores-table td { padding: 9px 14px; border-bottom: 1px solid #ddd; font-size: 15px; }
+    .scores-table tr:last-child td { border-bottom: none; }
+    .scores-empty { font-size: 15px; color: #555; margin: 20px 0; font-style: italic; }
+    .finish-congrats {
+      color: #2E7D32; font-size: clamp(13px, 3vw, 15px); font-style: italic;
+      letter-spacing: 0.02em; margin-bottom: 14px;
+    }
+    .pagination { display: flex; align-items: center; gap: 20px; margin: 8px 0 24px; }
+    .pg-btn {
+      background: #fff; border: 1.5px solid #000; font-size: 18px;
+      width: 44px; height: 44px; cursor: pointer; font-family: Georgia, serif;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 0; -webkit-appearance: none; touch-action: manipulation; transition: background 0.1s;
+    }
+    .pg-btn:hover:not(:disabled) { background: #f5f5f5; }
+    .pg-btn:disabled { border-color: #ccc; color: #ccc; cursor: default; }
+    .pg-label { font-size: 13px; color: #555; letter-spacing: 0.05em; }
+
+    /* ─── MEMORY MASTER specific ────────────────────────────────────── */
+    .mm-hud {
+      width: 100%; max-width: 480px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0 12px; flex-shrink: 0;
+    }
+    .mm-hud-timer {
+      font-size: clamp(18px, 4.5vw, 26px); letter-spacing: 0.04em;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .mm-hud-multi {
+      font-size: clamp(12px, 2.8vw, 15px); letter-spacing: 0.04em;
+      border: 1px solid #000; padding: 2px 8px; min-width: 42px; text-align: center;
+    }
+    .mm-hud-multi.boosted { background: #000; color: #fff; }
+    #mm-round-grid { display: grid; gap: var(--box-gap,12px); }
+    .box {
+      width: var(--box-size,80px); height: var(--box-size,80px);
+      border: 1.5px solid #000; display: flex; align-items: center; justify-content: center;
+      font-family: Georgia,'Times New Roman',serif; font-size: var(--box-font,26px);
+      font-weight: normal; background: #fff; color: #000;
+      user-select: none; -webkit-user-select: none; cursor: default; transition: background 0.07s;
+    }
+    .box-spacer { width: var(--box-size,80px); height: var(--box-size,80px); visibility: hidden; }
+    .box.clickable { cursor: pointer; touch-action: manipulation; }
+    .box.clickable:hover  { background: #f8f8f8; }
+    .box.clickable:active { background: #f0f0f0; }
+    .box.correct { color: #2E7D32; cursor: default; font-size: calc(var(--box-font,26px) * 1.1); }
+    #mm-round-footer { margin-top: 28px; min-height: 60px; display: flex; align-items: center; justify-content: center; }
+
+    /* ─── MEMORY CARDS specific ─────────────────────────────────────── */
+    #screen-mc-round { justify-content: flex-start; padding-top: max(16px, env(safe-area-inset-top)); }
+
+    /* HUD */
+    .mc-hud {
+      width: 100%; max-width: 540px;
+      display: flex; align-items: center; gap: 14px;
+      padding: 8px 0 14px; flex-shrink: 0;
+    }
+    .mc-timer-stack { display: flex; flex-direction: column; gap: 3px; }
+    .mc-timer-label { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #888; }
+    .mc-timer-bar { width: 72px; height: 7px; border: 1px solid #000; background: #fff; overflow: hidden; }
+    .mc-timer-fill { height: 100%; background: #000; width: 0%; transition: width 0.25s linear; }
+    .mc-hud-score { flex: 1; text-align: right; font-size: clamp(13px,3vw,16px); letter-spacing: 0.02em; }
+    .mc-hud-multi {
+      font-size: clamp(12px,2.8vw,15px); letter-spacing: 0.04em;
+      border: 1px solid #000; padding: 2px 8px; min-width: 42px; text-align: center;
+    }
+    .mc-hud-multi.boosted { background: #000; color: #fff; }
+
+    /* Card grid */
+    #mc-card-grid { display: grid; gap: var(--mc-gap,7px); }
+
+    /* Individual card */
+    .mc-card {
+      width: var(--mc-cw,60px); height: var(--mc-ch,84px);
+      border: 1.5px solid #000; border-radius: 5px;
+      cursor: pointer; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none;
+      position: relative; flex-shrink: 0;
+      perspective: 600px;
+    }
+    .mc-card.locked { cursor: default; pointer-events: none; }
+    /* 3-D flip wrapper */
+    .mc-card-inner {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    .mc-card.flipped .mc-card-inner,
+    .mc-card.matched .mc-card-inner { transform: rotateY(180deg); }
+    .mc-card-back, .mc-card-front {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+      border-radius: 4px; overflow: hidden;
+    }
+    /* Sunburst back */
+    .mc-card-back {
+      background: repeating-conic-gradient(#c8c8c8 0deg 11.25deg, #f2f2f2 11.25deg 22.5deg);
+    }
+    .mc-card-back::before {
+      content: ''; position: absolute;
+      width: 58%; height: 58%; background: #fff; border-radius: 50%;
+    }
+    .mc-card-brain {
+      position: relative; z-index: 1; line-height: 1;
+      font-size: calc(var(--mc-cw,60px) * 0.32);
+      filter: grayscale(1) brightness(0.1);
+    }
+    /* Card front — pre-rotated so it faces away until the flip */
+    .mc-card-front { background: #fff; transform: rotateY(180deg); }
+    .mc-card-symbol { font-size: calc(var(--mc-cw,60px) * 0.54); line-height: 1; }
+    /* Matched */
+    .mc-card.matched .mc-card-front { background: #f0f0f0; }
+    .mc-card.matched .mc-card-symbol { opacity: 0.45; }
+
+    /* Round complete overlay */
+    .mc-overlay {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.92); z-index: 20;
+      font-size: clamp(20px,5vw,32px); letter-spacing: 0.03em;
+      cursor: pointer; touch-action: manipulation;
+    }
+    .mc-overlay-sub {
+      font-size: clamp(11px,2.6vw,14px); color: #666;
+      margin-top: 14px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .mc-overlay.hidden { display: none; }
+
+    /* Preview hint banner */
+    .mc-preview-hint {
+      position: fixed;
+      bottom: max(28px, env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.78); color: #fff;
+      padding: 10px 26px;
+      font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase;
+      white-space: nowrap; pointer-events: none;
+      z-index: 15;
+    }
+    .mc-preview-hint.hidden { display: none; }
+
+    /* MC Finish stats table */
+    .mc-finish-title { font-size: clamp(20px,5vw,36px); margin-bottom: 24px; letter-spacing: 0.02em; }
+    .mc-stats { width: 100%; max-width: 380px; border-collapse: collapse; margin: 0 0 28px; }
+    .mc-stats td { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; font-size: clamp(13px,3vw,15px); }
+    .mc-stats td:first-child { text-align: left; color: #666; }
+    .mc-stats td:last-child  { text-align: right; font-weight: bold; }
+    .mc-stats tr:last-child td { border-bottom: none; }
+
+    /* ─── GREG'S MATH GAME specific ─────────────────────────────────── */
+    #screen-gm-round { justify-content: flex-start; padding-top: max(20px, env(safe-area-inset-top)); }
+
+    .gm-hud {
+      width: 100%; max-width: 400px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0 12px; flex-shrink: 0;
+    }
+    .gm-hud-count {
+      font-size: clamp(12px, 3vw, 15px); letter-spacing: 0.08em;
+      text-transform: uppercase; color: #888;
+    }
+    .gm-hud-timer {
+      font-size: clamp(18px, 4.5vw, 26px); letter-spacing: 0.04em;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .gm-hud-score {
+      font-size: clamp(18px, 4.5vw, 26px); letter-spacing: 0.04em;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .gm-hud-multi {
+      font-size: clamp(12px, 2.8vw, 15px); letter-spacing: 0.04em;
+      border: 1px solid #000; padding: 2px 6px; min-width: 38px; text-align: center;
+    }
+    .gm-hud-multi.boosted { background: #000; color: #fff; }
+    /* ── Scrolling problem list ── */
+    .gm-scroll-window {
+      width: 100%; max-width: 480px; overflow: hidden;
+      flex-shrink: 0; margin: auto 0;
+    }
+    .gm-scroll-inner {
+      display: flex; flex-direction: column;
+      will-change: transform;
+      transition: transform 0.20s cubic-bezier(0.4,0,0.2,1);
+    }
+    .gm-prob-row {
+      display: flex; align-items: center;
+      border: 1.5px solid transparent;
+      padding: 0 clamp(12px, 3.5vw, 24px);
+      flex-shrink: 0; gap: 10px;
+      font-size: clamp(22px, 6vw, 32px);
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+    .gm-prob-row.gm-active   { border-color: #000; }
+    .gm-prob-row.gm-upcoming { opacity: 0.30; }
+    .gm-prob-eq  { flex: 1; white-space: nowrap; }
+    .gm-prob-ans {
+      min-width: 56px; text-align: right;
+      font-family: Arial, Helvetica, sans-serif; font-weight: bold;
+      border-bottom: 2px solid transparent; padding-bottom: 2px;
+    }
+    .gm-prob-row.gm-active .gm-prob-ans { border-bottom-color: #000; }
+    .gm-prob-ans.gm-wrong   { color: #c00 !important; border-bottom-color: #c00 !important; }
+    .gm-prob-ans.gm-correct { color: #2E7D32 !important; border-bottom-color: transparent !important; }
+    .gm-prob-check {
+      color: #2E7D32; font-size: 1.05em; opacity: 0;
+      transition: opacity 0.08s; width: 1.1em; text-align: center; flex-shrink: 0;
+    }
+    .gm-prob-check.visible { opacity: 1; }
+
+    .gm-numpad {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: clamp(6px, 2vw, 10px);
+      width: 100%; max-width: 320px; flex-shrink: 0;
+      padding-bottom: max(64px, env(safe-area-inset-bottom));
+    }
+    .gm-key {
+      height: clamp(52px, 13vw, 76px);
+      background: #fff; border: 1.5px solid #000;
+      font-family: Georgia, 'Times New Roman', serif; font-size: clamp(18px, 5vw, 26px);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+      transition: background 0.08s; user-select: none; -webkit-user-select: none;
+    }
+    .gm-key:hover  { background: #f5f5f5; }
+    .gm-key:active { background: #e8e8e8; }
+    .gm-key-func   { font-size: clamp(16px, 4vw, 22px); color: #555; border-color: #999; }
+    .gm-key-submit { font-size: clamp(16px, 4vw, 22px); }
+
+    .gm-finish-time { font-size: clamp(32px, 9vw, 64px); letter-spacing: 0.04em; margin-bottom: 6px; }
+    .gm-finish-rank { font-size: clamp(14px, 3.2vw, 17px); color: #666; margin-bottom: 8px; letter-spacing: 0.03em; }
+    .gm-benchmark   { font-style: italic; color: #555; font-size: clamp(13px, 3vw, 15px); margin-bottom: 8px; }
+    /* ── Speed silhouette animation ── */
+    .gm-speed-lane {
+      position: relative; overflow: hidden;
+      width: 100%; max-width: 360px; height: 68px;
+      border-bottom: 1.5px solid #000;
+      flex-shrink: 0; margin-bottom: 20px;
+    }
+    .gm-speed-icon {
+      position: absolute;
+      font-size: clamp(28px, 7vw, 38px); line-height: 1;
+      filter: brightness(0);
+    }
+    @keyframes gm-speed-scroll {
+      from { left: -1.5em; }
+      to   { left: calc(100% + 0.5em); }
+    }
+  </style>
 </head>
 <body>
-    <canvas id="game-canvas" width="400" height="600"></canvas>
 
-    <script>
-        // ===== PASTE JAVASCRIPT PART 1 HERE (EVERYTHING BETWEEN THE START AND END MARKERS) =====
-        // ================ JAVASCRIPT PART 1 START ================
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
+<!-- ══════════════════════════════════════════════════ HUB -->
+<div id="screen-hub" class="screen active">
+  <div class="game-title">Greg's Games</div>
+  <div class="hub-games">
+    <button class="hub-game-btn" onclick="HubUI.goMM()">
+      <span class="hub-game-name">Memory Master</span>
+      <span class="hub-game-desc">Memorise numbers, recall in order. Beat the clock.</span>
+    </button>
+    <button class="hub-game-btn" onclick="HubUI.goMC()">
+      <span class="hub-game-name">Memory Cards</span>
+      <span class="hub-game-desc">Find matching pairs. Build combos. Race the timer.</span>
+    </button>
+    <button class="hub-game-btn" onclick="HubUI.goGM()">
+      <span class="hub-game-name">Greg's Math Game</span>
+      <span class="hub-game-desc">Solve 10 problems. Beat the clock. Chase your best time.</span>
+    </button>
+  </div>
+</div>
 
-        // Game layouts configuration
-        const GAME_LAYOUTS = {
-            3: {
-                boxes: 3,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const centerX = canvas.width / 2;
-                    const centerY = canvas.height / 2;
-                    const radius = boxSize * 1.2;
+<!-- ══════════════════════════════ MEMORY MASTER SCREENS -->
 
-                    return [
-                        { x: centerX - boxSize / 2, y: centerY - radius },
-                        { x: centerX - radius * Math.cos(Math.PI/6), y: centerY + radius * Math.sin(Math.PI/6) },
-                        { x: centerX + radius * Math.cos(Math.PI/6), y: centerY + radius * Math.sin(Math.PI/6) }
-                    ];
-                }
-            },
-            4: {
-                boxes: 4,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (2 * boxSize + spacing)) / 2;
-                    const startY = (canvas.height - (2 * boxSize + spacing)) / 2;
-                    return [
-                        { x: startX, y: startY },
-                        { x: startX + boxSize + spacing, y: startY },
-                        { x: startX, y: startY + boxSize + spacing },
-                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing }
-                    ];
-                }
-            },
-            5: {
-                boxes: 5,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
-                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
-                    return [
-                        { x: startX, y: startY },
-                        { x: startX + 2 * (boxSize + spacing), y: startY },
-                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
-                        { x: startX, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
-                    ];
-                }
-            },
-            6: {
-                boxes: 6,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
-                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
-                    return [
-                        { x: startX + 2 * (boxSize + spacing), y: startY },
-                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
-                        { x: startX, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
-                    ];
-                }
-            },
-            7: {
-                boxes: 7,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
-                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
-                    return [
-                        { x: startX + boxSize + spacing, y: startY },
-                        { x: startX + 2 * (boxSize + spacing), y: startY },
-                        { x: startX, y: startY + boxSize + spacing },
-                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
-                        { x: startX, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) }
-                    ];
-                }
-            },
-            8: {
-                boxes: 8,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (4 * boxSize + 3 * spacing)) / 2;
-                    const startY = (canvas.height - (2 * boxSize + spacing)) / 2;
-                    const positions = [];
-                    for (let i = 0; i < 2; i++) {
-                        for (let j = 0; j < 4; j++) {
-                            positions.push({
-                                x: startX + j * (boxSize + spacing),
-                                y: startY + i * (boxSize + spacing)
-                            });
-                        }
-                    }
-                    return positions;
-                }
-            },
-            9: {
-                boxes: 9,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
-                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
-                    const positions = [];
-                    for (let i = 0; i < 3; i++) {
-                        for (let j = 0; j < 3; j++) {
-                            positions.push({
-                                x: startX + j * (boxSize + spacing),
-                                y: startY + i * (boxSize + spacing)
-                            });
-                        }
-                    }
-                    return positions;
-                }
-            },
-            10: {
-                boxes: 10,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (4 * boxSize + 3 * spacing)) / 2;
-                    const startY = (canvas.height - (3 * boxSize + 2 * spacing)) / 2;
-                    return [
-                        { x: startX + boxSize + spacing, y: startY },
-                        { x: startX + 2 * (boxSize + spacing), y: startY },
-                        { x: startX, y: startY + boxSize + spacing },
-                        { x: startX + boxSize + spacing, y: startY + boxSize + spacing },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + boxSize + spacing },
-                        { x: startX + 3 * (boxSize + spacing), y: startY + boxSize + spacing },
-                        { x: startX, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + boxSize + spacing, y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + 2 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) },
-                        { x: startX + 3 * (boxSize + spacing), y: startY + 2 * (boxSize + spacing) }
-                    ];
-                }
-            },
-            12: {
-                boxes: 12,
-                getPositions: (canvas, boxSize, spacing) => {
-                    const startX = (canvas.width - (3 * boxSize + 2 * spacing)) / 2;
-                    const startY = (canvas.height - (4 * boxSize + 3 * spacing)) / 2;
-                    const positions = [];
-                    for (let i = 0; i < 4; i++) {
-                        for (let j = 0; j < 3; j++) {
-                            positions.push({
-                                x: startX + j * (boxSize + spacing),
-                                y: startY + i * (boxSize + spacing)
-                            });
-                        }
-                    }
-                    return positions;
-                }
-            }
-        };
+<!-- MM Title -->
+<div id="screen-mm-title" class="screen">
+  <button class="btn btn-back" onclick="showScreen('hub')">&#8592; Games</button>
+  <div class="game-title">Greg's Memory Master</div>
+  <button class="btn" onclick="MMUI.goHowToPlay()">How to Play</button>
+  <button class="btn" onclick="MMUI.goPracticeSelect()">Practice Mode</button>
+  <button class="btn" onclick="MMUI.startGame()">Play Game</button>
+  <button class="btn" onclick="MMUI.goHighScores()">View High Scores</button>
+</div>
 
-        // Next round rules for Low to High mode
-        const PROGRESSION_RULES = {
-            4: { win: 5, lose: 4 },
-            5: { win: 6, lose: 4 },
-            6: { win: 7, lose: 5 },
-            7: { win: 8, lose: 6 },
-            8: { win: 9, lose: 7 },
-            9: { win: 10, lose: 8 },
-            10: { win: 12, lose: 9 },
-            12: { win: 12, lose: 10 }
-        };
+<!-- MM How to Play -->
+<div id="screen-mm-how-to-play" class="screen">
+  <div class="screen-heading">How to Play</div>
+  <div class="htp-diagram">
+    <div class="htp-diagram-col">
+      <div class="htp-mini-grid">
+        <div class="htp-mini-box">3</div><div class="htp-mini-box">1</div>
+        <div class="htp-mini-box">4</div><div class="htp-mini-box">2</div>
+      </div>
+      <div class="htp-diagram-label">Memorise</div>
+    </div>
+    <div class="htp-arrow">&#8594;</div>
+    <div class="htp-diagram-col">
+      <div class="htp-mini-grid">
+        <div class="htp-mini-box"></div><div class="htp-mini-box"></div>
+        <div class="htp-mini-box"></div><div class="htp-mini-box"></div>
+      </div>
+      <div class="htp-diagram-label">Recall in order</div>
+    </div>
+  </div>
+  <div class="htp-steps">
+    <div class="htp-step">
+      <div class="htp-step-num">1</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Countdown</div>
+        <div class="htp-step-desc">A <strong>2-second</strong> countdown appears before every round.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">2</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Memorise</div>
+        <div class="htp-step-desc">Numbered boxes appear. Memorise which number is in which box &mdash; you have up to <strong>3 seconds</strong>, but tap the screen the moment you&rsquo;re ready.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">3</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Recall</div>
+        <div class="htp-step-desc">The numbers vanish. Click the empty boxes in order from <strong>lowest to highest</strong> (1, 2, 3&hellip;).</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">4</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Scoring</div>
+        <div class="htp-step-desc">
+          <strong>All correct</strong> &rarr; earn points equal to the number of boxes, then face a harder round.<br>
+          <strong>One mistake</strong> &rarr; no points that round, then an easier round.
+        </div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">5</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">The Game</div>
+        <div class="htp-step-desc">Rounds continue until <strong>60 seconds</strong> are up. Score as many points as you can!</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn" onclick="showScreen('mm-title')">Return to Title</button>
+</div>
 
-        // Game States
-        const TITLE_SCREEN = 0;
-        const PRACTICE_SCREEN = 1;
-        const COUNTDOWN_SCREEN = 2;
-        const GAME_SCREEN = 3;
-        const END_SCREEN = 4;
-        const FINISH_SCREEN = 5;
+<!-- MM Practice Select -->
+<div id="screen-mm-practice-select" class="screen">
+  <div class="screen-heading">Practice Mode</div>
+  <div class="practice-grid">
+    <button class="btn" onclick="MMUI.startPractice(4)">Practice 4</button>
+    <button class="btn" onclick="MMUI.startPractice(5)">Practice 5</button>
+    <button class="btn" onclick="MMUI.startPractice(6)">Practice 6</button>
+    <button class="btn" onclick="MMUI.startPractice(7)">Practice 7</button>
+    <button class="btn" onclick="MMUI.startPractice(8)">Practice 8</button>
+    <button class="btn" onclick="MMUI.startPractice(9)">Practice 9</button>
+    <button class="btn" onclick="MMUI.startPractice(10)">Practice 10</button>
+    <button class="btn" onclick="MMUI.startPractice(12)">Practice 12</button>
+    <button class="btn btn-full" onclick="showScreen('mm-title')">Return to Title Screen</button>
+  </div>
+</div>
 
-        // Timer constants
-        const GAME_TIMER = 60;
-        const ROUND_TIMER = 2;
-        const COUNTDOWN_TIMER = 3;
+<!-- MM Countdown -->
+<div id="screen-mm-countdown" class="screen">
+  <div class="countdown-circle" id="mm-countdown-display">3</div>
+  <button class="btn btn-menu" onclick="MMUI.goTitle()">&#8592; Menu</button>
+</div>
 
-        // Game variables
-        let currentState = TITLE_SCREEN;
-        let countdown = COUNTDOWN_TIMER;
-        let boxes = [];
-        let currentBox = 1;
-        let lastUpdateTime = 0;
-        let memorizePhase = true;
-        let currentGameMode = 9;
-        let boxPositions = [];
-        let gameTimeRemaining = GAME_TIMER;
-        let roundTimeRemaining = ROUND_TIMER;
-        let gameScore = 0;
-        let isLowToHigh = false;
-        let isCountingDown = true;
-        // ================ JAVASCRIPT PART 1 END ================
+<!-- MM Round -->
+<div id="screen-mm-round" class="screen">
+  <div class="mm-hud" id="mm-hud" style="display:none">
+    <div class="mm-hud-timer" id="mm-hud-timer">60s</div>
+    <div class="mm-hud-multi" id="mm-hud-multi">1.0&#xD7;</div>
+  </div>
+  <div id="mm-round-grid"></div>
+  <div id="mm-round-footer"></div>
+  <button class="btn btn-menu" onclick="MMUI.goTitle()">&#8592; Menu</button>
+</div>
 
-        // ===== PASTE JAVASCRIPT PART 2 HERE (EVERYTHING BETWEEN THE START AND END MARKERS) =====
+<!-- MM Practice Finish -->
+<div id="screen-mm-you-win" class="screen">
+  <div class="finish-score" id="mm-practice-result"></div>
+  <div class="finish-congrats" id="mm-practice-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
+  <table class="mc-stats"><tbody id="mm-practice-stats-body"></tbody></table>
+  <button class="btn" id="mm-practice-retry-btn">Try Again</button>
+  <button class="btn" onclick="MMUI.goPracticeSelect()">Practice Menu</button>
+</div>
 
-        // ================ JAVASCRIPT PART 2 START ================
-        function titleScreen() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+<!-- MM Finish -->
+<div id="screen-mm-finish" class="screen">
+  <div class="finish-score" id="mm-finish-score-text"></div>
+  <div class="finish-congrats" id="mm-finish-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
+  <table class="mc-stats" id="mm-finish-stats" style="display:none">
+    <tbody id="mm-finish-stats-body"></tbody>
+  </table>
+  <div class="name-entry-section" id="mm-finish-name-section" style="display:none">
+    <p>You made the top 100! Enter your name:</p>
+    <input class="name-input" id="mm-finish-name-input" type="text" maxlength="12"
+           autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+    <button class="btn" onclick="MMScores.save()">Save Score</button>
+  </div>
+  <button class="btn" onclick="MMUI.goTitle()">Return to Title Screen</button>
+</div>
 
-            ctx.font = '32px Georgia';
-            ctx.fillStyle = '#000000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText("Greg's Memory Master!", canvas.width / 2, 100);
+<!-- MM High Scores -->
+<div id="screen-mm-high-scores" class="screen">
+  <div class="screen-heading">High Scores</div>
+  <table class="scores-table" id="mm-scores-table">
+    <thead><tr><th>Rank</th><th>Name</th><th>Score</th></tr></thead>
+    <tbody id="mm-scores-tbody"></tbody>
+  </table>
+  <div class="scores-empty" id="mm-scores-empty" style="display:none">No scores yet. Play a game to get on the board!</div>
+  <div class="pagination">
+    <button class="pg-btn" id="mm-scores-prev" onclick="MMScores.changePage(-1)" disabled>&#8592;</button>
+    <span class="pg-label" id="mm-scores-page-label">Page 1</span>
+    <button class="pg-btn" id="mm-scores-next" onclick="MMScores.changePage(1)">&#8594;</button>
+  </div>
+  <button class="btn" onclick="MMUI.goTitle()">Return to Title Screen</button>
+</div>
 
-            ctx.strokeStyle = '#000000';
-            ctx.strokeRect(20, 60, 360, 80);
+<!-- ═══════════════════════════════ MEMORY CARDS SCREENS -->
 
-            ctx.font = '24px Georgia';
-            ctx.fillText('Practice', canvas.width / 2, 240);
-            ctx.strokeRect(100, 210, 200, 60);
+<!-- MC Title -->
+<div id="screen-mc-title" class="screen">
+  <button class="btn btn-back" onclick="showScreen('hub')">&#8592; Games</button>
+  <div class="game-title">Memory Cards</div>
+  <button class="btn" onclick="MCUI.goHowToPlay()">How to Play</button>
+  <button class="btn" onclick="MCUI.goPracticeSelect()">Practice Mode</button>
+  <button class="btn" onclick="MCUI.startGame()">Play Game</button>
+  <button class="btn" onclick="MCUI.goHighScores()">View High Scores</button>
+</div>
 
-            ctx.fillText('Low to High', canvas.width / 2, 360);
-            ctx.strokeRect(100, 330, 200, 60);
+<!-- MC How to Play -->
+<div id="screen-mc-how-to-play" class="screen">
+  <div class="screen-heading">How to Play</div>
+  <div class="htp-diagram">
+    <div class="htp-diagram-col">
+      <!-- 2x2 cards face-down -->
+      <div class="htp-mini-grid">
+        <div class="htp-mini-box" style="font-size:clamp(10px,2.5vw,14px);background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+        <div class="htp-mini-box" style="font-size:clamp(10px,2.5vw,14px);background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+        <div class="htp-mini-box" style="font-size:clamp(10px,2.5vw,14px);background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+        <div class="htp-mini-box" style="font-size:clamp(10px,2.5vw,14px);background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+      </div>
+      <div class="htp-diagram-label">Face down</div>
+    </div>
+    <div class="htp-arrow">&#8594;</div>
+    <div class="htp-diagram-col">
+      <div class="htp-mini-grid">
+        <div class="htp-mini-box">&#9829;</div>
+        <div class="htp-mini-box" style="background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+        <div class="htp-mini-box" style="background:repeating-conic-gradient(#ccc 0deg 22.5deg,#eee 22.5deg 45deg)"></div>
+        <div class="htp-mini-box">&#9829;</div>
+      </div>
+      <div class="htp-diagram-label">Find the pairs</div>
+    </div>
+  </div>
+  <div class="htp-steps">
+    <div class="htp-step">
+      <div class="htp-step-num">1</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Countdown</div>
+        <div class="htp-step-desc">A <strong>2-second</strong> countdown appears before every round.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">2</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Flip &amp; Match</div>
+        <div class="htp-step-desc">Tap any two cards to reveal their symbols. If they <strong>match</strong>, they stay face-up and you earn points. If not, they flip back over.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">3</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Combos</div>
+        <div class="htp-step-desc">Each consecutive match raises your <strong>multiplier</strong> by 0.1&times; (max 2.0&times;). A mismatch resets it to 1.0&times;.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">4</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Rounds</div>
+        <div class="htp-step-desc">Clear all pairs to complete a round. Each round has <strong>more pairs</strong> than the last. Tap anywhere to start the next round.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">5</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">The Game</div>
+        <div class="htp-step-desc">Race the <strong>2-minute timer</strong>. Match as many pairs as possible before time runs out!</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn" onclick="showScreen('mc-title')">Return to Title</button>
+</div>
+
+<!-- MC Practice Select -->
+<div id="screen-mc-practice-select" class="screen">
+  <div class="screen-heading">Practice Mode</div>
+  <div class="practice-grid">
+    <button class="btn" onclick="MCUI.startPractice(2)">2 Pairs</button>
+    <button class="btn" onclick="MCUI.startPractice(3)">3 Pairs</button>
+    <button class="btn" onclick="MCUI.startPractice(4)">4 Pairs</button>
+    <button class="btn" onclick="MCUI.startPractice(5)">5 Pairs</button>
+    <button class="btn" onclick="MCUI.startPractice(6)">6 Pairs</button>
+    <button class="btn" onclick="MCUI.startPractice(7)">7 Pairs</button>
+    <button class="btn btn-full" onclick="showScreen('mc-title')">Return to Title Screen</button>
+  </div>
+</div>
+
+<!-- MC Countdown -->
+<div id="screen-mc-countdown" class="screen">
+  <div class="countdown-circle" id="mc-countdown-display">2</div>
+  <button class="btn btn-menu" onclick="MCUI.goTitle()">&#8592; Menu</button>
+</div>
+
+<!-- MC Round -->
+<div id="screen-mc-round" class="screen">
+  <div class="mc-hud" id="mc-hud">
+    <div class="mc-timer-stack" id="mc-timer-stack">
+      <div class="mc-timer-label">Time</div>
+      <div class="mc-timer-bar"><div class="mc-timer-fill" id="mc-timer-fill"></div></div>
+    </div>
+    <div class="mc-hud-score" id="mc-hud-score">0</div>
+    <div class="mc-hud-multi" id="mc-hud-multi">&times;1.0</div>
+  </div>
+  <div id="mc-card-grid"></div>
+  <button class="btn btn-menu" onclick="MCUI.goTitle()">&#8592; Menu</button>
+  <!-- Round complete overlay -->
+  <div id="mc-round-overlay" class="mc-overlay hidden">
+    <div id="mc-overlay-title">Round Complete!</div>
+    <div class="mc-overlay-sub">Tap anywhere to continue</div>
+  </div>
+</div>
+
+<!-- Preview hint (shown over round screen while cards are face-up) -->
+<div id="mc-preview-hint" class="mc-preview-hint hidden">Memorise &mdash; tap anywhere to begin</div>
+
+<!-- MC Practice Finish -->
+<div id="screen-mc-you-win" class="screen">
+  <div class="finish-score" id="mc-practice-result">All Pairs Matched!</div>
+  <div class="finish-congrats" id="mc-practice-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
+  <table class="mc-stats"><tbody id="mc-practice-stats-body"></tbody></table>
+  <button class="btn" onclick="MCUI.goPracticeSelect()">Practice Menu</button>
+</div>
+
+<!-- MC Finish -->
+<div id="screen-mc-finish" class="screen">
+  <div class="mc-finish-title" id="mc-finish-title">Game Over</div>
+  <div class="finish-congrats" id="mc-finish-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
+  <table class="mc-stats" id="mc-stats-table">
+    <tbody>
+      <tr><td>Score</td><td id="mc-stat-score">0</td></tr>
+      <tr><td>Pairs Matched</td><td id="mc-stat-pairs">0</td></tr>
+      <tr><td>Rounds Completed</td><td id="mc-stat-rounds">0</td></tr>
+      <tr><td>Mistakes</td><td id="mc-stat-mismatches">0</td></tr>
+      <tr><td>Accuracy</td><td id="mc-stat-accuracy">&mdash;</td></tr>
+      <tr><td>Longest Combo</td><td id="mc-stat-combo">0</td></tr>
+    </tbody>
+  </table>
+  <div class="name-entry-section" id="mc-finish-name-section" style="display:none">
+    <p>You made the top 100! Enter your name:</p>
+    <input class="name-input" id="mc-finish-name-input" type="text" maxlength="12"
+           autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+    <button class="btn" onclick="MCScores.save()">Save Score</button>
+  </div>
+  <button class="btn" onclick="MCUI.goTitle()">Return to Title Screen</button>
+</div>
+
+<!-- MC High Scores -->
+<div id="screen-mc-high-scores" class="screen">
+  <div class="screen-heading">High Scores</div>
+  <table class="scores-table" id="mc-scores-table">
+    <thead><tr><th>Rank</th><th>Name</th><th>Score</th><th>Pairs</th></tr></thead>
+    <tbody id="mc-scores-tbody"></tbody>
+  </table>
+  <div class="scores-empty" id="mc-scores-empty" style="display:none">No scores yet. Play a game to get on the board!</div>
+  <div class="pagination">
+    <button class="pg-btn" id="mc-scores-prev" onclick="MCScores.changePage(-1)" disabled>&#8592;</button>
+    <span class="pg-label" id="mc-scores-page-label">Page 1</span>
+    <button class="pg-btn" id="mc-scores-next" onclick="MCScores.changePage(1)">&#8594;</button>
+  </div>
+  <button class="btn" onclick="MCUI.goTitle()">Return to Title Screen</button>
+</div>
+
+<!-- ══════════════════════════════ GREG'S MATH GAME SCREENS -->
+
+<!-- GM Title -->
+<div id="screen-gm-title" class="screen">
+  <button class="btn btn-back" onclick="showScreen('hub')">&#8592; Games</button>
+  <div class="game-title">Greg's Math Game</div>
+  <button class="btn" onclick="GMUI.goHowToPlay()">How to Play</button>
+  <button class="btn" onclick="GMUI.startPractice()">Practice Mode</button>
+  <button class="btn" onclick="GMUI.startGame()">Play Game</button>
+  <button class="btn" onclick="GMUI.goHighScores()">View High Scores</button>
+</div>
+
+<!-- GM Difficulty Select (content populated dynamically by GMUI) -->
+<div id="screen-gm-difficulty" class="screen">
+  <div class="screen-heading" id="gm-diff-heading">Select Difficulty</div>
+  <div class="hub-games" id="gm-diff-options" style="max-width:360px"></div>
+  <button class="btn" style="margin-top:20px" onclick="showScreen('gm-title')">Back</button>
+</div>
+
+<!-- GM How to Play -->
+<div id="screen-gm-how-to-play" class="screen">
+  <div class="screen-heading">How to Play</div>
+  <div class="htp-diagram">
+    <div class="htp-diagram-col">
+      <div class="gm-htp-rows">
+        <div class="gm-htp-row gm-htp-dim">4 + 9 =</div>
+        <div class="gm-htp-row gm-htp-active">6 &times; 7 =</div>
+        <div class="gm-htp-row gm-htp-dim">15 &minus; 8 =</div>
+      </div>
+      <div class="htp-diagram-label">Active problem</div>
+    </div>
+    <div class="htp-arrow">&#8594;</div>
+    <div class="htp-diagram-col">
+      <div class="gm-htp-rows">
+        <div class="gm-htp-row gm-htp-dim">4 + 9 =</div>
+        <div class="gm-htp-row gm-htp-active" style="color:#2E7D32">42 &#10003;&#xFE0E;</div>
+        <div class="gm-htp-row gm-htp-dim">15 &minus; 8 =</div>
+      </div>
+      <div class="htp-diagram-label">Correct &rarr; next</div>
+    </div>
+  </div>
+  <div class="htp-steps">
+    <div class="htp-step">
+      <div class="htp-step-num">1</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Countdown</div>
+        <div class="htp-step-desc">A <strong>3-second</strong> countdown appears before the round starts &mdash; a mix of operations depending on the difficulty you choose.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">2</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Answer Each Problem</div>
+        <div class="htp-step-desc">10 problems appear one at a time. Type your answer &mdash; it <strong>submits automatically</strong> once it&rsquo;s the right length. Press <strong>&#8629;</strong> to submit early, or <strong>&#8592;</strong> to delete a digit.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">3</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Wrong Answers</div>
+        <div class="htp-step-desc">A wrong answer flashes <strong>red</strong> and clears the field. The same problem stays until you solve it.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">4</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Your Time</div>
+        <div class="htp-step-desc">Your score is how long it takes to finish all 10 problems. <strong>Lower is better</strong> &mdash; under 10 seconds is elite!</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">5</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Game vs Practice</div>
+        <div class="htp-step-desc"><strong>Game mode</strong> times you and records your score on the leaderboard. <strong>Practice mode</strong> lets you drill a specific set of operations at your own pace.</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn" onclick="showScreen('gm-title')">Return to Title</button>
+</div>
+
+<!-- GM Countdown -->
+<div id="screen-gm-countdown" class="screen">
+  <div class="countdown-circle" id="gm-countdown-display">3</div>
+  <button class="btn btn-menu" onclick="GMUI.goTitle()">&#8592; Menu</button>
+</div>
+
+<!-- GM Round -->
+<div id="screen-gm-round" class="screen">
+  <div class="gm-hud">
+    <div class="gm-hud-count" id="gm-hud-count">1 / 10</div>
+    <div id="gm-hud-game-right" style="display:none;align-items:center;gap:8px">
+      <div class="gm-hud-multi" id="gm-hud-multi">1.0&#xD7;</div>
+      <div class="gm-hud-score" id="gm-hud-score">0</div>
+    </div>
+    <div class="gm-hud-timer" id="gm-hud-timer">0:00.0</div>
+  </div>
+  <div class="gm-scroll-window" id="gm-scroll-window">
+    <div class="gm-scroll-inner" id="gm-scroll-inner"></div>
+  </div>
+  <div class="gm-numpad">
+    <button class="gm-key" onclick="GM.keyPress('7')">7</button>
+    <button class="gm-key" onclick="GM.keyPress('8')">8</button>
+    <button class="gm-key" onclick="GM.keyPress('9')">9</button>
+    <button class="gm-key" onclick="GM.keyPress('4')">4</button>
+    <button class="gm-key" onclick="GM.keyPress('5')">5</button>
+    <button class="gm-key" onclick="GM.keyPress('6')">6</button>
+    <button class="gm-key" onclick="GM.keyPress('1')">1</button>
+    <button class="gm-key" onclick="GM.keyPress('2')">2</button>
+    <button class="gm-key" onclick="GM.keyPress('3')">3</button>
+    <button class="gm-key gm-key-func" onclick="GM.keyPress('back')">&#8592;</button>
+    <button class="gm-key" onclick="GM.keyPress('0')">0</button>
+    <button class="gm-key gm-key-submit" onclick="GM.keyPress('enter')">&#8629;</button>
+  </div>
+  <button class="btn btn-menu" onclick="GMUI.goTitle()">&#8592; Menu</button>
+</div>
+
+<!-- GM Finish -->
+<div id="screen-gm-finish" class="screen">
+  <div class="gm-finish-time" id="gm-finish-time">0:00.0</div>
+  <div class="gm-finish-rank" id="gm-finish-rank"></div>
+  <div class="gm-benchmark" id="gm-benchmark"></div>
+  <div class="gm-speed-lane" id="gm-speed-lane" style="display:none">
+    <div class="gm-speed-icon" id="gm-speed-icon"></div>
+  </div>
+  <div class="finish-congrats" id="gm-finish-congrats" style="display:none">Zero mistakes &mdash; perfect!</div>
+  <table class="mc-stats" id="gm-finish-stats">
+    <tbody id="gm-finish-stats-body"></tbody>
+  </table>
+  <div class="name-entry-section" id="gm-finish-name-section" style="display:none">
+    <p>You made the top 100! Enter your name:</p>
+    <input class="name-input" id="gm-finish-name-input" type="text" maxlength="12"
+           autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+    <button class="btn" onclick="GMScores.save()">Save Score</button>
+  </div>
+  <button class="btn" onclick="GMUI.goTitle()">Return to Title Screen</button>
+</div>
+
+<!-- GM High Scores -->
+<div id="screen-gm-high-scores" class="screen">
+  <div class="screen-heading">High Scores</div>
+  <table class="scores-table" id="gm-scores-table">
+    <thead><tr><th>Rank</th><th>Name</th><th>Score</th><th>Level</th></tr></thead>
+    <tbody id="gm-scores-tbody"></tbody>
+  </table>
+  <div class="scores-empty" id="gm-scores-empty" style="display:none">No scores yet. Play a game to get on the board!</div>
+  <div class="pagination">
+    <button class="pg-btn" id="gm-scores-prev" onclick="GMScores.changePage(-1)" disabled>&#8592;</button>
+    <span class="pg-label" id="gm-scores-page-label">Page 1</span>
+    <button class="pg-btn" id="gm-scores-next" onclick="GMScores.changePage(1)">&#8594;</button>
+  </div>
+  <button class="btn" onclick="GMUI.goTitle()">Return to Title Screen</button>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   SHARED UTILITIES
+════════════════════════════════════════════════════════════════════ */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + id);
+  if (el) el.classList.add('active');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   AUDIO ENGINE  (shared by both games)
+════════════════════════════════════════════════════════════════════ */
+const Audio = (() => {
+  let ctx = null;
+
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  function tone(freq, type, duration, vol, startDelay = 0) {
+    try {
+      const c = getCtx();
+      const osc  = c.createOscillator();
+      const gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, c.currentTime + startDelay);
+      gain.gain.setValueAtTime(0.001, c.currentTime + startDelay);
+      gain.gain.linearRampToValueAtTime(vol, c.currentTime + startDelay + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + startDelay + duration);
+      osc.start(c.currentTime + startDelay);
+      osc.stop(c.currentTime + startDelay + duration + 0.01);
+    } catch(e) {}
+  }
+
+  // Countdown beats: descending (A4=440, F#4=370, Eb4=311)
+  function countdownBeat(n) {
+    const freqs = { 3:440, 2:370, 1:311 };
+    tone(freqs[n] || 370, 'sine', 0.22, 0.36);
+  }
+
+  // MM correct click
+  function correct() { tone(880, 'sine', 0.18, 0.30); }
+
+  // MM wrong click
+  function wrong() {
+    try {
+      const c = getCtx();
+      const osc = c.createOscillator(); const gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(180, c.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, c.currentTime + 0.28);
+      gain.gain.setValueAtTime(0.12, c.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.3);
+      osc.start(c.currentTime); osc.stop(c.currentTime + 0.31);
+    } catch(e) {}
+  }
+
+  // MC card flip
+  function flip() { tone(700, 'sine', 0.07, 0.18); }
+
+  // MC pair matched
+  function match() {
+    tone(880, 'sine', 0.12, 0.25);
+    tone(1108,'sine', 0.18, 0.20, 0.10);
+  }
+
+  // MC mismatch
+  function mismatch() { tone(220, 'triangle', 0.22, 0.18); }
+
+  // MC round complete
+  function roundComplete() {
+    tone(523, 'sine', 0.14, 0.28, 0.00);
+    tone(659, 'sine', 0.14, 0.28, 0.14);
+    tone(784, 'sine', 0.20, 0.32, 0.28);
+  }
+
+  // iOS audio unlock
+  function unlock() {
+    try {
+      const c = getCtx();
+      const buf = c.createBuffer(1,1,22050);
+      const src = c.createBufferSource();
+      src.buffer = buf; src.connect(c.destination); src.start(0);
+    } catch(e) {}
+  }
+
+  return { countdownBeat, correct, wrong, flip, match, mismatch, roundComplete, unlock };
+})();
+
+/* ════════════════════════════════════════════════════════════════════
+   ██████  MEMORY MASTER
+════════════════════════════════════════════════════════════════════ */
+const LAYOUTS = {
+   4: [[1,1],[1,1]],
+   5: [[1,0,1],[0,1,0],[1,0,1]],
+   6: [[1,0,0],[1,1,0],[1,1,1]],
+   7: [[1,1,0],[1,1,1],[0,1,1]],
+   8: [[1,1,1,1],[1,1,1,1]],
+   9: [[1,1,1],[1,1,1],[1,1,1]],
+  10: [[0,1,1,0],[1,1,1,1],[1,1,1,1]],
+  12: [[1,1,1],[1,1,1],[1,1,1],[1,1,1]]
+};
+const MM_DIFF_SEQ = [4,5,6,7,8,9,10,12];
+function mm_nextLevel(s){ const i=MM_DIFF_SEQ.indexOf(s); return i<MM_DIFF_SEQ.length-1?MM_DIFF_SEQ[i+1]:s; }
+function mm_prevLevel(s){ const i=MM_DIFF_SEQ.indexOf(s); return i>0?MM_DIFF_SEQ[i-1]:s; }
+
+const MMState = {
+  mode:null, roundSize:4, score:0, cellMap:[], nextExpected:1, layout:null,
+  peakLevel:4, totalRounds:0, perfectRounds:0, wrongTaps:0, roundWrongTaps:0, recallStart:null,
+  multiplier:1.0, gameStart:null
+};
+let mm_gameTimerId = null;
+let mm_phaseTimers = [];
+function mm_addPhase(id){ mm_phaseTimers.push(id); return id; }
+function mm_clearPhase(){ mm_phaseTimers.forEach(clearTimeout); mm_phaseTimers=[]; }
+let mm_timerInterval = null;
+function mm_updateHUD(){
+  const hudEl   = document.getElementById('mm-hud');
+  const timerEl = document.getElementById('mm-hud-timer');
+  const multiEl = document.getElementById('mm-hud-multi');
+  if(hudEl)   hudEl.style.display = 'flex';
+  if(timerEl && MMState.gameStart !== null){
+    const left = Math.max(0, 60000 - (Date.now() - MMState.gameStart));
+    timerEl.textContent = Math.ceil(left / 1000) + 's';
+  }
+  if(multiEl){
+    multiEl.textContent = MMState.multiplier.toFixed(1) + '\u00d7';
+    multiEl.classList.toggle('boosted', MMState.multiplier > 1.0);
+  }
+}
+function mm_startGameTimer(){
+  mm_clearGameTimer();
+  MMState.gameStart = Date.now();
+  mm_updateHUD();
+  mm_timerInterval = setInterval(mm_updateHUD, 500);
+  mm_gameTimerId = setTimeout(()=>MMGame.end(), 60000);
+}
+function mm_clearGameTimer(){
+  if(mm_gameTimerId!==null){clearTimeout(mm_gameTimerId);mm_gameTimerId=null;}
+  if(mm_timerInterval!==null){clearInterval(mm_timerInterval);mm_timerInterval=null;}
+}
+
+function mm_setupRound(size) {
+  const layout = LAYOUTS[size];
+  MMState.roundSize=size; MMState.layout=layout; MMState.nextExpected=1;
+  const active=[];
+  for(let r=0;r<layout.length;r++)
+    for(let c=0;c<layout[r].length;c++)
+      if(layout[r][c]) active.push({row:r,col:c});
+  const nums=Array.from({length:size},(_,i)=>i+1);
+  for(let i=nums.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[nums[i],nums[j]]=[nums[j],nums[i]];}
+  active.forEach((cell,i)=>{cell.number=nums[i];});
+  MMState.cellMap=active;
+}
+
+function mm_renderGrid(showNumbers) {
+  const container=document.getElementById('mm-round-grid');
+  container.innerHTML='';
+  document.getElementById('mm-round-footer').innerHTML='';
+  const layout=MMState.layout;
+  const numCols=layout[0].length;
+  const vw=window.innerWidth;
+  const gap=Math.max(8,Math.min(14,Math.round(vw*0.015)));
+  const usable=Math.min(vw-40,560);
+  const computed=Math.floor((usable-(numCols-1)*gap)/numCols);
+  const boxSize=Math.min(90,Math.max(50,computed));
+  const fontSize=Math.round(boxSize*0.36);
+  container.style.setProperty('--box-size',boxSize+'px');
+  container.style.setProperty('--box-gap',gap+'px');
+  container.style.setProperty('--box-font',fontSize+'px');
+  container.style.gridTemplateColumns=`repeat(${numCols},${boxSize}px)`;
+  for(let r=0;r<layout.length;r++){
+    for(let c=0;c<layout[r].length;c++){
+      if(!layout[r][c]){
+        const sp=document.createElement('div'); sp.className='box-spacer'; container.appendChild(sp);
+      } else {
+        const cell=MMState.cellMap.find(m=>m.row===r&&m.col===c);
+        const box=document.createElement('div');
+        box.className='box'; box.dataset.number=cell.number;
+        if(showNumbers){ box.textContent=cell.number; }
+        else { box.classList.add('clickable'); box.addEventListener('click',mm_onBoxClick); }
+        container.appendChild(box);
+      }
+    }
+  }
+}
+
+function mm_revealNumbers(){
+  document.querySelectorAll('#mm-round-grid .box').forEach(b=>{
+    b.textContent=b.dataset.number; b.classList.remove('clickable','correct'); b.style.color='';
+  });
+}
+
+function mm_onBoxClick(e) {
+  const box=e.currentTarget;
+  if(!box.classList.contains('clickable')) return;
+  box.classList.remove('clickable'); box.removeEventListener('click',mm_onBoxClick);
+  const num=parseInt(box.dataset.number,10);
+  if(num===MMState.nextExpected){
+    box.textContent='✓'; box.classList.add('correct'); Audio.correct();
+    MMState.nextExpected++;
+    if(MMState.nextExpected>MMState.roundSize) mm_onRoundSuccess();
+  } else {
+    document.querySelectorAll('#mm-round-grid .box.clickable').forEach(b=>{
+      b.classList.remove('clickable'); b.removeEventListener('click',mm_onBoxClick);
+    });
+    MMState.wrongTaps++; MMState.roundWrongTaps++;
+    Audio.wrong(); mm_onRoundFailure();
+  }
+}
+
+function mm_startCountdown(callback) {
+  showScreen('mm-countdown');
+  let n=2;
+  const display=document.getElementById('mm-countdown-display');
+  function tick(){
+    display.textContent=n; Audio.countdownBeat(n);
+    if(n>1){ n--; mm_addPhase(setTimeout(tick,1000)); }
+    else { mm_addPhase(setTimeout(callback,1000)); }
+  }
+  tick();
+}
+
+function mm_startMemorize(){
+  showScreen('mm-round'); mm_renderGrid(true);
+  const screen = document.getElementById('screen-mm-round');
+  screen.style.cursor = 'pointer';
+  document.getElementById('mm-round-footer').innerHTML =
+    '<div style="font-size:12px;color:#bbb;letter-spacing:0.08em;text-transform:uppercase;text-align:center">Tap when ready</div>';
+  let done = false;
+  function startRecallNow(e) {
+    if(e && e.type==='touchend') e.preventDefault(); // prevent ghost click on iOS
+    if(done) return;
+    done = true;
+    screen.removeEventListener('click', startRecallNow);
+    screen.removeEventListener('touchend', startRecallNow);
+    screen.style.cursor = '';
+    mm_startRecall();
+  }
+  mm_addPhase(setTimeout(startRecallNow, 3000));
+  screen.addEventListener('click', startRecallNow);
+  screen.addEventListener('touchend', startRecallNow);
+}
+function mm_startRecall(){
+  showScreen('mm-round'); mm_renderGrid(false);
+  if(MMState.mode==='practice') MMState.recallStart = Date.now();
+}
+
+function mm_onRoundSuccess(){
+  mm_clearPhase();
+  if(MMState.mode==='practice'){
+    const elapsed = MMState.recallStart ? Date.now() - MMState.recallStart : null;
+    MMPracticeFinish.show(true, elapsed);
+  } else {
+    const perfect = MMState.roundWrongTaps === 0;
+    if(perfect) MMState.perfectRounds++;
+    MMState.totalRounds++;
+    MMState.peakLevel = Math.max(MMState.peakLevel, MMState.roundSize);
+    MMState.score += Math.round(MMState.roundSize * MMState.multiplier);
+    if(perfect){
+      MMState.multiplier = parseFloat(Math.min(2.0, MMState.multiplier + 0.1).toFixed(1));
+    } else {
+      MMState.multiplier = 1.0;
+    }
+    MMState.roundWrongTaps = 0;
+    mm_updateHUD();
+    MMState.roundSize=mm_nextLevel(MMState.roundSize);
+    mm_setupRound(MMState.roundSize);
+    mm_startCountdown(mm_startMemorize);
+  }
+}
+
+function mm_onRoundFailure(){
+  mm_clearPhase();
+  if(MMState.mode==='practice'){
+    // Briefly reveal the correct layout so the player can see what they missed
+    showScreen('mm-round'); mm_revealNumbers();
+    const elapsed = MMState.recallStart ? Date.now() - MMState.recallStart : null;
+    mm_addPhase(setTimeout(()=>MMPracticeFinish.show(false, elapsed), 1500));
+  } else {
+    MMState.totalRounds++;
+    MMState.multiplier = 1.0;
+    MMState.roundWrongTaps = 0;
+    mm_updateHUD();
+    MMState.roundSize=mm_prevLevel(MMState.roundSize);
+    mm_setupRound(MMState.roundSize);
+    mm_startCountdown(mm_startMemorize);
+  }
+}
+
+const MMPractice = {
+  start(size){ Audio.unlock(); MMState.mode='practice'; MMState.roundWrongTaps=0; MMState.recallStart=null; mm_setupRound(size); mm_startCountdown(mm_startMemorize); }
+};
+const MMGame = {
+  start(){
+    Audio.unlock(); MMState.mode='game'; MMState.score=0; MMState.roundSize=4;
+    MMState.peakLevel=4; MMState.totalRounds=0; MMState.perfectRounds=0;
+    MMState.wrongTaps=0; MMState.roundWrongTaps=0;
+    MMState.multiplier=1.0; MMState.gameStart=null;
+    const hudEl = document.getElementById('mm-hud');
+    if(hudEl) hudEl.style.display = 'none';
+    mm_setupRound(4);
+    mm_startCountdown(()=>{ mm_startGameTimer(); mm_startMemorize(); });
+  },
+  end(){ mm_clearGameTimer(); mm_clearPhase(); MMFinish.show(MMState.score); }
+};
+
+const MMFinish = {
+  show(score){
+    const pl = score===1 ? 'point' : 'points';
+    document.getElementById('mm-finish-score-text').textContent = `You scored ${score} ${pl}`;
+    // Congrats
+    const congrats = document.getElementById('mm-finish-congrats');
+    congrats.style.display = (MMState.wrongTaps===0 && score>0) ? '' : 'none';
+    // Stats
+    const tbody = document.getElementById('mm-finish-stats-body');
+    const statsEl = document.getElementById('mm-finish-stats');
+    if(score > 0){
+      const acc = MMState.totalRounds > 0
+        ? Math.round(MMState.perfectRounds / MMState.totalRounds * 100) + '%' : '—';
+      tbody.innerHTML =
+        `<tr><td>Peak Level</td><td>${MMState.peakLevel}</td></tr>` +
+        `<tr><td>Perfect Rounds</td><td>${MMState.perfectRounds} / ${MMState.totalRounds}</td></tr>` +
+        `<tr><td>Accuracy</td><td>${acc}</td></tr>` +
+        `<tr><td>Mistakes</td><td>${MMState.wrongTaps}</td></tr>`;
+      statsEl.style.display = '';
+    } else {
+      statsEl.style.display = 'none';
+    }
+    // Name entry
+    const sec = document.getElementById('mm-finish-name-section');
+    if(score>0 && MMScores.qualifies(score)){
+      document.getElementById('mm-finish-name-input').value=''; sec.style.display='flex';
+    } else { sec.style.display='none'; }
+    showScreen('mm-finish');
+  }
+};
+
+const MMPracticeFinish = {
+  show(passed, elapsedMs){
+    const size = MMState.roundSize;
+    document.getElementById('mm-practice-result').textContent =
+      passed ? `Level ${size} \u2014 Complete!` : `Level ${size} \u2014 Not Quite`;
+    const congrats = document.getElementById('mm-practice-congrats');
+    congrats.style.display = (passed && MMState.roundWrongTaps===0) ? '' : 'none';
+    const tbody = document.getElementById('mm-practice-stats-body');
+    const timeStr = (passed && elapsedMs !== null)
+      ? (elapsedMs / 1000).toFixed(1) + 's' : null;
+    tbody.innerHTML =
+      `<tr><td>Mistakes</td><td>${MMState.roundWrongTaps}</td></tr>` +
+      (timeStr ? `<tr><td>Recall Time</td><td>${timeStr}</td></tr>` : '');
+    // Retry button
+    const retryBtn = document.getElementById('mm-practice-retry-btn');
+    retryBtn.textContent = `Try Level ${size} Again`;
+    retryBtn.onclick = () => MMPractice.start(size);
+    showScreen('mm-you-win');
+  }
+};
+
+const MMScores = (() => {
+  const KEY='memoryMasterScores'; let page=0;
+  function load(){ try{const r=localStorage.getItem(KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch(e){return[];} }
+  function persist(a){ try{localStorage.setItem(KEY,JSON.stringify(a));}catch(e){} }
+  function qualifies(score){ const a=load(); return a.length<100||score>a[a.length-1].score; }
+  function save(){
+    const name=(document.getElementById('mm-finish-name-input').value||'').trim().slice(0,12);
+    if(!name){document.getElementById('mm-finish-name-input').focus();return;}
+    const a=load(); const date=new Date().toISOString().slice(0,10);
+    a.push({name,score:MMState.score,date});
+    a.sort((x,y)=>y.score-x.score||y.date.localeCompare(x.date));
+    if(a.length>100)a.splice(100); persist(a);
+    document.getElementById('mm-finish-name-section').style.display='none';
+  }
+  function show(){ page=0; render(); showScreen('mm-high-scores'); }
+  function render(){
+    const a=load();
+    const tbody=document.getElementById('mm-scores-tbody');
+    const empty=document.getElementById('mm-scores-empty');
+    const table=document.getElementById('mm-scores-table');
+    const pgDiv=document.querySelector('#screen-mm-high-scores .pagination');
+    const pgLabel=document.getElementById('mm-scores-page-label');
+    tbody.innerHTML='';
+    if(a.length===0){
+      table.style.display='none'; empty.style.display='block'; pgDiv.style.display='none';
+    } else {
+      table.style.display=''; empty.style.display='none'; pgDiv.style.display='flex';
+      const start=page*10; const end=Math.min(start+10,a.length);
+      for(let i=start;i<end;i++){
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${i+1}</td><td>${escHtml(a[i].name)}</td><td>${a[i].score}</td>`;
+        tbody.appendChild(tr);
+      }
+      const tp=Math.ceil(a.length/10);
+      pgLabel.textContent=`Page ${page+1} of ${tp}`;
+      document.getElementById('mm-scores-prev').disabled=(page===0);
+      document.getElementById('mm-scores-next').disabled=(page>=tp-1);
+    }
+  }
+  function changePage(d){ page+=d; render(); }
+  return { load, qualifies, save, show, changePage, render };
+})();
+
+const MMUI = {
+  goTitle(){ mm_clearPhase(); mm_clearGameTimer(); showScreen('mm-title'); },
+  goHowToPlay(){ showScreen('mm-how-to-play'); },
+  goPracticeSelect(){ Audio.unlock(); showScreen('mm-practice-select'); },
+  startPractice(size){ MMPractice.start(size); },
+  startGame(){ MMGame.start(); },
+  goHighScores(){ MMScores.show(); }
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   ██  MEMORY CARDS
+════════════════════════════════════════════════════════════════════ */
+// 12 symbols — text glyphs, no emoji rendering
+const MC_SYMBOLS = [
+  '\u2665\uFE0E', // ♥  heart
+  '\u2660\uFE0E', // ♠  spade
+  '\u2663\uFE0E', // ♣  club
+  '\u2666\uFE0E', // ♦  diamond
+  '\u2605\uFE0E', // ★  5-point star
+  '\u2699\uFE0E', // ⚙  gear
+  '\u266B\uFE0E', // ♫  beamed music notes
+  '\u265B\uFE0E', // ♛  chess queen
+  '\u262F\uFE0E', // ☯  yin yang
+  '\u25B2\uFE0E', // ▲  triangle
+  '\u2702\uFE0E', // ✂  scissors
+  '\u2692\uFE0E'  // ⚒  hammer and pick
+];
+
+// One distinct colour per symbol (same index order as MC_SYMBOLS)
+const MC_COLORS = [
+  '#C62828', // ♥  heart        — red
+  '#1565C0', // ♠  spade        — navy blue
+  '#2E7D32', // ♣  club         — forest green
+  '#E64A19', // ♦  diamond      — deep orange
+  '#F9A825', // ★  star         — amber / gold
+  '#455A64', // ⚙  gear         — blue-grey slate
+  '#7B1FA2', // ♫  music note   — deep purple
+  '#AD1457', // ♛  chess queen  — magenta / rose
+  '#00695C', // ☯  yin yang     — dark teal
+  '#4527A0', // ▲  triangle     — indigo / violet
+  '#00838F', // ✂  scissors     — dark cyan
+  '#4E342E'  // ⚒  hammer       — warm brown
+];
+
+// Grid columns for each pair count
+const MC_GRIDS = {
+  2:{cols:2,rows:2},  //  4 cards
+  3:{cols:3,rows:2},  //  6 cards
+  4:{cols:4,rows:2},  //  8 cards
+  5:{cols:5,rows:2},  // 10 cards
+  6:{cols:4,rows:3},  // 12 cards
+  7:{cols:7,rows:2}   // 14 cards
+};
+const MC_DIFF_SEQ = [2,3,4,5,6,7];
+function mc_nextLevel(p){ const i=MC_DIFF_SEQ.indexOf(p); return i<MC_DIFF_SEQ.length-1?MC_DIFF_SEQ[i+1]:p; }
+function mc_prevLevel(p){ const i=MC_DIFF_SEQ.indexOf(p); return i>0?MC_DIFF_SEQ[i-1]:p; }
+
+const MC_GAME_DURATION = 120000; // 2 minutes
+
+const MCState = {
+  mode:        null,   // 'practice' | 'game'
+  pairs:       2,
+  cards:       [],     // [{symbol, flipped, matched, el}]
+  flipped:     [],     // indices of currently face-up unmatched cards
+  score:       0,
+  multiplier:  1.0,
+  pairsFound:  0,      // in current round
+  totalPairs:  0,      // across all rounds
+  totalRounds: 0,
+  mismatches:  0,
+  combo:       0,
+  longestCombo:0,
+  gameStart:      null,
+  isResolving:    false,
+  preview:        false,  // true while cards are face-up for memorisation
+  roundMismatches:0,      // mismatches in the current round only
+  practiceStart:null      // timestamp when recall begins (practice mode)
+};
+
+let mc_gameTimerId   = null;
+let mc_timerInterval = null;
+let mc_phaseTimers   = [];
+function mc_addPhase(id){ mc_phaseTimers.push(id); return id; }
+function mc_clearPhase(){ mc_phaseTimers.forEach(clearTimeout); mc_phaseTimers=[]; }
+
+function mc_startGameTimer(){
+  mc_clearGameTimer();
+  MCState.gameStart = Date.now();
+  mc_updateTimerBar();
+  mc_timerInterval = setInterval(mc_updateTimerBar, 250);
+  mc_gameTimerId   = setTimeout(()=>MCGame.end(), MC_GAME_DURATION);
+}
+
+function mc_clearGameTimer(){
+  if(mc_gameTimerId!==null){ clearTimeout(mc_gameTimerId); mc_gameTimerId=null; }
+  if(mc_timerInterval!==null){ clearInterval(mc_timerInterval); mc_timerInterval=null; }
+}
+
+function mc_updateTimerBar(){
+  if(MCState.gameStart===null) return;
+  const el=document.getElementById('mc-timer-fill');
+  if(!el) return;
+  const elapsed=Date.now()-MCState.gameStart;
+  const pct=Math.min(100, elapsed/MC_GAME_DURATION*100);
+  el.style.width=pct+'%';
+}
+
+function mc_updateHUD(){
+  document.getElementById('mc-hud-score').textContent=MCState.score;
+  const mEl=document.getElementById('mc-hud-multi');
+  mEl.textContent='\u00D7'+MCState.multiplier.toFixed(1);
+  mEl.classList.toggle('boosted', MCState.multiplier>1.0);
+}
+
+function mc_buildDeck(pairs){
+  const syms=MC_SYMBOLS.slice(0,pairs);
+  let deck=[];
+  syms.forEach((s,i)=>{
+    const color=MC_COLORS[i];
+    deck.push({symbol:s,color:color,flipped:false,matched:false});
+    deck.push({symbol:s,color:color,flipped:false,matched:false});
+  });
+  // Shuffle
+  for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}
+  return deck;
+}
+
+function mc_renderGrid(){
+  const grid=document.getElementById('mc-card-grid');
+  grid.innerHTML='';
+
+  const g=MC_GRIDS[MCState.pairs];
+  const cols=g.cols;
+  const vw=window.innerWidth;
+  const gap=Math.max(5,Math.min(10,Math.round(vw*0.012)));
+  // Leave room for HUD (~60px) + top/bottom padding
+  const availW=Math.min(vw-40, 540);
+  const availH=window.innerHeight - 100;
+  let cw=Math.floor((availW-(cols-1)*gap)/cols);
+  cw=Math.min(96,Math.max(42,cw));
+  const ch=Math.round(cw*1.4);
+
+  // Clamp by height too
+  const rows=g.rows;
+  const maxH=Math.floor((availH-(rows-1)*gap)/rows);
+  const finalH=Math.min(ch,maxH);
+  const finalW=Math.round(finalH/1.4);
+
+  grid.style.setProperty('--mc-cw',finalW+'px');
+  grid.style.setProperty('--mc-ch',finalH+'px');
+  grid.style.setProperty('--mc-gap',gap+'px');
+  grid.style.gridTemplateColumns=`repeat(${cols},${finalW}px)`;
+
+  MCState.cards.forEach((card,i)=>{
+    const el=document.createElement('div');
+    el.className='mc-card';
+    el.dataset.index=i;
+    el.innerHTML=`<div class="mc-card-inner">` +
+                    `<div class="mc-card-back"><span class="mc-card-brain">\uD83E\uDDE0</span></div>` +
+                    `<div class="mc-card-front"><span class="mc-card-symbol" style="color:${card.color}">${card.symbol}</span></div>` +
+                  `</div>`;
+    el.addEventListener('click', mc_onCardClick);
+    card.el=el;
+    grid.appendChild(el);
+  });
+}
+
+/* ── Preview phase: all cards face-up, waiting for first tap ── */
+function mc_startPreview(){
+  MCState.preview = true;
+  // Flip every card face-up and lock it (pointer-events:none via .locked)
+  MCState.cards.forEach(card => {
+    card.el.classList.add('flipped', 'locked');
+  });
+  document.getElementById('mc-preview-hint').classList.remove('hidden');
+  // Small delay so the render-paint settles before we arm the listener
+  const screen = document.getElementById('screen-mc-round');
+  mc_addPhase(setTimeout(() => {
+    // iOS Safari won't fire click on non-interactive divs; cursor:pointer signals interactivity
+    screen.style.cursor = 'pointer';
+    function onFirstTap(e) {
+      if(e.target.closest('#mc-round-overlay')) return; // ignore overlay taps
+      screen.removeEventListener('click', onFirstTap);
+      screen.style.cursor = '';
+      mc_endPreview();
+    }
+    screen.addEventListener('click', onFirstTap);
+  }, 120));
+}
+
+function mc_endPreview(){
+  MCState.preview = false;
+  document.getElementById('screen-mc-round').style.cursor = '';
+  document.getElementById('mc-preview-hint').classList.add('hidden');
+  // Flip all unmatched cards face-down and unlock them
+  MCState.cards.forEach(card => {
+    if(!card.matched){
+      card.flipped = false;
+      card.el.classList.remove('flipped', 'locked');
+    }
+  });
+  Audio.flip();
+  // Start practice timer the moment cards go face-down
+  if(MCState.mode==='practice' && MCState.practiceStart===null)
+    MCState.practiceStart = Date.now();
+}
+
+function mc_onCardClick(e){
+  const el=e.currentTarget;
+  if(MCState.preview) return;       // still in memorisation phase
+  if(MCState.isResolving) return;
+  const i=parseInt(el.dataset.index,10);
+  const card=MCState.cards[i];
+  if(card.flipped||card.matched) return;
+  if(MCState.flipped.length>=2) return;
+
+  // Flip the card
+  card.flipped=true;
+  el.classList.add('flipped');
+  Audio.flip();
+  MCState.flipped.push(i);
+
+  if(MCState.flipped.length===2) mc_evaluatePair();
+}
+
+function mc_evaluatePair(){
+  const [a,b]=MCState.flipped;
+  const ca=MCState.cards[a]; const cb=MCState.cards[b];
+
+  if(ca.symbol===cb.symbol){
+    // ── MATCH ──
+    MCState.isResolving=true;
+    mc_addPhase(setTimeout(()=>{
+      ca.matched=true; cb.matched=true;
+      ca.el.classList.remove('flipped'); ca.el.classList.add('matched','locked');
+      cb.el.classList.remove('flipped'); cb.el.classList.add('matched','locked');
+      MCState.flipped=[];
+      MCState.multiplier=parseFloat(Math.min(2.0,MCState.multiplier+0.1).toFixed(1));
+      MCState.combo++;
+      MCState.longestCombo=Math.max(MCState.longestCombo,MCState.combo);
+      MCState.score+=Math.round(100*MCState.multiplier);
+      MCState.pairsFound++;
+      MCState.totalPairs++;
+      Audio.match();
+      mc_updateHUD();
+      MCState.isResolving=false;
+
+      if(MCState.pairsFound >= MCState.pairs - 1){
+        // Only one pair (or none) remains — it's a guaranteed match; reveal and auto-complete
+        const remaining = MCState.cards.filter(c => !c.matched);
+        if(remaining.length === 2){
+          const [ra,rb] = remaining;
+          // Flip both cards face-up immediately so the player sees them revealed
+          ra.el.classList.add('flipped');
+          rb.el.classList.add('flipped');
+          mc_addPhase(setTimeout(()=>{
+            ra.matched=true; rb.matched=true;
+            ra.el.classList.remove('flipped'); ra.el.classList.add('matched','locked');
+            rb.el.classList.remove('flipped'); rb.el.classList.add('matched','locked');
+            MCState.multiplier=parseFloat(Math.min(2.0,MCState.multiplier+0.1).toFixed(1));
+            MCState.combo++; MCState.longestCombo=Math.max(MCState.longestCombo,MCState.combo);
+            MCState.score+=Math.round(100*MCState.multiplier);
+            MCState.pairsFound++; MCState.totalPairs++;
+            Audio.match();
+            mc_updateHUD();
+            mc_onRoundComplete();
+          }, 500));
+        } else {
+          mc_onRoundComplete();
         }
+      }
+    }, 200));
 
-        function practiceScreen() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    // ── MISMATCH ──
+    MCState.isResolving=true;
+    MCState.multiplier=1.0;
+    MCState.combo=0;
+    MCState.mismatches++;
+    MCState.roundMismatches++;
+    Audio.mismatch();
+    mc_updateHUD();
+    mc_addPhase(setTimeout(()=>{
+      ca.flipped=false; cb.flipped=false;
+      ca.el.classList.remove('flipped');
+      cb.el.classList.remove('flipped');
+      MCState.flipped=[];
+      MCState.isResolving=false;
+    }, 900));
+  }
+}
 
-            const leftColumn = [2, 3, 4, 5, 6];
-            const rightColumn = [7, 8, 9, 10, 12];
+function mc_onRoundComplete(){
+  Audio.roundComplete();
 
-            leftColumn.forEach((num, index) => {
-                ctx.font = '24px Georgia';
-                ctx.fillStyle = '#000000';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(num.toString(), 100, 100 + index * 80);
-                ctx.strokeStyle = '#000000';
-                ctx.strokeRect(50, 70 + index * 80, 100, 60);
-            });
+  if(MCState.mode==='practice'){
+    const elapsed = MCState.practiceStart ? Date.now() - MCState.practiceStart : null;
+    MCPracticeFinish.show(elapsed);
+    return;
+  }
 
-            rightColumn.forEach((num, index) => {
-                ctx.font = '24px Georgia';
-                ctx.fillStyle = '#000000';
-                ctx.textAlign = 'center';
-                ctx.fillText(num.toString(), 300, 100 + index * 80);
-                ctx.strokeRect(250, 70 + index * 80, 100, 60);
-            });
+  // Game mode: decide next difficulty based on whether this round was clean
+  MCState.totalRounds++;
+  const perfect = MCState.roundMismatches === 0;
+  const nextPairs = perfect ? mc_nextLevel(MCState.pairs) : mc_prevLevel(MCState.pairs);
 
-            ctx.font = '18px Georgia';
-            ctx.fillText('Return to Title Screen', canvas.width / 2, 540);
-            ctx.strokeRect(100, 520, 200, 40);
+  // Update overlay message
+  const msgEl = document.getElementById('mc-overlay-title');
+  if(perfect){
+    msgEl.textContent = nextPairs > MCState.pairs ? 'Round Complete! \u2191 Harder' : 'Round Complete!';
+  } else {
+    msgEl.textContent = nextPairs < MCState.pairs ? 'Round Complete \u2193 Easier' : 'Round Complete';
+  }
+
+  const overlay=document.getElementById('mc-round-overlay');
+  overlay.classList.remove('hidden');
+
+  function onTap(){
+    overlay.classList.add('hidden');
+    overlay.removeEventListener('click',onTap);
+    MCState.pairs=nextPairs;
+    mc_startNextRound();
+  }
+  overlay.addEventListener('click',onTap);
+}
+
+function mc_startNextRound(){
+  MCState.pairsFound=0;
+  MCState.roundMismatches=0;
+  MCState.flipped=[];
+  MCState.isResolving=false;
+  MCState.cards=mc_buildDeck(MCState.pairs);
+  mc_startCountdown(()=>{
+    showScreen('mc-round');
+    mc_renderGrid();
+    mc_updateHUD();
+    mc_startPreview();
+  });
+}
+
+function mc_startCountdown(callback){
+  showScreen('mc-countdown');
+  let n=2;
+  const display=document.getElementById('mc-countdown-display');
+  function tick(){
+    display.textContent=n; Audio.countdownBeat(n);
+    if(n>1){ n--; mc_addPhase(setTimeout(tick,1000)); }
+    else { mc_addPhase(setTimeout(callback,1000)); }
+  }
+  tick();
+}
+
+const MCPractice = {
+  start(pairs){
+    Audio.unlock();
+    MCState.mode='practice'; MCState.pairs=pairs; MCState.score=0;
+    MCState.multiplier=1.0; MCState.pairsFound=0; MCState.totalPairs=0;
+    MCState.totalRounds=0; MCState.mismatches=0; MCState.roundMismatches=0; MCState.combo=0; MCState.longestCombo=0;
+    MCState.flipped=[]; MCState.isResolving=false; MCState.practiceStart=null;
+    MCState.cards=mc_buildDeck(pairs);
+    // Hide timer in practice
+    const ts=document.getElementById('mc-timer-stack');
+    if(ts) ts.style.visibility='hidden';
+    mc_startCountdown(()=>{
+      showScreen('mc-round');
+      mc_renderGrid();
+      mc_updateHUD();
+      mc_startPreview();
+    });
+  }
+};
+
+const MCGame = {
+  start(){
+    Audio.unlock();
+    MCState.mode='game'; MCState.pairs=2; MCState.score=0;
+    MCState.multiplier=1.0; MCState.pairsFound=0; MCState.totalPairs=0;
+    MCState.totalRounds=0; MCState.mismatches=0; MCState.roundMismatches=0; MCState.combo=0; MCState.longestCombo=0;
+    MCState.flipped=[]; MCState.isResolving=false; MCState.gameStart=null;
+    // Reset timer bar
+    const fill=document.getElementById('mc-timer-fill');
+    if(fill) fill.style.width='0%';
+    const ts=document.getElementById('mc-timer-stack');
+    if(ts) ts.style.visibility='visible';
+    MCState.cards=mc_buildDeck(2);
+    mc_startCountdown(()=>{
+      mc_startGameTimer(); // timer starts when first round begins
+      showScreen('mc-round');
+      mc_renderGrid();
+      mc_updateHUD();
+      mc_startPreview();
+    });
+  },
+  end(){
+    mc_clearGameTimer(); mc_clearPhase();
+    MCState.preview = false;
+    document.getElementById('mc-round-overlay').classList.add('hidden');
+    document.getElementById('mc-preview-hint').classList.add('hidden');
+    MCFinish.show();
+  }
+};
+
+const MCFinish = {
+  show(){
+    const title=document.getElementById('mc-finish-title');
+    title.textContent = MCState.totalRounds>0 ? 'Game Over' : 'Time\'s Up';
+    document.getElementById('mc-stat-score').textContent=MCState.score;
+    document.getElementById('mc-stat-pairs').textContent=MCState.totalPairs;
+    document.getElementById('mc-stat-rounds').textContent=MCState.totalRounds;
+    document.getElementById('mc-stat-mismatches').textContent=MCState.mismatches;
+    const total = MCState.totalPairs + MCState.mismatches;
+    const acc = total>0 ? Math.round(MCState.totalPairs/total*100)+'%' : '\u2014';
+    document.getElementById('mc-stat-accuracy').textContent=acc;
+    document.getElementById('mc-stat-combo').textContent=MCState.longestCombo;
+    // Congrats
+    const congrats=document.getElementById('mc-finish-congrats');
+    congrats.style.display=(MCState.mismatches===0&&MCState.totalPairs>0)?'':'none';
+    const sec=document.getElementById('mc-finish-name-section');
+    if(MCState.score>0&&MCScores.qualifies(MCState.score)){
+      document.getElementById('mc-finish-name-input').value=''; sec.style.display='flex';
+    } else { sec.style.display='none'; }
+    showScreen('mc-finish');
+  }
+};
+
+const MCPracticeFinish = {
+  show(elapsedMs){
+    const congrats=document.getElementById('mc-practice-congrats');
+    congrats.style.display=(MCState.mismatches===0)?'':'none';
+    const total=MCState.totalPairs+MCState.mismatches;
+    const acc=total>0?Math.round(MCState.totalPairs/total*100)+'%':'\u2014';
+    const timeStr=elapsedMs!==null?(elapsedMs/1000).toFixed(1)+'s':'\u2014';
+    document.getElementById('mc-practice-stats-body').innerHTML=
+      `<tr><td>Pairs Matched</td><td>${MCState.totalPairs}</td></tr>`+
+      `<tr><td>Mistakes</td><td>${MCState.mismatches}</td></tr>`+
+      `<tr><td>Accuracy</td><td>${acc}</td></tr>`+
+      `<tr><td>Time</td><td>${timeStr}</td></tr>`;
+    showScreen('mc-you-win');
+  }
+};
+
+const MCScores = (() => {
+  const KEY='memoryCardScores'; let page=0;
+  function load(){ try{const r=localStorage.getItem(KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch(e){return[];} }
+  function persist(a){ try{localStorage.setItem(KEY,JSON.stringify(a));}catch(e){} }
+  function qualifies(score){ const a=load(); return a.length<100||score>a[a.length-1].score; }
+  function save(){
+    const name=(document.getElementById('mc-finish-name-input').value||'').trim().slice(0,12);
+    if(!name){document.getElementById('mc-finish-name-input').focus();return;}
+    const a=load(); const date=new Date().toISOString().slice(0,10);
+    a.push({name,score:MCState.score,pairs:MCState.totalPairs,rounds:MCState.totalRounds,mismatches:MCState.mismatches,combo:MCState.longestCombo,date});
+    a.sort((x,y)=>y.score-x.score||y.date.localeCompare(x.date));
+    if(a.length>100)a.splice(100); persist(a);
+    document.getElementById('mc-finish-name-section').style.display='none';
+  }
+  function show(){ page=0; render(); showScreen('mc-high-scores'); }
+  function render(){
+    const a=load();
+    const tbody=document.getElementById('mc-scores-tbody');
+    const empty=document.getElementById('mc-scores-empty');
+    const table=document.getElementById('mc-scores-table');
+    const pgDiv=document.querySelector('#screen-mc-high-scores .pagination');
+    const pgLabel=document.getElementById('mc-scores-page-label');
+    tbody.innerHTML='';
+    if(a.length===0){
+      table.style.display='none'; empty.style.display='block'; pgDiv.style.display='none';
+    } else {
+      table.style.display=''; empty.style.display='none'; pgDiv.style.display='flex';
+      const start=page*10; const end=Math.min(start+10,a.length);
+      for(let i=start;i<end;i++){
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${i+1}</td><td>${escHtml(a[i].name)}</td><td>${a[i].score}</td><td>${a[i].pairs||0}</td>`;
+        tbody.appendChild(tr);
+      }
+      const tp=Math.ceil(a.length/10);
+      pgLabel.textContent=`Page ${page+1} of ${tp}`;
+      document.getElementById('mc-scores-prev').disabled=(page===0);
+      document.getElementById('mc-scores-next').disabled=(page>=tp-1);
+    }
+  }
+  function changePage(d){ page+=d; render(); }
+  return { load, qualifies, save, show, changePage, render };
+})();
+
+const MCUI = {
+  goTitle(){ mc_clearPhase(); mc_clearGameTimer(); MCState.preview=false; document.getElementById('mc-round-overlay').classList.add('hidden'); document.getElementById('mc-preview-hint').classList.add('hidden'); showScreen('mc-title'); },
+  goHowToPlay(){ showScreen('mc-how-to-play'); },
+  goPracticeSelect(){ Audio.unlock(); showScreen('mc-practice-select'); },
+  startPractice(pairs){ MCPractice.start(pairs); },
+  startGame(){ MCGame.start(); },
+  goHighScores(){ MCScores.show(); }
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   ██  GREG'S MATH GAME
+════════════════════════════════════════════════════════════════════ */
+
+/* ── Audio (standalone module; shares AudioContext family with Audio) ── */
+const GMAudio = (() => {
+  let ctx = null;
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(freq, type, dur, vol, delay = 0) {
+    try {
+      const c = getCtx();
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, c.currentTime + delay);
+      gain.gain.setValueAtTime(0.001, c.currentTime + delay);
+      gain.gain.linearRampToValueAtTime(vol, c.currentTime + delay + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+      osc.start(c.currentTime + delay);
+      osc.stop(c.currentTime + delay + dur + 0.01);
+    } catch(e) {}
+  }
+  function unlock() {
+    try {
+      const c = getCtx();
+      const buf = c.createBuffer(1,1,22050);
+      const src = c.createBufferSource();
+      src.buffer = buf; src.connect(c.destination); src.start(0);
+    } catch(e) {}
+  }
+  // Short rising chime — correct answer
+  function correct() {
+    tone(880,  'sine', 0.10, 0.28, 0.00);
+    tone(1174, 'sine', 0.12, 0.22, 0.08);
+  }
+  // Low descending buzz — wrong answer
+  function wrong() {
+    try {
+      const c = getCtx();
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(200, c.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(130, c.currentTime + 0.22);
+      gain.gain.setValueAtTime(0.10, c.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.24);
+      osc.start(c.currentTime); osc.stop(c.currentTime + 0.25);
+    } catch(e) {}
+  }
+  // 4-note ascending arpeggio — game complete
+  function complete() {
+    tone(523,  'sine', 0.14, 0.28, 0.00);
+    tone(659,  'sine', 0.14, 0.28, 0.14);
+    tone(784,  'sine', 0.14, 0.28, 0.28);
+    tone(1047, 'sine', 0.28, 0.32, 0.42);
+  }
+  // 6-note celebratory arpeggio — new top score
+  function pb() {
+    tone(523,  'sine', 0.14, 0.28, 0.00);
+    tone(659,  'sine', 0.14, 0.28, 0.13);
+    tone(784,  'sine', 0.14, 0.28, 0.26);
+    tone(1047, 'sine', 0.14, 0.30, 0.39);
+    tone(1319, 'sine', 0.14, 0.30, 0.52);
+    tone(1568, 'sine', 0.30, 0.36, 0.65);
+  }
+  return { unlock, correct, wrong, complete, pb };
+})();
+
+/* ── Problem generation ── */
+// Game:     easy=10+10, medium=7+7+6, hard=5+5+5+5
+// Practice: add/sub/mul/div = 10 of one op; all = 3+3+2+2
+function gm_generateProblems(difficulty) {
+  const counts =
+    difficulty === 'easy'   ? {add:5,  sub:5,  mul:0,  div:0}  :
+    difficulty === 'medium' ? {add:4,  sub:3,  mul:3,  div:0}  :
+    difficulty === 'hard'   ? {add:3,  sub:3,  mul:2,  div:2}  :
+    difficulty === 'add'    ? {add:10, sub:0,  mul:0,  div:0}  :
+    difficulty === 'sub'    ? {add:0,  sub:10, mul:0,  div:0}  :
+    difficulty === 'mul'    ? {add:0,  sub:0,  mul:10, div:0}  :
+    difficulty === 'div'    ? {add:0,  sub:0,  mul:0,  div:10} :
+  /* 'all' */                 {add:3,  sub:3,  mul:2,  div:2}  ;
+  const pool = [];
+
+  for(let i=0;i<counts.add;i++){
+    const a=Math.floor(Math.random()*25)+1, b=Math.floor(Math.random()*25)+1;
+    pool.push({eq:`${a} + ${b} = ?`, answer:a+b, op:'add'});
+  }
+  for(let i=0;i<counts.sub;i++){
+    const a=Math.floor(Math.random()*24)+2, b=Math.floor(Math.random()*(a-1))+1;
+    pool.push({eq:`${a} \u2212 ${b} = ?`, answer:a-b, op:'sub'});
+  }
+  for(let i=0;i<counts.mul;i++){
+    const a=Math.floor(Math.random()*11)+2, b=Math.floor(Math.random()*11)+2;
+    pool.push({eq:`${a} \u00D7 ${b} = ?`, answer:a*b, op:'mul'});
+  }
+  for(let i=0;i<counts.div;i++){
+    const divisor=Math.floor(Math.random()*11)+2, quotient=Math.floor(Math.random()*11)+2;
+    pool.push({eq:`${divisor*quotient} \u00F7 ${divisor} = ?`, answer:quotient, op:'div'});
+  }
+
+  // Fisher-Yates shuffle
+  for(let i=pool.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [pool[i],pool[j]]=[pool[j],pool[i]];
+  }
+  // Single-pass fix: no two consecutive same op (skip for single-operation sets)
+  const opCount = Object.values(counts).filter(v=>v>0).length;
+  if(opCount > 1){
+    for(let i=1;i<pool.length;i++){
+      if(pool[i].op===pool[i-1].op){
+        for(let j=i+1;j<pool.length;j++){
+          if(pool[j].op!==pool[i-1].op){[pool[i],pool[j]]=[pool[j],pool[i]];break;}
         }
+      }
+    }
+  }
+  return pool;
+}
 
-        function countdownScreen() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+/* ── State ── */
+const GMState = {
+  score:         0,
+  multiplier:    1.0,
+  mode:          null,      // 'practice' | 'game'
+  pendingMode:   null,      // set before difficulty screen
+  difficulty:    'hard',    // 'easy' | 'medium' | 'hard'
+  problems:      [],
+  current:       0,
+  input:         '',
+  startTime:     null,
+  elapsed:       0,
+  timerInterval: null,
+  wrongFlash:    false,
+  retries:       0,         // total wrong submissions this session
+  problemRetries:[]         // per-problem retry count (length 10)
+};
 
-            ctx.beginPath();
-            ctx.arc(canvas.width / 2, canvas.height / 2, 120, 0, 2 * Math.PI);
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 10;
-            ctx.stroke();
+let gm_phaseTimers = [];
+function gm_addPhase(id){ gm_phaseTimers.push(id); return id; }
+function gm_clearPhase(){ gm_phaseTimers.forEach(clearTimeout); gm_phaseTimers=[]; }
 
-            ctx.font = '120px Verdana';
-            ctx.fillStyle = '#000000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(Math.ceil(countdown).toString(), canvas.width / 2, canvas.height / 2);
+/* ── Timer ── */
+function gm_formatTime(ms) {
+  const t = Math.floor(ms / 100);
+  const tenths = t % 10;
+  const secs   = Math.floor(ms / 1000) % 60;
+  const mins   = Math.floor(ms / 60000);
+  return `${mins}:${String(secs).padStart(2,'0')}.${tenths}`;
+}
+function gm_startTimer() {
+  GMState.startTime = Date.now();
+  GMState.timerInterval = setInterval(() => {
+    const el = document.getElementById('gm-hud-timer');
+    if(el && GMState.startTime !== null)
+      el.textContent = gm_formatTime(Date.now() - GMState.startTime);
+  }, 100);
+}
+function gm_stopTimer() {
+  if(GMState.timerInterval !== null){ clearInterval(GMState.timerInterval); GMState.timerInterval=null; }
+  if(GMState.startTime !== null){ GMState.elapsed = Date.now() - GMState.startTime; GMState.startTime=null; }
+}
+function gm_updateHUD() {
+  const multiEl = document.getElementById('gm-hud-multi');
+  const scoreEl = document.getElementById('gm-hud-score');
+  if(multiEl){
+    multiEl.textContent = GMState.multiplier.toFixed(1) + '\u00d7';
+    multiEl.classList.toggle('boosted', GMState.multiplier > 1.0);
+  }
+  if(scoreEl) scoreEl.textContent = GMState.score;
+}
 
-            if (isLowToHigh) {
-                ctx.font = '18px Verdana';
-                ctx.fillText(`Time Remaining: ${Math.ceil(gameTimeRemaining)}s`, canvas.width / 2, canvas.height - 30);
-            }
+/* ── Render all problem rows into the scroll window ── */
+function gm_renderAllRows() {
+  const inner = document.getElementById('gm-scroll-inner');
+  const win   = document.getElementById('gm-scroll-window');
+  inner.innerHTML = '';
+  inner.style.transition = 'none';
+
+  // Row height: scale with viewport, clamped
+  const rowH = Math.max(54, Math.min(78, Math.round(window.innerHeight * 0.105)));
+  win.style.height  = (rowH * 3) + 'px';
+  win.dataset.rowH  = rowH;
+  // Start with row 0 in the middle slot (one row down from the top)
+  inner.style.transform  = `translateY(${rowH}px)`;
+
+  GMState.problems.forEach((prob, i) => {
+    const row = document.createElement('div');
+    row.className = 'gm-prob-row' + (i === 0 ? ' gm-active' : ' gm-upcoming');
+    row.id = 'gm-row-' + i;
+    row.style.height = rowH + 'px';
+    // Strip trailing "= ?" and keep "= " so the answer sits right after
+    const eqText = prob.eq.replace(/\s*=\s*\?$/, ' =');
+    row.innerHTML =
+      `<span class="gm-prob-eq">${escHtml(eqText)}</span>` +
+      `<span class="gm-prob-ans" id="gm-ans-${i}"></span>` +
+      `<span class="gm-prob-check" id="gm-chk-${i}">\u2714</span>`;
+    inner.appendChild(row);
+  });
+
+  document.getElementById('gm-hud-count').textContent = '1 / 10';
+  GMState.input = '';
+  // Re-enable transition after layout settles (double-rAF ensures paint completes first)
+  requestAnimationFrame(() => { requestAnimationFrame(() => { inner.style.transition = ''; }); });
+}
+
+/* ── Slide the list so row `index` is in the middle of the window ── */
+function gm_activateRow(index) {
+  document.querySelectorAll('.gm-prob-row').forEach((row, i) => {
+    row.classList.remove('gm-active', 'gm-upcoming');
+    if(i === index)      row.classList.add('gm-active');
+    else if(i > index)   row.classList.add('gm-upcoming');
+    // rows before index: "done" — full opacity, answer already shown
+  });
+  const rowH = parseInt(document.getElementById('gm-scroll-window').dataset.rowH || '64', 10);
+  document.getElementById('gm-scroll-inner').style.transform = `translateY(${(1 - index) * rowH}px)`;
+  document.getElementById('gm-hud-count').textContent = `${index + 1} / 10`;
+  GMState.input = '';
+  const ansEl = document.getElementById('gm-ans-' + index);
+  if(ansEl){ ansEl.textContent = ''; ansEl.classList.remove('gm-wrong', 'gm-correct'); }
+}
+
+/* ── Update the answer field in the active row ── */
+function gm_updateAnswerDisplay(flashWrong) {
+  const i     = GMState.current;
+  const ansEl = document.getElementById('gm-ans-' + i);
+  if(!ansEl) return;
+  if(flashWrong){
+    ansEl.textContent = GMState.input;
+    ansEl.classList.add('gm-wrong');
+    gm_addPhase(setTimeout(() => {
+      ansEl.classList.remove('gm-wrong');
+      GMState.input = '';
+      ansEl.textContent = '';
+      GMState.wrongFlash = false;
+    }, 420));
+  } else {
+    ansEl.textContent = GMState.input;
+    ansEl.classList.remove('gm-wrong');
+  }
+}
+
+/* ── Correct-answer handler: green answer + checkmark, then slide up ── */
+function gm_onCorrect() {
+  GMAudio.correct();
+  GMState.wrongFlash = true;
+  const i     = GMState.current;
+  // Award points in game mode
+  if(GMState.mode === 'game'){
+    GMState.score += Math.round(100 * GMState.multiplier);
+    if(GMState.problemRetries[i] === 0){
+      // First-try correct — advance multiplier
+      GMState.multiplier = parseFloat(Math.min(2.0, GMState.multiplier + 0.1).toFixed(1));
+    }
+    gm_updateHUD();
+  }
+  const ansEl = document.getElementById('gm-ans-' + i);
+  const chkEl = document.getElementById('gm-chk-' + i);
+  if(ansEl){ ansEl.textContent = GMState.problems[i].answer; ansEl.classList.remove('gm-wrong'); ansEl.classList.add('gm-correct'); }
+  if(chkEl) chkEl.classList.add('visible');
+  gm_addPhase(setTimeout(() => {
+    GMState.wrongFlash = false;
+    GMState.current++;
+    if(GMState.current >= GMState.problems.length){
+      gm_finish();
+    } else {
+      gm_activateRow(GMState.current);
+    }
+  }, 300));
+}
+
+/* ── Numpad / keyboard input ── */
+const GM = {
+  keyPress(key) {
+    if(GMState.mode === null) return;
+    if(GMState.wrongFlash) return;
+    if(key === 'back') {
+      GMState.input = GMState.input.slice(0,-1);
+      gm_updateAnswerDisplay(false);
+    } else if(key === 'enter') {
+      if(GMState.input === '') return;
+      const ans = parseInt(GMState.input, 10);
+      const prob = GMState.problems[GMState.current];
+      if(ans === prob.answer){
+        gm_onCorrect();
+      } else {
+        GMAudio.wrong();
+        GMState.wrongFlash = true;
+        GMState.retries++;
+        GMState.problemRetries[GMState.current]++;
+        // Reset multiplier on the first mistake for this problem
+        if(GMState.mode === 'game' && GMState.problemRetries[GMState.current] === 1){
+          GMState.multiplier = 1.0;
+          gm_updateHUD();
         }
+        gm_updateAnswerDisplay(true);
+      }
+    } else if('0123456789'.includes(key)){
+      if(GMState.input.length >= 4) return;
+      GMState.input += key;
+      // Auto-submit if input already equals the correct answer
+      const prob = GMState.problems[GMState.current];
+      if(parseInt(GMState.input, 10) === prob.answer){
+        gm_onCorrect();
+        return;
+      }
+      gm_updateAnswerDisplay(false);
+    }
+  }
+};
 
-        function gameScreen() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+// Keyboard support (desktop)
+document.addEventListener('keydown', function(e){
+  const active = document.querySelector('.screen.active');
+  if(!active || active.id !== 'screen-gm-round') return;
+  if(e.key >= '0' && e.key <= '9'){ GM.keyPress(e.key); e.preventDefault(); }
+  else if(e.key === 'Backspace'){ GM.keyPress('back'); e.preventDefault(); }
+  else if(e.key === 'Enter'){ GM.keyPress('enter'); e.preventDefault(); }
+});
 
-            boxPositions.forEach((pos, index) => {
-                if (index < boxes.length) {
-                    ctx.strokeStyle = '#000000';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(pos.x, pos.y, 80, 80);
+/* ── Game flow ── */
+function gm_startCountdown(callback) {
+  showScreen('gm-countdown');
+  let n = 3;
+  const display = document.getElementById('gm-countdown-display');
+  function tick(){
+    display.textContent = n; Audio.countdownBeat(n);
+    if(n > 1){ n--; gm_addPhase(setTimeout(tick, 1000)); }
+    else { gm_addPhase(setTimeout(callback, 1000)); }
+  }
+  tick();
+}
 
-                    if (boxes[index].revealed || memorizePhase) {
-                        ctx.font = '32px Georgia';
-                        ctx.fillStyle = '#000000';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(boxes[index].number.toString(),
-                                   pos.x + 40, pos.y + 40);
-                    }
-                }
-            });
+function gm_startRound() {
+  GMState.current = 0;
+  GMState.input = '';
+  GMState.wrongFlash = false;
+  GMState.elapsed = 0;
+  GMState.retries = 0;
+  GMState.problemRetries = new Array(10).fill(0);
+  GMState.score = 0;
+  GMState.multiplier = 1.0;
+  GMState.problems = gm_generateProblems(GMState.difficulty);
+  showScreen('gm-round');
+  // Game mode: show score + multiplier, hide timer
+  // Practice mode: show timer, hide score + multiplier
+  const isGame = GMState.mode === 'game';
+  const timerEl    = document.getElementById('gm-hud-timer');
+  const gameRight  = document.getElementById('gm-hud-game-right');
+  if(timerEl)   timerEl.style.display   = isGame ? 'none' : '';
+  if(gameRight) gameRight.style.display = isGame ? 'flex' : 'none';
+  gm_updateHUD();
+  gm_renderAllRows();
+  gm_startTimer(); // always start, even in practice (for elapsed tracking)
+}
 
-            if (memorizePhase) {
-                ctx.font = '24px Verdana';
-                ctx.fillStyle = '#000000';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'bottom';
-                ctx.fillText(`Memorize: ${Math.ceil(roundTimeRemaining)}s`, 20, canvas.height - 20);
-            }
+function gm_finish() {
+  gm_stopTimer(); // always stop (timer always starts now)
+  GMFinish.show();
+}
 
-            if (isLowToHigh) {
-                ctx.font = '18px Verdana';
-                ctx.fillStyle = '#000000';
-                ctx.textAlign = 'right';
-                ctx.textBaseline = 'bottom';
-                ctx.fillText(`Time: ${Math.ceil(gameTimeRemaining)}s`, canvas.width - 20, canvas.height - 20);
-                ctx.fillText(`Score: ${gameScore}`, canvas.width - 20, canvas.height - 45);
-            }
-        }
+/* ── Finish ── */
+// Each tier: min score, display label, emoji silhouette, animation duration, bottom offset in lane
+const GM_BENCHMARKS = [
+  { min:1350, label:'Rocket speed',     icon:'\uD83D\uDE80', dur:'0.64s',  bottom:'30px' },
+  { min:1100, label:'Jet plane speed',  icon:'\u2708\uFE0F', dur:'1.04s',  bottom:'24px' },
+  { min:850,  label:'Helicopter speed', icon:'\uD83D\uDE81', dur:'1.60s',  bottom:'16px' },
+  { min:600,  label:'Car speed',        icon:'\uD83D\uDE97', dur:'2.60s',  bottom:'4px'  },
+  { min:380,  label:'Bicycle speed',    icon:'\uD83D\uDEB2', dur:'4.00s',  bottom:'4px'  },
+  { min:180,  label:'Jogging speed',    icon:'\uD83C\uDFC3', dur:'6.40s',  bottom:'4px'  },
+  { min:0,    label:'Walking speed',    icon:'\uD83D\uDEB6', dur:'11.00s', bottom:'4px'  },
+];
+function gm_benchmark(score){ for(const b of GM_BENCHMARKS){ if(score>=b.min) return b; } return GM_BENCHMARKS[GM_BENCHMARKS.length-1]; }
 
-        function endScreen() {
-            if (isLowToHigh && gameTimeRemaining > 0) {
-                const isWin = currentBox > currentGameMode;
-                if (isWin) {
-                    gameScore += currentGameMode;
-                }
+const GMFinish = {
+  show(){
+    const isPractice = GMState.mode === 'practice';
+    const timeEl  = document.getElementById('gm-finish-time');
+    const rankEl  = document.getElementById('gm-finish-rank');
+    const benchEl = document.getElementById('gm-benchmark');
+    const nameSec = document.getElementById('gm-finish-name-section');
 
-                const nextMode = PROGRESSION_RULES[currentGameMode][isWin ? 'win' : 'lose'];
-                countdown = COUNTDOWN_TIMER;
-                isCountingDown = true;
-                initializeGame(nextMode);
-                currentState = COUNTDOWN_SCREEN;
-                lastUpdateTime = performance.now();
-            } else {
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const laneEl = document.getElementById('gm-speed-lane');
+    const iconEl = document.getElementById('gm-speed-icon');
 
-                ctx.font = '36px Georgia';
-                ctx.fillStyle = '#000000';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+    if(isPractice){
+      timeEl.textContent  = 'All Done!';
+      rankEl.textContent  = '';
+      benchEl.textContent = 'Try the full game to get on the leaderboard!';
+      nameSec.style.display = 'none';
+      if(laneEl) laneEl.style.display = 'none';
+      GMAudio.complete();
+    } else {
+      const score = GMState.score;
+      const bench = gm_benchmark(score);
+      timeEl.textContent  = score;
+      benchEl.textContent = bench.label;
+      // Animate the speed silhouette
+      if(laneEl && iconEl){
+        laneEl.style.display = '';
+        iconEl.textContent = bench.icon;
+        iconEl.style.bottom = bench.bottom;
+        // Force animation restart with new duration
+        iconEl.style.animation = 'none';
+        void iconEl.offsetWidth; // trigger reflow
+        iconEl.style.animation = `gm-speed-scroll ${bench.dur} linear infinite`;
+      }
+      const scores  = GMScores.load();
+      const isTop   = GMScores.isTopScore(score);
+      if(isTop){
+        GMAudio.pb();
+        rankEl.textContent = scores.length === 0 ? 'First score!' : 'New top score!';
+      } else {
+        GMAudio.complete();
+        const rank = scores.filter(s=>s.score<score).length+1;
+        rankEl.textContent = `Rank #${rank} of ${scores.length}`;
+      }
+      if(GMScores.qualifies(score)){
+        document.getElementById('gm-finish-name-input').value = '';
+        nameSec.style.display = 'flex';
+      } else {
+        nameSec.style.display = 'none';
+      }
+    }
 
-                const message = currentBox > currentGameMode ? 'You Win!' : 'You Lose!';
-                ctx.fillText(message, canvas.width / 2, canvas.height / 2 - 50);
+    // ── Stats table ──
+    const tbody = document.getElementById('gm-finish-stats-body');
+    const probs = GMState.problems;
+    const retries = GMState.retries;
+    const firstTryCount = GMState.problemRetries.filter(r=>r===0).length;
 
-                if (!isLowToHigh) {
-                    ctx.font = '24px Georgia';
-                    ctx.fillText('Return to Title Screen', canvas.width / 2, canvas.height / 2 + 50);
-                    ctx.strokeRect(50, canvas.height / 2 + 20, 300, 60);
-                }
-            }
-        }
+    // Per-operation breakdown
+    const opNames = {add:'Addition',sub:'Subtraction',mul:'Multiplication',div:'Division'};
+    const opData = {};
+    probs.forEach((p,i)=>{
+      if(!opData[p.op]) opData[p.op]={total:0,firstTry:0};
+      opData[p.op].total++;
+      if(GMState.problemRetries[i]===0) opData[p.op].firstTry++;
+    });
+    const ops = Object.keys(opData);
 
-        function finishScreen() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let html = '';
+    html += `<tr><td>Time</td><td>${gm_formatTime(GMState.elapsed)}</td></tr>`;
+    html += `<tr><td>Mistakes</td><td>${retries}</td></tr>`;
+    html += `<tr><td>First try</td><td>${firstTryCount} / 10</td></tr>`;
+    if(ops.length > 1){
+      html += `<tr><td colspan="2" style="padding-top:10px;padding-bottom:2px;font-size:11px;`+
+              `letter-spacing:0.08em;text-transform:uppercase;color:#bbb;border-bottom:none">`+
+              `By operation</td></tr>`;
+      ops.forEach(op=>{
+        const d=opData[op];
+        const clean=d.firstTry===d.total;
+        html += `<tr><td style="padding-left:20px">${opNames[op]}</td>`+
+                `<td>${d.firstTry}/${d.total}${clean?' \u2713':''}</td></tr>`;
+      });
+    }
+    tbody.innerHTML = html;
 
-            ctx.font = '36px Georgia';
-            ctx.fillStyle = '#000000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`Game Over, you scored`, canvas.width / 2, canvas.height / 2 - 50);
-            ctx.fillText(`${gameScore} points!`, canvas.width / 2, canvas.height / 2);
+    // Congrats
+    document.getElementById('gm-finish-congrats').style.display = retries===0 ? '' : 'none';
 
-            ctx.font = '24px Georgia';
-            ctx.fillText('Return to Title Screen', canvas.width / 2, canvas.height / 2 + 50);
-            ctx.strokeRect(50, canvas.height / 2 + 20, 300, 60);
-        }
+    showScreen('gm-finish');
+  }
+};
 
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
+/* ── High Scores ── */
+const GMScores = (() => {
+  const KEY = 'mathGameScoresV2'; let page = 0;
+  function load(){ try{const r=localStorage.getItem(KEY);const a=r?JSON.parse(r):[];return Array.isArray(a)?a:[];}catch(e){return[];} }
+  function persist(a){ try{localStorage.setItem(KEY,JSON.stringify(a));}catch(e){} }
+  function qualifies(score){ const a=load(); return a.length<100||(a.length>0&&score>a[a.length-1].score); }
+  function isTopScore(score){ const a=load(); return a.length===0||score>a[0].score; }
+  function save(){
+    const name=(document.getElementById('gm-finish-name-input').value||'').trim().slice(0,12);
+    if(!name){document.getElementById('gm-finish-name-input').focus();return;}
+    const a=load(); const date=new Date().toISOString().slice(0,10);
+    a.push({name,score:GMState.score,diff:GMState.difficulty,date});
+    a.sort((x,y)=>y.score-x.score||x.date.localeCompare(y.date));
+    if(a.length>100)a.splice(100); persist(a);
+    document.getElementById('gm-finish-name-section').style.display='none';
+  }
+  function show(){ page=0; render(); showScreen('gm-high-scores'); }
+  function render(){
+    const a=load();
+    const tbody=document.getElementById('gm-scores-tbody');
+    const empty=document.getElementById('gm-scores-empty');
+    const table=document.getElementById('gm-scores-table');
+    const pgDiv=document.querySelector('#screen-gm-high-scores .pagination');
+    const pgLabel=document.getElementById('gm-scores-page-label');
+    tbody.innerHTML='';
+    if(a.length===0){
+      table.style.display='none'; empty.style.display='block'; pgDiv.style.display='none';
+    } else {
+      table.style.display=''; empty.style.display='none'; pgDiv.style.display='flex';
+      const start=page*10; const end=Math.min(start+10,a.length);
+      for(let i=start;i<end;i++){
+        const tr=document.createElement('tr');
+        const diffLabel = a[i].diff ? (a[i].diff.charAt(0).toUpperCase()+a[i].diff.slice(1)) : 'Hard';
+        tr.innerHTML=`<td>${i+1}</td><td>${escHtml(a[i].name)}</td><td>${a[i].score}</td><td>${diffLabel}</td>`;
+        tbody.appendChild(tr);
+      }
+      const tp=Math.ceil(a.length/10);
+      pgLabel.textContent=`Page ${page+1} of ${tp}`;
+      document.getElementById('gm-scores-prev').disabled=(page===0);
+      document.getElementById('gm-scores-next').disabled=(page>=tp-1);
+    }
+  }
+  function changePage(d){ page+=d; render(); }
+  return { load, qualifies, isTopScore, save, show, changePage, render };
+})();
 
-        function initializeGame(mode) {
-            currentGameMode = mode;
-            boxes = Array.from({ length: mode }, (_, i) => ({
-                number: i + 1,
-                revealed: false
-            }));
-            shuffle(boxes);
-            currentBox = 1;
-            memorizePhase = true;
-            roundTimeRemaining = ROUND_TIMER;
+const GMUI = {
+  goTitle(){ gm_clearPhase(); gm_stopTimer(); GMState.mode=null; showScreen('gm-title'); },
+  goHowToPlay(){ showScreen('gm-how-to-play'); },
+  startPractice(){
+    GMAudio.unlock(); Audio.unlock();
+    GMState.pendingMode = 'practice';
+    document.getElementById('gm-diff-heading').textContent = 'Practice \u2014 Choose Type';
+    document.getElementById('gm-diff-options').innerHTML = `
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('add')">
+        <span class="hub-game-name">Addition</span>
+        <span class="hub-game-desc">10 addition problems</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('sub')">
+        <span class="hub-game-name">Subtraction</span>
+        <span class="hub-game-desc">10 subtraction problems</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('mul')">
+        <span class="hub-game-name">Multiplication</span>
+        <span class="hub-game-desc">10 multiplication problems</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('div')">
+        <span class="hub-game-name">Division</span>
+        <span class="hub-game-desc">10 division problems</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('all')">
+        <span class="hub-game-name">All Operations</span>
+        <span class="hub-game-desc">Mix of all four operations</span>
+      </button>`;
+    showScreen('gm-difficulty');
+  },
+  startGame(){
+    GMAudio.unlock(); Audio.unlock();
+    GMState.pendingMode = 'game';
+    document.getElementById('gm-diff-heading').textContent = 'Select Difficulty';
+    document.getElementById('gm-diff-options').innerHTML = `
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('easy')">
+        <span class="hub-game-name">Easy</span>
+        <span class="hub-game-desc">Addition &amp; subtraction only</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('medium')">
+        <span class="hub-game-name">Medium</span>
+        <span class="hub-game-desc">Addition, subtraction &amp; multiplication</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('hard')">
+        <span class="hub-game-name">Hard</span>
+        <span class="hub-game-desc">All four operations including division</span>
+      </button>`;
+    showScreen('gm-difficulty');
+  },
+  chooseDifficulty(diff){
+    GMState.difficulty = diff;
+    GMState.mode = GMState.pendingMode;
+    gm_startCountdown(gm_startRound);
+  },
+  goHighScores(){ GMScores.show(); }
+};
 
-            const layout = GAME_LAYOUTS[mode];
-            if (layout) {
-                boxPositions = layout.getPositions(canvas, 80, 20);
-            }
-        }
+/* ════════════════════════════════════════════════════════════════════
+   HUB
+════════════════════════════════════════════════════════════════════ */
+const HubUI = {
+  goMM(){ showScreen('mm-title'); },
+  goMC(){ showScreen('mc-title'); },
+  goGM(){ showScreen('gm-title'); }
+};
 
-        function initializeLowToHighGame() {
-            isLowToHigh = true;
-            gameTimeRemaining = GAME_TIMER;
-            gameScore = 0;
-            countdown = COUNTDOWN_TIMER;
-            isCountingDown = true;
-            initializeGame(4);
-            currentState = COUNTDOWN_SCREEN;
-            lastUpdateTime = performance.now();
-        }
-
-        function checkBoxClick(x, y) {
-            for (let i = 0; i < boxPositions.length; i++) {
-                const pos = boxPositions[i];
-                if (x >= pos.x && x < pos.x + 80 &&
-                    y >= pos.y && y < pos.y + 80) {
-                    return i;
-                }
-            }
-            return -1;
-        }
-
-        function handleInput(x, y) {
-            if (currentState === TITLE_SCREEN) {
-                if (x >= 100 && x <= 300 && y >= 210 && y <= 270) {
-                    isLowToHigh = false;
-                    currentState = PRACTICE_SCREEN;
-                } else if (x >= 100 && x <= 300 && y >= 330 && y <= 390) {
-                    initializeLowToHighGame();
-                }
-            } else if (currentState === PRACTICE_SCREEN) {
-                const leftColumn = [2, 3, 4, 5, 6];
-                const rightColumn = [7, 8, 9, 10, 12];
-
-                leftColumn.forEach((num, index) => {
-                    if (x >= 50 && x <= 150 && y >= 70 + index * 80 && y <= 130 + index * 80) {
-                        isLowToHigh = false;
-                        initializeGame(num);
-                        currentState = COUNTDOWN_SCREEN;
-                        countdown = COUNTDOWN_TIMER;
-                        isCountingDown = true;
-                        lastUpdateTime = performance.now();
-                    }
-                });
-
-                rightColumn.forEach((num, index) => {
-                    if (x >= 250 && x <= 350 && y >= 70 + index * 80 && y <= 130 + index * 80) {
-                        isLowToHigh = false;
-                        initializeGame(num);
-                        currentState = COUNTDOWN_SCREEN;
-                        countdown = COUNTDOWN_TIMER;
-                        isCountingDown = true;
-                        lastUpdateTime = performance.now();
-                    }
-                });
-
-                if (x >= 100 && x <= 300 && y >= 520 && y <= 560) {
-                    currentState = TITLE_SCREEN;
-                }
-            } else if (currentState === GAME_SCREEN && !memorizePhase) {
-                const clickedBox = checkBoxClick(x, y);
-                if (clickedBox !== -1 && !boxes[clickedBox].revealed) {
-                    if (boxes[clickedBox].number === currentBox) {
-                        boxes[clickedBox].revealed = true;
-                        currentBox++;
-                        if (currentBox > currentGameMode) {
-                            currentState = END_SCREEN;
-                        }
-                    } else {
-                        currentState = END_SCREEN;
-                    }
-                }
-            } else if ((currentState === END_SCREEN && !isLowToHigh) || currentState === FINISH_SCREEN) {
-                if (x >= 50 && x <= 350 && y >= canvas.height / 2 + 20 && y <= canvas.height / 2 + 80) {
-                    currentState = TITLE_SCREEN;
-                    isLowToHigh = false;
-                }
-            }
-        }
-
-        function handleClick(event) {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            handleInput(x, y);
-        }
-
-        function handleTouch(event) {
-            event.preventDefault();
-            const rect = canvas.getBoundingClientRect();
-            const x = event.touches[0].clientX - rect.left;
-            const y = event.touches[0].clientY - rect.top;
-            handleInput(x, y);
-        }
-
-        function updateTimers(currentTime) {
-            const elapsed = (currentTime - lastUpdateTime) / 1000;
-            lastUpdateTime = currentTime;
-
-            if (isLowToHigh && !isCountingDown) {
-                gameTimeRemaining -= elapsed;
-                if (gameTimeRemaining <= 0) {
-                    gameTimeRemaining = 0;
-                    currentState = FINISH_SCREEN;
-                    return;
-                }
-            }
-
-            if (currentState === COUNTDOWN_SCREEN) {
-                if (isCountingDown) {
-                    countdown -= elapsed;
-                    if (countdown <= 0) {
-                        countdown = 0;
-                        isCountingDown = false;
-                        currentState = GAME_SCREEN;
-                        memorizePhase = true;
-                        roundTimeRemaining = ROUND_TIMER;
-                    }
-                }
-            } else if (currentState === GAME_SCREEN && memorizePhase) {
-                roundTimeRemaining -= elapsed;
-                if (roundTimeRemaining <= 0) {
-                    roundTimeRemaining = 0;
-                    memorizePhase = false;
-                }
-            }
-        }
-
-        function gameLoop(currentTime) {
-            updateTimers(currentTime);
-
-            switch (currentState) {
-                case TITLE_SCREEN:
-                    titleScreen();
-                    break;
-
-                case PRACTICE_SCREEN:
-                    practiceScreen();
-                    break;
-
-                case COUNTDOWN_SCREEN:
-                    countdownScreen();
-                    break;
-
-                case GAME_SCREEN:
-                    gameScreen();
-                    break;
-
-                case END_SCREEN:
-                    endScreen();
-                    break;
-
-                case FINISH_SCREEN:
-                    finishScreen();
-                    break;
-            }
-
-            requestAnimationFrame(gameLoop);
-        }
-
-        // Event Listeners
-        canvas.addEventListener('click', handleClick);
-        canvas.addEventListener('touchstart', handleTouch);
-
-        // Start the game
-        lastUpdateTime = performance.now();
-        gameLoop(lastUpdateTime);
-
-        // ================ JAVASCRIPT PART 2 END ================
-
-
-    </script>
+/* ════════════════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  showScreen('hub');
+});
+</script>
 </body>
 </html>

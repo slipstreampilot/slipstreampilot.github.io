@@ -2840,11 +2840,12 @@ function gm_generateProblems(difficulty) {
     pool.push({eq:`${a} \u2212 ${b} = ?`, answer:a-b, op:'sub'});
   }
   for(let i=0;i<counts.mul;i++){
-    const a=Math.floor(Math.random()*11)+2, b=Math.floor(Math.random()*11)+2;
+    const a=Math.floor(Math.random()*13), b=Math.floor(Math.random()*13); // 0–12
     pool.push({eq:`${a} \u00D7 ${b} = ?`, answer:a*b, op:'mul'});
   }
   for(let i=0;i<counts.div;i++){
-    const divisor=Math.floor(Math.random()*11)+2, quotient=Math.floor(Math.random()*11)+2;
+    const divisor=Math.floor(Math.random()*12)+1; // 1–12 (never divide by 0)
+    const quotient=Math.floor(Math.random()*13);  // 0–12
     pool.push({eq:`${divisor*quotient} \u00F7 ${divisor} = ?`, answer:quotient, op:'div'});
   }
 

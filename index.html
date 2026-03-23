@@ -79,20 +79,67 @@
     .btn-menu:active { background: #f5f5f5; }
 
     /* ─── Hub ───────────────────────────────────────────────────────── */
-    .hub-games { display: flex; flex-direction: column; width: 100%; max-width: 380px; }
-    .hub-game-btn {
-      display: flex; flex-direction: column; align-items: flex-start;
-      background: #fff; border: 1.5px solid #000;
-      padding: 20px 24px; cursor: pointer; text-align: left;
-      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
-      transition: background 0.1s;
-      margin-bottom: 14px; /* replaces flex gap for Safari < 14.1 compatibility */
+    #screen-hub { overflow: hidden; }
+    .hub-bg {
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+      pointer-events: none; z-index: 0; overflow: hidden;
     }
-    .hub-game-btn:last-child { margin-bottom: 0; }
-    .hub-game-btn:hover  { background: #f5f5f5; }
-    .hub-game-btn:active { background: #e8e8e8; }
-    .hub-game-name { font-size: clamp(16px, 4vw, 20px); letter-spacing: 0.03em; }
-    .hub-game-desc { font-size: 12px; color: #888; margin-top: 5px; letter-spacing: 0.02em; font-style: italic; }
+    .hub-sym {
+      position: absolute; pointer-events: none;
+      user-select: none; -webkit-user-select: none;
+      color: #000; font-family: Georgia, 'Times New Roman', serif;
+      animation: hubSymFloat linear infinite;
+    }
+    @keyframes hubSymFloat {
+      0%   { transform: translateY(110vh); opacity: 0; }
+      8%   { opacity: 0.13; }
+      92%  { opacity: 0.13; }
+      100% { transform: translateY(-15vh); opacity: 0; }
+    }
+    .hub-content {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column; align-items: center; width: 100%;
+    }
+    .hub-eyebrow {
+      font-size: 9.5px; letter-spacing: 0.28em; text-transform: uppercase;
+      color: #bbb; margin-bottom: 10px;
+    }
+    .hub-big-title {
+      font-size: clamp(52px, 14vw, 108px); font-weight: normal;
+      letter-spacing: -0.01em; line-height: 0.88;
+      border-top: 3.5px solid #000; border-bottom: 3.5px solid #000;
+      padding: 12px 0 16px; width: 100%; max-width: 560px; text-align: center;
+    }
+    .hub-tagline {
+      font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+      color: #aaa; margin-top: 10px; margin-bottom: 36px;
+    }
+    .hub-games { width: 100%; max-width: 560px; }
+    .hub-game-btn {
+      display: flex; align-items: center; width: 100%;
+      background: #fff; border: none; border-bottom: 1px solid #e8e8e8;
+      padding: 18px 0; cursor: pointer; text-align: left;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+      font-family: Georgia, 'Times New Roman', serif;
+      transition: padding-left 0.15s;
+    }
+    .hub-game-btn:first-child { border-top: 1px solid #e8e8e8; }
+    .hub-game-btn:hover  { padding-left: 10px; background: #fff; }
+    .hub-game-btn:active { background: #f5f5f5; }
+    .hub-game-num {
+      font-size: clamp(28px, 7vw, 48px); font-style: italic;
+      color: #e0e0e0; line-height: 1; width: 62px; flex-shrink: 0;
+      letter-spacing: -0.02em;
+    }
+    .hub-game-info { display: flex; flex-direction: column; flex: 1; }
+    .hub-game-name { font-size: clamp(15px, 3.5vw, 21px); letter-spacing: 0.01em; color: #000; }
+    .hub-game-desc { font-size: 11px; color: #999; margin-top: 4px; letter-spacing: 0.02em; font-style: italic; }
+    .hub-game-arrow {
+      font-size: 20px; color: #ccc; margin-left: 14px; flex-shrink: 0;
+      transition: color 0.15s, transform 0.15s;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .hub-game-btn:hover .hub-game-arrow { color: #000; transform: translateX(4px); }
 
     /* ─── Practice Select Grid ──────────────────────────────────────── */
     .practice-grid {
@@ -446,20 +493,37 @@
 
 <!-- ══════════════════════════════════════════════════ HUB -->
 <div id="screen-hub" class="screen active">
-  <div class="game-title">Greg's Games</div>
-  <div class="hub-games">
-    <button class="hub-game-btn" onclick="HubUI.goMM()">
-      <span class="hub-game-name">Memory Master</span>
-      <span class="hub-game-desc">Memorise numbers, recall in order. Beat the clock.</span>
-    </button>
-    <button class="hub-game-btn" onclick="HubUI.goMC()">
-      <span class="hub-game-name">Memory Cards</span>
-      <span class="hub-game-desc">Find matching pairs. Build combos. Race the timer.</span>
-    </button>
-    <button class="hub-game-btn" onclick="HubUI.goGM()">
-      <span class="hub-game-name">Greg's Math Game</span>
-      <span class="hub-game-desc">Solve 10 problems. Beat the clock. Chase your best time.</span>
-    </button>
+  <div class="hub-bg" id="hub-bg"></div>
+  <div class="hub-content">
+    <div class="hub-eyebrow">A collection of games by Greg</div>
+    <div class="hub-big-title">Greg's<br>Games</div>
+    <div class="hub-tagline">Memory &nbsp;&middot;&nbsp; Logic &nbsp;&middot;&nbsp; Speed</div>
+    <div class="hub-games">
+      <button class="hub-game-btn" onclick="HubUI.goMM()">
+        <span class="hub-game-num">I</span>
+        <span class="hub-game-info">
+          <span class="hub-game-name">Memory Master</span>
+          <span class="hub-game-desc">Memorise numbers, recall in order. Beat the clock.</span>
+        </span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+      <button class="hub-game-btn" onclick="HubUI.goMC()">
+        <span class="hub-game-num">II</span>
+        <span class="hub-game-info">
+          <span class="hub-game-name">Memory Cards</span>
+          <span class="hub-game-desc">Find matching pairs. Build combos. Race the timer.</span>
+        </span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+      <button class="hub-game-btn" onclick="HubUI.goGM()">
+        <span class="hub-game-num">III</span>
+        <span class="hub-game-info">
+          <span class="hub-game-name">Greg's Math Game</span>
+          <span class="hub-game-desc">Solve 10 problems. Beat the clock. Chase your best time.</span>
+        </span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2475,6 +2539,34 @@ const HubUI = {
   goMC(){ showScreen('mc-title'); },
   goGM(){ showScreen('gm-title'); }
 };
+
+/* ── Hub background symbols ── */
+(function(){
+  const SYMS = [
+    // Numbers 1–9 (Memory Master)
+    '1','2','3','4','5','6','7','8','9',
+    // Math operators (Greg's Math Game)
+    '+','−','×','÷',
+    // Card symbols (Memory Cards)
+    '\u2665\uFE0E','\u2660\uFE0E','\u2663\uFE0E','\u2666\uFE0E',
+    '\u2605\uFE0E','\u2699\uFE0E','\u266B\uFE0E','\u265B\uFE0E',
+    '\u262F\uFE0E','\u25B2\uFE0E','\u2702\uFE0E','\u2692\uFE0E',
+    // Extras
+    '\u2211','\u221E'  // ∑ ∞
+  ];
+  const bg = document.getElementById('hub-bg');
+  if(!bg) return;
+  for(let i = 0; i < 26; i++){
+    const el = document.createElement('span');
+    el.className = 'hub-sym';
+    el.textContent = SYMS[i % SYMS.length];
+    el.style.left     = (Math.random() * 96) + 'vw';
+    el.style.fontSize = (45 + Math.random() * 66) + 'px';
+    el.style.animationDuration = (11 + Math.random() * 16) + 's';
+    el.style.animationDelay   = (-Math.random() * 20) + 's';
+    bg.appendChild(el);
+  }
+}());
 
 /* ════════════════════════════════════════════════════════════════════
    INIT

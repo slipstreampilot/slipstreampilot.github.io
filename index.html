@@ -2425,6 +2425,7 @@ const KarateFight = (function(){
   let pTimer = null, eTimer = null;
   let attackCount = 0, initialized = false;
   let hitWord = null, hitWordTimer = null;
+  let autoTimer = null, autoKOcb = null; // 12-second enemy auto-attack
 
   /* ── Pixel helpers ─────────────────────────────────────────────── */
   // Emit [col, row, ck] pixel entries for a filled rectangle of units
@@ -2741,8 +2742,46 @@ const KarateFight = (function(){
     draw();
   }
 
+  /* ── Auto-attack: enemy strikes every intervalMs regardless of answers ── */
+  function stopAutoAttack() {
+    if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+    autoKOcb = null;
+  }
+
+  function startAutoAttack(intervalMs, onKO) {
+    stopAutoAttack();
+    autoKOcb = onKO || null;
+    autoTimer = setInterval(() => {
+      if(!initialized) return;
+      if(playerHP <= 0 || enemyHP <= 0) { stopAutoAttack(); return; }
+      // Enemy proactively attacks — visuals identical to a wrong-answer hit
+      attackCount++;
+      const atk = attackCount % 2 === 1 ? 'punch' : 'kick';
+      clearTimeout(eTimer);
+      enemyPose = atk;
+      eTimer = setTimeout(() => { enemyPose = 'idle'; draw(); }, ATTACK_DUR);
+      playerHP = Math.max(0, playerHP - 1);
+      clearTimeout(pTimer);
+      if(playerHP <= 0) {
+        playerPose = 'ko';
+        stopAutoAttack();
+        kfSound('ko'); showHitWord(KO_WORD);
+        draw();
+        // Brief pause so the KO animation is visible before the finish screen
+        if(autoKOcb) setTimeout(autoKOcb, 900);
+      } else {
+        playerPose = 'hit';
+        pTimer = setTimeout(() => { playerPose = 'idle'; draw(); }, HIT_DUR);
+        kfSound('miss');
+        showHitWord(HIT_WORDS[attackCount % HIT_WORDS.length]); // attack word, not 'MISS!'
+        draw();
+      }
+    }, intervalMs);
+  }
+
   function reset() {
     if(!initialized) init();
+    stopAutoAttack();
     clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
     playerHP = MAX_HP; enemyHP = MAX_HP;
     playerPose = 'idle'; enemyPose = 'idle';
@@ -2753,6 +2792,7 @@ const KarateFight = (function(){
   // Called from finish screen to show final victor poses
   // extCanvas (optional): draw into a different canvas element
   function showResult(playerWon, extCanvas) {
+    stopAutoAttack();
     clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
     hitWord = null;
     playerPose = playerWon ? 'victory' : 'ko';
@@ -2773,7 +2813,7 @@ const KarateFight = (function(){
 
   function getEnemyHP() { return enemyHP; }
 
-  return { init, playerAttack, enemyAttack, reset, showResult, getEnemyHP };
+  return { init, playerAttack, enemyAttack, reset, showResult, getEnemyHP, startAutoAttack, stopAutoAttack };
 }());
 
 /* ── Problem generation ── */
@@ -3071,9 +3111,11 @@ function gm_startRound() {
   gm_updateHUD();
   gm_renderAllRows();
   gm_startTimer(); // always start, even in practice (for elapsed tracking)
+  if(GMState.mode === 'game') KarateFight.startAutoAttack(12000, gm_finish);
 }
 
 function gm_finish() {
+  KarateFight.stopAutoAttack();
   gm_stopTimer(); // always stop (timer always starts now)
   GMFinish.show();
 }
@@ -3524,6 +3566,11 @@ const PMKeyboard = (function(){
   function build(container, onPress, onRelease){
     container.innerHTML = '';
     keyEls = {};
+
+    /* iOS Safari double-tap zoom prevention.
+       Must be a raw touchstart listener with passive:false so preventDefault()
+       is allowed — pointer events fire too late to stop Safari's gesture recognizer. */
+    container.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
 
     const W = container.offsetWidth || window.innerWidth;
     const wKeyW = W / WHITE.length;

@@ -507,12 +507,14 @@
 
     /* Piano roll */
     .pm-roll-area {
-      position: relative; width: 100%; flex-shrink: 0;
-      background: #fafafa; border-bottom: 1px solid #ddd;
-      overflow: hidden; min-height: 60px;
+      position: relative; width: 100%;
+      height: 98px; min-height: 98px; max-height: 98px; /* 14 rows × 7px — JS enforces same value */
+      flex-shrink: 0;
+      background: #f8f8f8; border-bottom: 1px solid #ddd;
+      overflow: hidden;
     }
     .pm-roll-canvas {
-      display: block; width: 100%;
+      display: block; width: 100%; height: 98px;
     }
     .pm-roll-overlay-text {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -3108,9 +3110,14 @@ const PMKeyboard = (function(){
 
     const W = container.offsetWidth || window.innerWidth;
     const wKeyW = W / WHITE.length;
-    const wKeyH = Math.min(120, Math.max(60, window.innerHeight * 0.22));
-    const bKeyW = wKeyW * 0.6;
-    const bKeyH = wKeyH * 0.62;
+    /* Use the keyboard wrap's actual height so keys fill all available space.
+       Fallback to a reasonable estimate if offsetHeight isn't ready yet. */
+    const wrap = container.parentElement;
+    const wrapH = (wrap && wrap.offsetHeight > 40) ? wrap.offsetHeight : window.innerHeight * 0.5;
+    const safePad = 16; /* bottom padding breathing room */
+    const wKeyH = Math.min(280, Math.max(80, wrapH - safePad));
+    const bKeyW = wKeyW * 0.58;
+    const bKeyH = wKeyH * 0.60;
 
     container.style.height = wKeyH + 'px';
 
@@ -3177,38 +3184,35 @@ const PMKeyboard = (function(){
 
 /* ── Piano Roll canvas renderer ── */
 const PMRoll = (function(){
-  const ROW_H    = 14;   // px per note row
-  const BEAT_W   = 40;   // px per beat unit
-  const LANE_PAD = 2;
-  const NOTE_COLORS = {
-    white: { fill:'#555', active:'#f59e0b' },
-    black: { fill:'#444', active:'#d97706' }
-  };
-  const BLACK_NOTES = ['Cs4','Ds4','Fs4','Gs4','As4','Cs5','Ds5','Fs5','Gs5','As5'];
+  /* White keys only — all six songs and Simon mode use only white notes.
+     14 rows × 7px = 98px total. This matches the CSS fixed height exactly,
+     eliminating the circular sizing dependency entirely. */
+  const DISPLAY_NOTES = ['B5','A5','G5','F5','E5','D5','C5','B4','A4','G4','F4','E4','D4','C4'];
+  const ROW_H   = 7;    // px per note row  (14 × 7 = 98px)
+  const ROLL_H  = DISPLAY_NOTES.length * ROW_H; // 98px — single source of truth
+  const BEAT_W  = 40;   // px per beat unit at 320ms base
+  const PAD     = 1;    // px padding inside each note block
 
-  /* All display notes top→bottom */
-  const DISPLAY_NOTES = [
-    'B5','As5','A5','Gs5','G5','Fs5','F5','E5','Ds5','D5','Cs5','C5',
-    'B4','As4','A4','Gs4','G4','Fs4','F4','E4','Ds4','D4','Cs4','C4'
-  ];
   const NOTE_ROW = {};
   DISPLAY_NOTES.forEach((n,i)=>{ NOTE_ROW[n]=i; });
 
-  let canvas=null, ctx2d=null, notes=[], scrollX=0, playheadX=160;
-  let totalW=0, visibleW=0, canvasH=0;
+  /* Alternating row colors: C notes slightly tinted as octave landmarks */
+  const C_NOTES = new Set(['C4','C5']);
+
+  let canvas=null, ctx2d=null, notes=[], scrollX=0, playheadX=120;
+  let totalW=0, visibleW=0;
 
   function init(canvasEl, songNotes, baseMs){
     canvas = canvasEl;
     ctx2d  = canvas.getContext('2d');
     scrollX = 0;
-    playheadX = canvasEl.offsetWidth * 0.3;
+    playheadX = Math.min(canvasEl.offsetWidth * 0.28, 140);
 
-    /* build renderable note list with pixel positions */
     const base = baseMs || 320;
     notes = [];
     let x = playheadX;
     songNotes.forEach(([n, dur]) => {
-      const w = dur * base * BEAT_W / 320;
+      const w = Math.max(4, dur * base * BEAT_W / 320);
       notes.push({ note:n, x, w, row:NOTE_ROW[n] });
       x += w + 2;
     });
@@ -3218,60 +3222,67 @@ const PMRoll = (function(){
 
   function resize(){
     if(!canvas) return;
-    const area = canvas.parentElement;
-    canvasH = area ? area.offsetHeight : 80;
-    if(canvasH < 60) canvasH = Math.min(80, Math.floor(window.innerHeight * 0.18));
+    /* Height is determined by ROLL_H (the product of row count × row height),
+       not by reading the DOM — no circular dependency. */
     canvas.width  = canvas.offsetWidth || window.innerWidth;
-    canvas.height = canvasH;
-    canvas.style.height = canvasH + 'px';
+    canvas.height = ROLL_H;
+    canvas.style.height = ROLL_H + 'px';
+    /* Sync the container to match so CSS and JS agree */
+    const area = canvas.parentElement;
+    if(area){
+      area.style.height    = ROLL_H + 'px';
+      area.style.minHeight = ROLL_H + 'px';
+      area.style.maxHeight = ROLL_H + 'px';
+    }
     visibleW = canvas.width;
     draw();
   }
 
   function draw(){
     if(!ctx2d || !canvas) return;
-    const W = canvas.width, H = canvas.height;
+    const W = canvas.width, H = ROLL_H;
     ctx2d.clearRect(0,0,W,H);
 
-    /* background */
+    /* Background */
     ctx2d.fillStyle = '#f8f8f8';
     ctx2d.fillRect(0,0,W,H);
 
-    /* alternating note lanes (only white/black distinction) */
+    /* Row lane backgrounds — subtle tint on C rows as octave markers */
     DISPLAY_NOTES.forEach((n,i)=>{
       const y = i * ROW_H;
-      if(ROW_H > H) return;
-      ctx2d.fillStyle = BLACK_NOTES.includes(n) ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0)';
-      ctx2d.fillRect(0, y, W, ROW_H);
+      if(C_NOTES.has(n)){
+        ctx2d.fillStyle = 'rgba(0,0,0,0.055)';
+        ctx2d.fillRect(0, y, W, ROW_H);
+      }
     });
 
-    /* grid lines */
-    ctx2d.strokeStyle = 'rgba(0,0,0,0.06)';
-    ctx2d.lineWidth = 1;
-    for(let i=0;i<DISPLAY_NOTES.length;i++){
+    /* Horizontal dividers between rows */
+    ctx2d.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx2d.lineWidth = 0.5;
+    for(let i=1;i<DISPLAY_NOTES.length;i++){
       const y = i * ROW_H;
-      if(y >= H) break;
       ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(W,y); ctx2d.stroke();
     }
 
-    /* note blocks */
+    /* Note blocks */
     notes.forEach(n=>{
+      if(n.row === undefined) return; // skip any note not in our display set
       const screenX = n.x - scrollX;
       if(screenX + n.w < 0 || screenX > W) return;
-      const y = n.row * ROW_H + LANE_PAD;
-      const h = ROW_H - LANE_PAD*2;
-      const isActive = (screenX <= playheadX && screenX + n.w >= playheadX);
-      ctx2d.fillStyle = isActive ? NOTE_COLORS.white.active : '#555';
-      ctx2d.fillRect(screenX, y, Math.max(4, n.w-2), h);
+      const y    = n.row * ROW_H + PAD;
+      const h    = ROW_H - PAD * 2;
+      const past = screenX + n.w < playheadX;
+      const active = !past && screenX <= playheadX + 2;
+      ctx2d.fillStyle = active ? '#e8a000' : (past ? '#ccc' : '#555');
+      ctx2d.fillRect(Math.max(0, screenX), y, Math.max(3, n.w - 1), h);
     });
 
-    /* playhead */
+    /* Playhead line */
     ctx2d.strokeStyle = '#e53935';
-    ctx2d.lineWidth = 2;
+    ctx2d.lineWidth = 1.5;
     ctx2d.beginPath(); ctx2d.moveTo(playheadX,0); ctx2d.lineTo(playheadX,H); ctx2d.stroke();
   }
 
-  /* scrollTo: move roll so note index i is at playhead */
   function scrollToNote(idx){
     if(!notes[idx]) return;
     scrollX = notes[idx].x - playheadX;
@@ -3283,7 +3294,7 @@ const PMRoll = (function(){
     draw();
   }
 
-  return { init, resize, draw, scrollToNote, reset };
+  return { init, resize, draw, scrollToNote, reset, ROLL_H };
 }());
 
 /* ── Scores ── */
@@ -3574,87 +3585,102 @@ const PMLearn = (function(){
 
 /* ── Simon Mode ── */
 const PMSimon = (function(){
-  /* White keys only for Simon (easier to distinguish) */
-  const SIMON_NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5'];
-  const BASE_STEP_MS  = 500;
-  const STEP_NOTE_DUR = 0.38;
+  /* Fixed playback tempo — consistent regardless of song note durations */
+  const BASE_STEP_MS  = 480;  // ms between note onsets during computer playback
+  const STEP_NOTE_DUR = 0.36; // seconds each note sounds
 
-  function start(){
-    PMState.mode        = 'simon';
-    PMState.song        = null;
-    PMState.simonSeq    = [];
-    PMState.simonUserIdx= 0;
-    PMState.simonScore  = 0;
-    PMState.lives       = 3;
+  function start(song){
+    PMState.mode         = 'simon';
+    PMState.song         = song;
+    PMState.simonSeq     = [];   // grows note-by-note through the song
+    PMState.simonUserIdx = 0;
+    PMState.simonScore   = 0;
+    PMState.lives        = 3;
     PMState.quitRequested = false;
 
     showScreen('pm-round');
     pm_checkOrientation();
 
-    /* set phase badge */
+    /* Phase badge + song name */
     const badge = document.getElementById('pm-phase-badge');
     if(badge){ badge.className='pm-phase-badge simon'; badge.textContent='Simon'; }
-    document.getElementById('pm-song-name-hud') && (document.getElementById('pm-song-name-hud').textContent='Simon Mode');
-    document.getElementById('pm-roll-text') && (document.getElementById('pm-roll-text').textContent='Watch the keys…');
+    const hudName = document.getElementById('pm-song-name-hud');
+    if(hudName) hudName.textContent = song.name;
 
-    /* hide roll canvas, show text hint */
-    const rollArea = document.getElementById('pm-roll-area');
-    const cvs      = document.getElementById('pm-roll-canvas');
-    if(cvs) cvs.style.display='none';
+    /* Show roll — it displays the song so the player can learn it visually */
+    const cvs = document.getElementById('pm-roll-canvas');
+    if(cvs) cvs.style.display='';
+    PMRoll.init(cvs, song.notes, 320);
 
     _buildKeyboard();
     _updateLives();
-    _updateProgressLabel();
+    _updateProgress();
     _nextRound();
   }
 
   function _buildKeyboard(){
     const kb = document.getElementById('pm-keyboard');
-    if(!kb) return;
-    PMKeyboard.build(kb, _onPress, null);
+    if(kb) PMKeyboard.build(kb, _onPress, null);
   }
 
   function _updateLives(){
-    const el=document.getElementById('pm-lives');
-    if(el) el.textContent='♥'.repeat(PMState.lives);
+    const el = document.getElementById('pm-lives');
+    if(el) el.textContent = '♥'.repeat(PMState.lives);
   }
 
-  function _updateProgressLabel(){
-    const el=document.getElementById('pm-progress-label');
-    if(el) el.textContent = PMState.simonSeq.length ? 'Round ' + PMState.simonSeq.length : '';
+  function _updateProgress(){
+    const el = document.getElementById('pm-progress-label');
+    if(!el) return;
+    const total = PMState.song.notes.length;
+    const done  = PMState.simonSeq.length;
+    el.textContent = done ? `${done} / ${total}` : '';
   }
 
   function _nextRound(){
     pm_clearTimers();
-    /* add one random note */
-    const pick = SIMON_NOTES[Math.floor(Math.random()*SIMON_NOTES.length)];
-    PMState.simonSeq.push(pick);
+
+    /* Pull the next note from the actual song */
+    const nextIdx = PMState.simonSeq.length;
+    if(nextIdx >= PMState.song.notes.length){
+      /* Whole song completed — player wins! */
+      PMState.playbackTimers.push(setTimeout(()=>_finish(true), 500));
+      return;
+    }
+
+    const [nextNote] = PMState.song.notes[nextIdx];
+    PMState.simonSeq.push(nextNote);
     PMState.simonUserIdx = 0;
-    _updateProgressLabel();
+    _updateProgress();
 
-    const rollText=document.getElementById('pm-roll-text');
-    if(rollText) rollText.textContent='Watch…';
+    const rollText = document.getElementById('pm-roll-text');
+    if(rollText) rollText.textContent = 'Watch…';
 
-    /* disable input during playback */
-    PMState.phase='simon-playing';
+    /* Lock input during computer playback */
+    PMState.phase = 'simon-playing';
+    _playSequence(PMState.simonSeq, ()=>{
+      if(PMState.quitRequested) return;
+      PMState.phase = 'simon';
+      PMKeyboard.clearAll('highlight');
+      PMRoll.scrollToNote(0); /* reset roll to start so player can follow along */
+      if(rollText) rollText.textContent = 'Your turn!';
+    });
+  }
 
-    let delay=600;
-    PMState.simonSeq.forEach((note,i)=>{
+  /* Play an array of note names at a fixed tempo, then call done() */
+  function _playSequence(seq, done, startDelay){
+    PMState.phase = 'simon-playing';
+    let delay = startDelay !== undefined ? startDelay : 500;
+    seq.forEach((note, i)=>{
       PMState.playbackTimers.push(setTimeout(()=>{
         if(PMState.quitRequested) return;
+        PMRoll.scrollToNote(i);
         PMKeyboard.setClass(note,'highlight',true);
         PMAudio.playNote(note, STEP_NOTE_DUR, 0.5);
-        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), STEP_NOTE_DUR*1000*0.85));
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), STEP_NOTE_DUR*900));
       }, delay));
-      delay += BASE_STEP_MS + 80;
+      delay += BASE_STEP_MS;
     });
-
-    PMState.playbackTimers.push(setTimeout(()=>{
-      if(PMState.quitRequested) return;
-      PMState.phase='simon';
-      if(rollText) rollText.textContent='Your turn!';
-      PMKeyboard.clearAll('highlight');
-    }, delay + 200));
+    PMState.playbackTimers.push(setTimeout(done, delay + 150));
   }
 
   function _onPress(note){
@@ -3667,16 +3693,22 @@ const PMSimon = (function(){
       PMKeyboard.flash(note,'wrong',400);
       PMState.lives--;
       _updateLives();
-      if(PMState.lives<=0){
+      if(PMState.lives <= 0){
         pm_clearTimers();
-        PMState.playbackTimers.push(setTimeout(()=>_finish(), 700));
+        PMState.playbackTimers.push(setTimeout(()=>_finish(false), 700));
       } else {
-        /* replay sequence */
+        /* Wrong note — replay the current sequence so they can try again */
         PMState.playbackTimers.push(setTimeout(()=>{
-          PMState.simonUserIdx=0;
-          const rt=document.getElementById('pm-roll-text');
-          if(rt) rt.textContent='Try again…';
-          _replaySeq(()=>{ PMState.phase='simon'; if(rt) rt.textContent='Your turn!'; });
+          PMState.simonUserIdx = 0;
+          const rt = document.getElementById('pm-roll-text');
+          if(rt) rt.textContent = 'Watch again…';
+          _playSequence(PMState.simonSeq, ()=>{
+            if(PMState.quitRequested) return;
+            PMState.phase = 'simon';
+            PMKeyboard.clearAll('highlight');
+            PMRoll.scrollToNote(0);
+            if(rt) rt.textContent = 'Your turn!';
+          }, 300);
         }, 500));
       }
       return;
@@ -3684,59 +3716,44 @@ const PMSimon = (function(){
 
     PMKeyboard.flash(note,'correct',180);
     PMState.simonUserIdx++;
+
     if(PMState.simonUserIdx >= PMState.simonSeq.length){
-      /* completed round */
+      /* Completed this round — advance to next note in the song */
       PMState.simonScore = PMState.simonSeq.length;
-      PMState.playbackTimers.push(setTimeout(_nextRound, 700));
+      PMState.playbackTimers.push(setTimeout(_nextRound, 800));
     }
   }
 
-  function _replaySeq(done){
-    pm_clearTimers();
-    PMState.phase='simon-playing';
-    let delay=400;
-    PMState.simonSeq.forEach(note=>{
-      PMState.playbackTimers.push(setTimeout(()=>{
-        if(PMState.quitRequested) return;
-        PMKeyboard.setClass(note,'highlight',true);
-        PMAudio.playNote(note, STEP_NOTE_DUR, 0.5);
-        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), STEP_NOTE_DUR*1000*0.85));
-      }, delay));
-      delay += BASE_STEP_MS;
-    });
-    PMState.playbackTimers.push(setTimeout(done, delay+200));
-  }
-
-  function _finish(){
+  function _finish(won){
     if(PMState.quitRequested) return;
     PMKeyboard.clearAll('highlight');
-    const score = PMState.simonSeq.length;
-    const el    = document.getElementById('pm-finish-title');
-    const sub   = document.getElementById('pm-finish-sub');
+    const score     = PMState.simonSeq.length;
+    const total     = PMState.song.notes.length;
+    const pct       = Math.round(score / total * 100);
+    const el        = document.getElementById('pm-finish-title');
+    const sub       = document.getElementById('pm-finish-sub');
     const statsBody = document.getElementById('pm-finish-stats-body');
-    const again = document.getElementById('pm-finish-play-again');
-    const ns    = document.getElementById('pm-name-section');
+    const again     = document.getElementById('pm-finish-play-again');
+    const ns        = document.getElementById('pm-name-section');
 
-    if(el) el.textContent='🎹';
-    if(sub) sub.textContent=`You reached round ${score}!`;
-    if(again) again.textContent='Play Again';
-    if(statsBody) statsBody.innerHTML=`
-      <tr><td>Rounds completed</td><td>${score}</td></tr>
+    if(el) el.textContent = won ? '🎉' : '🎹';
+    if(sub) sub.textContent = won
+      ? `You memorised all of ${PMState.song.name}!`
+      : `You got ${score} of ${total} notes (${pct}%).`;
+    if(again) again.textContent = 'Play Again';
+    if(statsBody) statsBody.innerHTML = `
+      <tr><td>Song</td><td>${PMState.song.name}</td></tr>
+      <tr><td>Notes reached</td><td>${score} / ${total}</td></tr>
+      <tr><td>Lives remaining</td><td>${PMState.lives}</td></tr>
       <tr><td>Mode</td><td>Simon Mode</td></tr>`;
 
     PMScores.setPending(score);
-    if(ns){
-      if(PMScores.qualifies(score)){
-        ns.style.display='';
-      } else {
-        ns.style.display='none';
-      }
-    }
+    if(ns) ns.style.display = PMScores.qualifies(score) ? '' : 'none';
     showScreen('pm-finish');
   }
 
   function playAgain(){
-    start();
+    start(PMState.song);
   }
 
   return { start, playAgain };
@@ -3746,6 +3763,9 @@ const PMSimon = (function(){
 const PMUI = {
   goSongs(mode){
     PMState.pendingModeAfterOverlay = mode;
+    /* Update heading to distinguish Learning vs Simon song selection */
+    const heading = document.querySelector('#screen-pm-songs .screen-heading');
+    if(heading) heading.textContent = mode === 'simon' ? 'Simon Mode \u2014 Choose a Song' : 'Choose a Song';
     const list = document.getElementById('pm-song-list');
     if(list){
       list.innerHTML = PM_SONGS.map((s,i)=>`
@@ -3762,18 +3782,15 @@ const PMUI = {
   startSong(idx){
     const song = PM_SONGS[idx];
     if(!song) return;
-    /* show piano roll canvas */
-    const cvs = document.getElementById('pm-roll-canvas');
-    if(cvs) cvs.style.display='';
-    /* update title in hud */
-    const hud = document.getElementById('pm-song-name-hud');
-    if(hud) hud.textContent = song.name;
-    PMLearn.start(song);
+    if(PMState.pendingModeAfterOverlay === 'simon'){
+      PMSimon.start(song);
+    } else {
+      PMLearn.start(song);
+    }
   },
   startSimon(){
-    const cvs = document.getElementById('pm-roll-canvas');
-    if(cvs) cvs.style.display='none';
-    PMSimon.start();
+    /* Route through song picker — Simon is now always song-based */
+    PMUI.goSongs('simon');
   },
   dismissPhaseOverlay(){
     PMLearn.dismissOverlay();

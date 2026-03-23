@@ -449,6 +449,14 @@
     }
     .gm-prob-check.visible { opacity: 1; }
 
+    /* ─── KARATE FIGHT arena ──────────────────────────────────────── */
+    .kf-arena {
+      display: block; width: 100%; height: 150px;
+      flex-shrink: 0;
+      image-rendering: pixelated; image-rendering: crisp-edges;
+      border-bottom: 2px solid #000;
+    }
+
     /* ─────────────────────────────────────────────────────────────────
        MUSIC MEMORY — CSS
     ───────────────────────────────────────────────────────────────── */
@@ -1335,6 +1343,7 @@
     </div>
     <div class="gm-hud-timer" id="gm-hud-timer">0:00.0</div>
   </div>
+  <canvas id="kf-arena" class="kf-arena"></canvas>
   <div class="gm-scroll-window" id="gm-scroll-window">
     <div class="gm-scroll-inner" id="gm-scroll-inner"></div>
   </div>
@@ -2393,6 +2402,229 @@ const GMAudio = (() => {
   return { unlock, correct, wrong, complete, pb };
 })();
 
+/* ══════════════════════════════════════════════════════════════
+   KARATE FIGHT — NES-style mini-game for Greg's Math Game
+   ══════════════════════════════════════════════════════════════ */
+const KarateFight = (function(){
+  'use strict';
+
+  /* ── Config ──────────────────────────────────────────────────── */
+  const SCALE      = 3;           // canvas units → px
+  const MAX_HP     = 10;
+  const ATTACK_DUR = 380;         // ms attack pose is held
+  const HIT_DUR    = 460;         // ms hit/stagger pose is held
+
+  /* ── Palettes ────────────────────────────────────────────────── */
+  const PC  = { hair:'#111122', skin:'#e8b88a', gi:'#f4f4f0', belt:'#111111', shoe:'#333333' };
+  const EC  = { hair:'#bb1e00', skin:'#e8b88a', gi:'#111a2e', belt:'#cc0000', shoe:'#111111' };
+  const HP_HI = '#22cc22', HP_MID = '#cccc22', HP_LO = '#cc2222', HP_OFF = '#2a2a2a';
+
+  /* ── Poses ───────────────────────────────────────────────────────
+     Each entry: [dx, dy, w, h, colorKey]
+     dx = units right of center  (enemy is drawn mirror-flipped)
+     dy = units above ground (bottom edge of rect)
+     Positive x → right when facing right                          */
+  const POSES = {
+    idle: [
+      [-4, 0, 3, 2,'shoe'], [ 2, 0, 3, 2,'shoe'],   // shoes
+      [-4, 2, 2, 5,'gi'],   [ 2, 2, 2, 5,'gi'],     // shins
+      [-4, 7, 9, 2,'belt'],                           // belt
+      [-4, 9, 9, 6,'gi'],                             // torso
+      [-6, 9, 2, 5,'gi'],   [ 5, 9, 2, 5,'gi'],     // arms
+      [-1,15, 3, 1,'skin'],                           // neck
+      [-2,16, 6, 5,'skin'],                           // head
+      [-2,21, 6, 3,'hair'],                           // hair
+    ],
+    punch: [
+      [-4, 0, 3, 2,'shoe'], [ 2, 0, 3, 2,'shoe'],
+      [-4, 2, 2, 5,'gi'],   [ 2, 2, 2, 5,'gi'],
+      [-3, 7, 9, 2,'belt'],
+      [-3, 9, 9, 6,'gi'],
+      [-7,11, 2, 4,'gi'],                             // left arm pulled back
+      [ 5,12, 8, 2,'gi'],   [13,11, 3, 3,'skin'],    // right arm extended + fist
+      [ 0,15, 3, 1,'skin'],
+      [-1,16, 6, 5,'skin'],
+      [-1,21, 6, 3,'hair'],
+    ],
+    kick: [
+      [-4, 0, 3, 2,'shoe'],                           // plant foot
+      [-4, 2, 2, 7,'gi'],                             // plant leg
+      [-5, 9,10, 2,'belt'],
+      [-4,11, 9, 5,'gi'],
+      [-7,12, 2, 4,'gi'],   [ 5,12, 2, 4,'gi'],      // arms spread for balance
+      [-1,16, 3, 1,'skin'],
+      [-2,17, 6, 5,'skin'],
+      [-2,22, 6, 3,'hair'],
+      [ 0, 5, 5, 3,'gi'],                             // kicking thigh
+      [ 5, 3, 3, 4,'gi'],                             // shin
+      [ 8, 2, 4, 2,'shoe'],                           // kicking foot
+    ],
+    hit: [
+      [-5, 0, 3, 2,'shoe'], [ 1, 0, 3, 2,'shoe'],    // staggering back
+      [-5, 2, 2, 5,'gi'],   [ 1, 2, 2, 5,'gi'],
+      [-5, 7, 9, 2,'belt'],
+      [-5, 9, 9, 6,'gi'],
+      [-8,11, 2, 5,'gi'],   [ 5, 8, 2, 5,'gi'],      // arms flailing
+      [-3,15, 3, 1,'skin'],
+      [-5,16, 6, 5,'skin'],                           // head thrown back
+      [-5,21, 6, 3,'hair'],
+    ],
+    ko: [
+      // lying flat, head left (faces right when upright)
+      [ 5, 0, 4, 3,'shoe'],
+      [ 1, 0, 4, 3,'gi'],
+      [-2, 0, 4, 3,'belt'],
+      [-6, 0, 5, 4,'gi'],
+      [-6, 3, 4, 2,'gi'],                             // arm
+      [-11,0, 5, 5,'skin'],                           // head
+      [-11,4, 5, 2,'hair'], [-13,3, 7, 2,'hair'],
+    ],
+  };
+
+  /* ── State ───────────────────────────────────────────────────── */
+  let canvas = null, ctx = null, groundY = 0;
+  let playerHP = MAX_HP, enemyHP = MAX_HP;
+  let playerPose = 'idle', enemyPose = 'idle';
+  let pTimer = null, eTimer = null;
+  let attackCount = 0, initialized = false;
+
+  /* ── Drawing ─────────────────────────────────────────────────── */
+  function drawFighter(cx, pose, colors, mirror) {
+    const parts = POSES[pose];
+    if(!parts || !ctx) return;
+    for(const [dx, dy, w, h, ck] of parts) {
+      ctx.fillStyle = colors[ck] || '#f0f';
+      const fdx = mirror ? (-dx - w) : dx;
+      ctx.fillRect(
+        Math.round(cx + fdx * SCALE),
+        Math.round(groundY - (dy + h) * SCALE),
+        w * SCALE, h * SCALE
+      );
+    }
+  }
+
+  function drawHPPips(x, y, hp, rtl) {
+    const PW = 8, PH = 7, GAP = 2, step = PW + GAP;
+    const col = hp > 5 ? HP_HI : hp > 2 ? HP_MID : HP_LO;
+    for(let i = 0; i < MAX_HP; i++) {
+      const idx   = rtl ? (MAX_HP - 1 - i) : i;
+      const pipX  = x + idx * step;
+      const alive = rtl ? i < hp : i < hp;
+      ctx.fillStyle = alive ? col : HP_OFF;
+      ctx.fillRect(Math.round(pipX), y, PW, PH);
+    }
+  }
+
+  function draw() {
+    if(!ctx || !canvas) return;
+    const W = canvas.width, H = canvas.height;
+    groundY = H - 28;
+    const px = Math.round(W * 0.28);
+    const ex = Math.round(W * 0.72);
+
+    /* Background */
+    const bg = ctx.createLinearGradient(0, 0, 0, groundY);
+    bg.addColorStop(0, '#0d0820'); bg.addColorStop(1, '#1b0f3a');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    /* Ground */
+    ctx.fillStyle = '#3d2010'; ctx.fillRect(0, groundY, W, H - groundY);
+    ctx.fillStyle = '#6b3a1e'; ctx.fillRect(0, groundY, W, 3);
+
+    /* HP pips */
+    const PIP_TOTAL = MAX_HP * 10 - 2; // 10×(8+2)-2 = 98px wide
+    drawHPPips(6,           4, playerHP, false);
+    drawHPPips(W - 6 - PIP_TOTAL, 4, enemyHP, true);
+
+    /* Labels */
+    ctx.fillStyle = '#aaaaaa'; ctx.font = 'bold 8px monospace';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';  ctx.fillText('YOU',   6, 14);
+    ctx.textAlign = 'right'; ctx.fillText('ENEMY', W - 6, 14);
+
+    /* Characters */
+    drawFighter(px, playerPose, PC, false);
+    drawFighter(ex, enemyPose, EC, true);
+
+    /* KO banner */
+    if(playerHP <= 0 || enemyHP <= 0) {
+      const msg = enemyHP <= 0 ? 'K.O.!' : 'K.O.!';
+      const msgCol = enemyHP <= 0 ? '#ffcc00' : '#ff4444';
+      const sub = enemyHP <= 0 ? 'ENEMY DOWN!' : 'PLAYER DOWN!';
+      ctx.fillStyle = msgCol;
+      ctx.font = 'bold 22px monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(msg, W / 2, groundY * 0.45);
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px monospace';
+      ctx.fillText(sub, W / 2, groundY * 0.45 + 17);
+    }
+  }
+
+  /* ── Resize / Init ───────────────────────────────────────────── */
+  function onResize() {
+    if(!canvas) return;
+    canvas.width  = canvas.offsetWidth  || 320;
+    canvas.height = canvas.offsetHeight || 150;
+    draw();
+  }
+
+  function init() {
+    if(initialized && canvas) { draw(); return; }
+    canvas = document.getElementById('kf-arena');
+    if(!canvas) return;
+    ctx = canvas.getContext('2d');
+    initialized = true;
+    onResize();
+    if(window.ResizeObserver) {
+      new ResizeObserver(onResize).observe(canvas);
+    } else {
+      window.addEventListener('resize', onResize);
+    }
+  }
+
+  /* ── Public API ──────────────────────────────────────────────── */
+  function playerAttack() {
+    if(!initialized) init();
+    if(enemyHP <= 0 || playerHP <= 0) return;
+    attackCount++;
+    const atk = attackCount % 2 === 1 ? 'punch' : 'kick';
+    clearTimeout(pTimer);
+    playerPose = atk;
+    pTimer = setTimeout(() => { playerPose = 'idle'; draw(); }, ATTACK_DUR);
+    enemyHP = Math.max(0, enemyHP - 1);
+    clearTimeout(eTimer);
+    if(enemyHP <= 0) { enemyPose = 'ko'; }
+    else { enemyPose = 'hit'; eTimer = setTimeout(() => { enemyPose = 'idle'; draw(); }, HIT_DUR); }
+    draw();
+  }
+
+  function enemyAttack() {
+    if(!initialized) init();
+    if(playerHP <= 0 || enemyHP <= 0) return;
+    attackCount++;
+    const atk = attackCount % 2 === 1 ? 'punch' : 'kick';
+    clearTimeout(eTimer);
+    enemyPose = atk;
+    eTimer = setTimeout(() => { enemyPose = 'idle'; draw(); }, ATTACK_DUR);
+    playerHP = Math.max(0, playerHP - 1);
+    clearTimeout(pTimer);
+    if(playerHP <= 0) { playerPose = 'ko'; }
+    else { playerPose = 'hit'; pTimer = setTimeout(() => { playerPose = 'idle'; draw(); }, HIT_DUR); }
+    draw();
+  }
+
+  function reset() {
+    if(!initialized) init();
+    clearTimeout(pTimer); clearTimeout(eTimer);
+    playerHP = MAX_HP; enemyHP = MAX_HP;
+    playerPose = 'idle'; enemyPose = 'idle';
+    attackCount = 0;
+    draw();
+  }
+
+  return { init, playerAttack, enemyAttack, reset };
+}());
+
 /* ── Problem generation ── */
 // Game:     easy=10+10, medium=7+7+6, hard=5+5+5+5
 // Practice: add/sub/mul/div = 10 of one op; all = 3+3+2+2
@@ -2503,8 +2735,10 @@ function gm_renderAllRows() {
   inner.innerHTML = '';
   inner.style.transition = 'none';
 
-  // Row height: scale with viewport, clamped
-  const rowH = Math.max(54, Math.min(78, Math.round(window.innerHeight * 0.105)));
+  // Row height: scale with viewport minus arena, clamped
+  const arenaEl = document.getElementById('kf-arena');
+  const arenaH  = arenaEl ? (arenaEl.offsetHeight || 150) : 0;
+  const rowH = Math.max(46, Math.min(72, Math.round((window.innerHeight - arenaH) * 0.105)));
   win.style.height  = (rowH * 3) + 'px';
   win.dataset.rowH  = rowH;
   // Start with row 0 in the middle slot (one row down from the top)
@@ -2552,6 +2786,7 @@ function gm_updateAnswerDisplay(flashWrong) {
   const ansEl = document.getElementById('gm-ans-' + i);
   if(!ansEl) return;
   if(flashWrong){
+    KarateFight.enemyAttack();
     ansEl.textContent = GMState.input;
     ansEl.classList.add('gm-wrong');
     gm_addPhase(setTimeout(() => {
@@ -2568,6 +2803,7 @@ function gm_updateAnswerDisplay(flashWrong) {
 
 /* ── Correct-answer handler: green answer + checkmark, then slide up ── */
 function gm_onCorrect() {
+  KarateFight.playerAttack();
   GMAudio.correct();
   GMState.wrongFlash = true;
   const i     = GMState.current;
@@ -2658,6 +2894,7 @@ function gm_startCountdown(callback) {
 }
 
 function gm_startRound() {
+  KarateFight.reset();
   GMState.current = 0;
   GMState.input = '';
   GMState.wrongFlash = false;

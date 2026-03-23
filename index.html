@@ -596,9 +596,12 @@
       box-shadow: inset 0 -2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.15) !important;
     }
     .pm-wkey-label {
-      font-size: clamp(7px, 1.4vw, 10px); color: #999;
+      font-size: clamp(6px, 1.3vw, 9px); color: #bbb;
       font-family: Arial, Helvetica, sans-serif; font-weight: bold;
       pointer-events: none; line-height: 1; letter-spacing: 0;
+    }
+    .pm-wkey-label-c {
+      color: #888; /* C notes slightly darker — octave boundary markers */
     }
 
     /* Black keys */
@@ -1461,7 +1464,7 @@ const Audio = (() => {
     } catch(e) {}
   }
 
-  return { countdownBeat, correct, wrong, flip, match, mismatch, roundComplete, unlock };
+  return { countdownBeat, correct, wrong, flip, match, mismatch, roundComplete, unlock, getCtx };
 })();
 
 /* ════════════════════════════════════════════════════════════════════
@@ -3028,58 +3031,55 @@ const PM_SONGS = [
   }
 ];
 
-/* ── Piano synth (Web Audio) ── */
+/* ── Piano synth (Web Audio) ──
+   IMPORTANT: reuses the shared Audio.getCtx() so there is only ever ONE
+   AudioContext on the page. iOS Safari suspends or invalidates a previous
+   AudioContext when a second one is created, which silently kills all sound
+   in every other game. Never create a second AudioContext. */
 const PMAudio = (function(){
-  let ctx = null;
-  function getCtx(){
-    if(!ctx){
-      try {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch(e){ ctx = null; }
-    }
-    return ctx;
-  }
   function resume(){
-    const c = getCtx();
-    if(c && c.state === 'suspended') c.resume();
+    /* Delegate to the shared context — Audio.getCtx() already calls ctx.resume() */
+    try { Audio.getCtx(); } catch(e){}
   }
-  /* Simple piano-like tone: triangle + slight attack/decay envelope */
+  /* Simple piano-like tone: triangle + 2nd harmonic sine for richness */
   function playNote(noteName, duration, volume){
-    const c = getCtx();
-    if(!c) return;
-    const freq = PM_FREQ[noteName];
-    if(!freq) return;
-    const vol = (volume === undefined ? 0.45 : volume);
-    const now = c.currentTime;
-    const att = 0.008, dec = 0.08, sus = 0.55, rel = 0.22;
-    const totalTime = (duration || 0.35);
+    try {
+      const c = Audio.getCtx(); /* shared context — already resumed by getCtx() */
+      if(!c) return;
+      const freq = PM_FREQ[noteName];
+      if(!freq) return;
+      const vol = (volume === undefined ? 0.45 : volume);
+      const now = c.currentTime;
+      const att = 0.008, dec = 0.08, sus = 0.55, rel = 0.22;
+      const totalTime = Math.max(duration || 0.35, att + dec + rel + 0.01);
 
-    const osc  = c.createOscillator();
-    const gain = c.createGain();
-    const osc2 = c.createOscillator(); // 2nd harmonic for richness
-    const gain2= c.createGain();
+      const osc  = c.createOscillator();
+      const gain = c.createGain();
+      const osc2 = c.createOscillator();
+      const gain2= c.createGain();
 
-    osc.type  = 'triangle';
-    osc.frequency.value = freq;
-    osc2.type = 'sine';
-    osc2.frequency.value = freq * 2;
+      osc.type  = 'triangle';
+      osc.frequency.value = freq;
+      osc2.type = 'sine';
+      osc2.frequency.value = freq * 2;
 
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(vol, now + att);
-    gain.gain.linearRampToValueAtTime(vol * sus, now + att + dec);
-    gain.gain.setValueAtTime(vol * sus, now + totalTime - rel);
-    gain.gain.linearRampToValueAtTime(0, now + totalTime);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(vol, now + att);
+      gain.gain.linearRampToValueAtTime(vol * sus, now + att + dec);
+      gain.gain.setValueAtTime(vol * sus, now + totalTime - rel);
+      gain.gain.linearRampToValueAtTime(0, now + totalTime);
 
-    gain2.gain.setValueAtTime(0, now);
-    gain2.gain.linearRampToValueAtTime(vol * 0.12, now + att);
-    gain2.gain.linearRampToValueAtTime(vol * 0.06, now + att + dec);
-    gain2.gain.setValueAtTime(vol * 0.06, now + totalTime - rel);
-    gain2.gain.linearRampToValueAtTime(0, now + totalTime);
+      gain2.gain.setValueAtTime(0, now);
+      gain2.gain.linearRampToValueAtTime(vol * 0.12, now + att);
+      gain2.gain.linearRampToValueAtTime(vol * 0.06, now + att + dec);
+      gain2.gain.setValueAtTime(vol * 0.06, now + totalTime - rel);
+      gain2.gain.linearRampToValueAtTime(0, now + totalTime);
 
-    osc.connect(gain);    gain.connect(c.destination);
-    osc2.connect(gain2);  gain2.connect(c.destination);
-    osc.start(now);   osc.stop(now + totalTime);
-    osc2.start(now);  osc2.stop(now + totalTime);
+      osc.connect(gain);    gain.connect(c.destination);
+      osc2.connect(gain2);  gain2.connect(c.destination);
+      osc.start(now);   osc.stop(now + totalTime);
+      osc2.start(now);  osc2.stop(now + totalTime);
+    } catch(e){}
   }
   return { playNote, resume };
 }());
@@ -3092,11 +3092,13 @@ const PMKeyboard = (function(){
     'C4':'Cs4','D4':'Ds4','F4':'Fs4','G4':'Gs4','A4':'As4',
     'C5':'Cs5','D5':'Ds5','F5':'Fs5','G5':'Gs5','A5':'As5'
   };
-  /* Only label the C notes (octave markers) for a clean minimal look */
+  /* All white keys labeled; C notes include octave number as a visual anchor */
   const WHITE_LABEL = {
-    'C4':'C4','D4':'','E4':'','F4':'','G4':'','A4':'','B4':'',
-    'C5':'C5','D5':'','E5':'','F5':'','G5':'','A5':'','B5':''
+    'C4':'C4','D4':'D','E4':'E','F4':'F','G4':'G','A4':'A','B4':'B',
+    'C5':'C5','D5':'D','E5':'E','F5':'F','G5':'G','A5':'A','B5':'B'
   };
+  /* C keys get a slightly darker label to mark octave boundaries */
+  const C_KEYS = new Set(['C4','C5']);
 
   let keyEls = {}; // noteName → element
 
@@ -3118,7 +3120,7 @@ const PMKeyboard = (function(){
       el.dataset.note = note;
       el.style.cssText = `left:${i*wKeyW}px;width:${wKeyW}px;height:${wKeyH}px;`;
       const lbl = document.createElement('span');
-      lbl.className = 'pm-wkey-label';
+      lbl.className = 'pm-wkey-label' + (C_KEYS.has(note) ? ' pm-wkey-label-c' : '');
       lbl.textContent = WHITE_LABEL[note] || '';
       el.appendChild(lbl);
       container.appendChild(el);

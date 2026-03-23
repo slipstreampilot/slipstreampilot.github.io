@@ -449,6 +449,241 @@
     }
     .gm-prob-check.visible { opacity: 1; }
 
+    /* ─────────────────────────────────────────────────────────────────
+       MUSIC MEMORY — CSS
+    ───────────────────────────────────────────────────────────────── */
+
+    /* Portrait orientation overlay */
+    .pm-portrait-overlay {
+      display: none;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+      background: #fff; z-index: 9999;
+      flex-direction: column; align-items: center; justify-content: center;
+      font-family: Georgia, 'Times New Roman', serif;
+      text-align: center; padding: 40px;
+    }
+    .pm-portrait-overlay.visible { display: flex; }
+    .pm-portrait-icon { font-size: 56px; margin-bottom: 20px; animation: pm-rotate 2s ease-in-out infinite; }
+    @keyframes pm-rotate {
+      0%,100% { transform: rotate(0deg); }
+      40%,60% { transform: rotate(90deg); }
+    }
+    .pm-portrait-text { font-size: 16px; color: #555; line-height: 1.6; }
+
+    /* Music Memory — generic screen padding override for landscape */
+    #screen-pm-round {
+      padding: 0;
+      justify-content: flex-start;
+      overflow: hidden;
+    }
+
+    /* HUD bar */
+    .pm-hud {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 6px 16px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff; flex-shrink: 0;
+      font-size: 13px; font-family: Arial, Helvetica, sans-serif;
+    }
+    .pm-hud-left   { display: flex; align-items: center; }
+    .pm-hud-center { font-weight: bold; font-size: 14px; letter-spacing: 0.03em; }
+    .pm-hud-right  { display: flex; align-items: center; }
+    .pm-lives { font-size: 16px; letter-spacing: 2px; }
+    .pm-phase-badge {
+      display: inline-block; padding: 2px 10px;
+      border: 1px solid #000; border-radius: 20px;
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      margin-right: 10px;
+    }
+    .pm-phase-badge.listen  { background: #e8f5e9; border-color: #4CAF50; color: #2e7d32; }
+    .pm-phase-badge.follow  { background: #fff3e0; border-color: #FF9800; color: #e65100; }
+    .pm-phase-badge.perform { background: #fce4ec; border-color: #E91E63; color: #880e4f; }
+    .pm-phase-badge.simon   { background: #e3f2fd; border-color: #2196F3; color: #0d47a1; }
+    .pm-hud-back {
+      background: none; border: none; cursor: pointer;
+      font-size: 18px; padding: 0 8px 0 0; color: #666;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    /* Piano roll */
+    .pm-roll-area {
+      position: relative; width: 100%; flex-shrink: 0;
+      background: #fafafa; border-bottom: 1px solid #ddd;
+      overflow: hidden; min-height: 60px;
+    }
+    .pm-roll-canvas {
+      display: block; width: 100%;
+    }
+    .pm-roll-overlay-text {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      font-size: 13px; color: #bbb; font-style: italic; pointer-events: none;
+      font-family: Georgia, 'Times New Roman', serif;
+      white-space: nowrap;
+    }
+
+    /* Phase overlay (Listen/Follow/Perform phase intro) */
+    .pm-phase-overlay {
+      display: none; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+      background: rgba(255,255,255,0.92); z-index: 20;
+      flex-direction: column; align-items: center; justify-content: center;
+    }
+    .pm-phase-overlay.active { display: flex; }
+    .pm-phase-title {
+      font-size: clamp(24px, 5vw, 40px); font-weight: normal;
+      letter-spacing: 0.04em; margin-bottom: 8px;
+    }
+    .pm-phase-desc {
+      font-size: clamp(11px, 2.5vw, 14px); color: #666; max-width: 320px;
+      text-align: center; line-height: 1.5;
+    }
+    .pm-phase-overlay-btn {
+      margin-top: 20px; padding: 10px 28px; border: 1.5px solid #000;
+      background: #fff; font-family: Georgia, 'Times New Roman', serif;
+      font-size: 14px; cursor: pointer; letter-spacing: 0.05em;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+    }
+    .pm-phase-overlay-btn:hover  { background: #f5f5f5; }
+    .pm-phase-overlay-btn:active { background: #e8e8e8; }
+
+    /* Piano keyboard wrapper */
+    .pm-keyboard-wrap {
+      flex: 1; display: flex; flex-direction: column;
+      justify-content: flex-end; width: 100%;
+      position: relative; overflow: hidden;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      background: #f0f0f0;
+      border-top: 3px solid #222;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.18);
+    }
+    .pm-keyboard {
+      position: relative; width: 100%;
+      -webkit-user-select: none; user-select: none;
+    }
+
+    /* White keys */
+    .pm-wkey {
+      position: absolute; bottom: 0;
+      background: linear-gradient(to bottom, #f8f8f8 0%, #ffffff 40%, #f4f4f4 100%);
+      /* side borders only — no top/bottom outline, gives a clean divided look */
+      border-left: 1px solid #c8c8c8;
+      border-right: 1px solid #c8c8c8;
+      border-bottom: 1px solid #b0b0b0;
+      border-top: none;
+      border-radius: 0 0 5px 5px;
+      box-shadow: inset -1px 0 0 rgba(255,255,255,0.8),
+                  0 4px 6px rgba(0,0,0,0.22),
+                  inset 0 -3px 4px rgba(0,0,0,0.06);
+      cursor: pointer; touch-action: manipulation;
+      display: flex; align-items: flex-end; justify-content: center;
+      padding-bottom: 5px;
+      transition: background 0.05s, box-shadow 0.05s;
+      box-sizing: border-box;
+    }
+    .pm-wkey:active, .pm-wkey.active {
+      background: linear-gradient(to bottom, #ddd 0%, #e8e8e8 100%);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .pm-wkey.highlight {
+      background: linear-gradient(to bottom, #ffd54f, #ffe082) !important;
+      box-shadow: inset 0 -2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.15) !important;
+    }
+    .pm-wkey.correct {
+      background: linear-gradient(to bottom, #81c784, #a5d6a7) !important;
+      box-shadow: inset 0 -2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.15) !important;
+    }
+    .pm-wkey.wrong {
+      background: linear-gradient(to bottom, #e57373, #ef9a9a) !important;
+      box-shadow: inset 0 -2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.15) !important;
+    }
+    .pm-wkey-label {
+      font-size: clamp(7px, 1.4vw, 10px); color: #999;
+      font-family: Arial, Helvetica, sans-serif; font-weight: bold;
+      pointer-events: none; line-height: 1; letter-spacing: 0;
+    }
+
+    /* Black keys */
+    .pm-bkey {
+      position: absolute;
+      background: linear-gradient(160deg, #3a3a3a 0%, #1a1a1a 30%, #111 70%, #0a0a0a 100%);
+      border-left: 1px solid #000;
+      border-right: 1px solid #000;
+      border-bottom: 2px solid #000;
+      border-top: none;
+      border-radius: 0 0 5px 5px;
+      box-shadow: 2px 4px 8px rgba(0,0,0,0.55),
+                  inset 1px 0 0 rgba(255,255,255,0.08),
+                  inset 0 1px 0 rgba(255,255,255,0.12);
+      cursor: pointer; touch-action: manipulation;
+      z-index: 2;
+      transition: background 0.05s, box-shadow 0.05s;
+      box-sizing: border-box;
+    }
+    .pm-bkey:active, .pm-bkey.active {
+      background: linear-gradient(to bottom, #555, #333) !important;
+      box-shadow: 1px 2px 4px rgba(0,0,0,0.4),
+                  inset 0 2px 3px rgba(0,0,0,0.3) !important;
+    }
+    .pm-bkey.highlight {
+      background: linear-gradient(to bottom, #f59e0b, #d97706) !important;
+      box-shadow: 2px 4px 6px rgba(0,0,0,0.4) !important;
+    }
+    .pm-bkey.correct {
+      background: linear-gradient(to bottom, #4caf50, #388e3c) !important;
+      box-shadow: 2px 4px 6px rgba(0,0,0,0.4) !important;
+    }
+    .pm-bkey.wrong {
+      background: linear-gradient(to bottom, #ef5350, #c62828) !important;
+      box-shadow: 2px 4px 6px rgba(0,0,0,0.4) !important;
+    }
+
+    /* Music Memory title screen */
+    #screen-pm-title .pm-mode-btn {
+      display: block; width: 100%; max-width: 320px;
+      background: #fff; border: 1.5px solid #000;
+      padding: 16px 20px; margin-bottom: 12px;
+      cursor: pointer; text-align: left;
+      font-family: Georgia, 'Times New Roman', serif;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+      transition: background 0.12s, padding-left 0.12s;
+    }
+    #screen-pm-title .pm-mode-btn:hover   { background: #f5f5f5; padding-left: 26px; }
+    #screen-pm-title .pm-mode-btn:active  { background: #e8e8e8; }
+    .pm-mode-name { font-size: 16px; letter-spacing: 0.02em; display: block; }
+    .pm-mode-desc { font-size: 11px; color: #999; font-style: italic; display: block; margin-top: 3px; }
+
+    /* Song select screen */
+    .pm-song-list { width: 100%; max-width: 480px; }
+    .pm-song-btn {
+      display: flex; align-items: center; width: 100%;
+      background: #fff; border: none; border-bottom: 1px solid #e8e8e8;
+      padding: 14px 0; cursor: pointer; text-align: left;
+      font-family: Georgia, 'Times New Roman', serif;
+      touch-action: manipulation; -webkit-appearance: none; border-radius: 0;
+      transition: padding-left 0.12s;
+    }
+    .pm-song-btn:first-child { border-top: 1px solid #e8e8e8; }
+    .pm-song-btn:hover  { padding-left: 10px; }
+    .pm-song-btn:active { background: #f5f5f5; }
+    .pm-song-info { flex: 1; }
+    .pm-song-name { font-size: clamp(14px, 3.5vw, 18px); letter-spacing: 0.01em; color: #000; }
+    .pm-song-keys { font-size: 11px; color: #999; font-style: italic; margin-top: 2px; }
+    .pm-song-hs   { font-size: 11px; color: #aaa; margin-left: 14px; font-family: Arial, Helvetica, sans-serif; }
+    .pm-song-arrow { font-size: 18px; color: #ccc; margin-left: 10px; flex-shrink: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      transition: color 0.12s, transform 0.12s; }
+    .pm-song-btn:hover .pm-song-arrow { color: #000; transform: translateX(4px); }
+
+    /* Finish screen */
+    .pm-finish-title { font-size: clamp(28px, 7vw, 52px); margin-bottom: 6px; }
+    .pm-finish-sub   { font-size: clamp(12px, 3vw, 15px); color: #666; margin-bottom: 28px; font-style: italic; }
+    .pm-finish-stats {
+      width: 100%; max-width: 360px; border-collapse: collapse; margin-bottom: 24px;
+      font-family: Arial, Helvetica, sans-serif; font-size: 13px;
+    }
+    .pm-finish-stats td { padding: 7px 12px; border-bottom: 1px solid #eee; }
+    .pm-finish-stats td:first-child { color: #888; }
+    .pm-finish-stats td:last-child  { font-weight: bold; text-align: right; }
+
     .gm-numpad {
       display: grid; grid-template-columns: repeat(3, 1fr);
       gap: clamp(6px, 2vw, 10px);
@@ -497,7 +732,7 @@
   <div class="hub-content">
     <div class="hub-eyebrow">A collection of games by Greg</div>
     <div class="hub-big-title">Greg's<br>Games</div>
-    <div class="hub-tagline">Memory &nbsp;&middot;&nbsp; Logic &nbsp;&middot;&nbsp; Speed</div>
+    <div class="hub-tagline">Memory &nbsp;&middot;&nbsp; Logic &nbsp;&middot;&nbsp; Music</div>
     <div class="hub-games">
       <button class="hub-game-btn" onclick="HubUI.goMM()">
         <span class="hub-game-num">I</span>
@@ -523,8 +758,134 @@
         </span>
         <span class="hub-game-arrow">&#8594;</span>
       </button>
+      <button class="hub-game-btn" onclick="HubUI.goPM()">
+        <span class="hub-game-num">IV</span>
+        <span class="hub-game-info">
+          <span class="hub-game-name">Music Memory</span>
+          <span class="hub-game-desc">Learn piano songs or take on the Simon challenge.</span>
+        </span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
     </div>
   </div>
+</div>
+
+<!-- ══════════════════════════ MUSIC MEMORY SCREENS -->
+
+<!-- Portrait overlay (shown when phone is held portrait during piano round) -->
+<div class="pm-portrait-overlay" id="pm-portrait-overlay">
+  <div class="pm-portrait-icon">&#x1F4F1;</div>
+  <div class="pm-portrait-text">Rotate your device sideways<br>to play Music Memory</div>
+</div>
+
+<!-- PM Title -->
+<div id="screen-pm-title" class="screen">
+  <button class="btn btn-back" onclick="showScreen('hub')">&#8592; Games</button>
+  <div class="game-title">Music Memory</div>
+  <div class="game-subtitle">Piano &nbsp;&middot;&nbsp; Memory &nbsp;&middot;&nbsp; Rhythm</div>
+  <button class="pm-mode-btn" onclick="PMUI.goSongs('learning')">
+    <span class="pm-mode-name">Learning Mode</span>
+    <span class="pm-mode-desc">Learn songs step by step &mdash; listen, follow, then perform.</span>
+  </button>
+  <button class="pm-mode-btn" onclick="PMUI.startSimon()">
+    <span class="pm-mode-name">Simon Mode</span>
+    <span class="pm-mode-desc">Repeat the growing sequence. How far can you go?</span>
+  </button>
+  <button class="btn" onclick="PMUI.goHighScores()">View High Scores</button>
+</div>
+
+<!-- PM How to Play (Learning) -->
+<div id="screen-pm-htp" class="screen">
+  <div class="screen-heading">How to Play</div>
+  <div class="htp-steps">
+    <div class="htp-step">
+      <div class="htp-step-num">1</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Listen</div>
+        <div class="htp-step-desc">The song plays automatically. Watch the keys light up and follow the note display above.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">2</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Follow</div>
+        <div class="htp-step-desc">The next note is highlighted. Tap it to advance. Wrong note? The hint replays.</div>
+      </div>
+    </div>
+    <div class="htp-step">
+      <div class="htp-step-num">3</div>
+      <div class="htp-step-body">
+        <div class="htp-step-title">Perform</div>
+        <div class="htp-step-desc">Play the whole song from memory. You have <strong>3 lives</strong>. The note display shows what&rsquo;s coming up.</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn" onclick="showScreen('pm-title')">Return to Title</button>
+</div>
+
+<!-- PM Song Select -->
+<div id="screen-pm-songs" class="screen">
+  <button class="btn btn-back" onclick="showScreen('pm-title')">&#8592; Back</button>
+  <div class="screen-heading">Choose a Song</div>
+  <div class="pm-song-list" id="pm-song-list"></div>
+</div>
+
+<!-- PM Round (Learning + Simon) -->
+<div id="screen-pm-round" class="screen">
+  <!-- Phase overlay -->
+  <div class="pm-phase-overlay" id="pm-phase-overlay">
+    <div class="pm-phase-title" id="pm-phase-title">Listen</div>
+    <div class="pm-phase-desc" id="pm-phase-desc">Watch and listen carefully.</div>
+    <button class="pm-phase-overlay-btn" id="pm-phase-btn" onclick="PMUI.dismissPhaseOverlay()">Begin &rsaquo;</button>
+  </div>
+
+  <div class="pm-hud">
+    <div class="pm-hud-left">
+      <button class="pm-hud-back" onclick="PMUI.confirmQuit()" title="Quit">&larr;</button>
+      <span class="pm-phase-badge listen" id="pm-phase-badge">Listen</span>
+      <span id="pm-progress-label" style="font-size:12px;color:#888;font-family:Arial,Helvetica,sans-serif;"></span>
+    </div>
+    <div class="pm-hud-center" id="pm-song-name-hud"></div>
+    <div class="pm-hud-right">
+      <span class="pm-lives" id="pm-lives"></span>
+    </div>
+  </div>
+
+  <div class="pm-roll-area" id="pm-roll-area">
+    <canvas class="pm-roll-canvas" id="pm-roll-canvas"></canvas>
+    <div class="pm-roll-overlay-text" id="pm-roll-text"></div>
+  </div>
+
+  <div class="pm-keyboard-wrap">
+    <div class="pm-keyboard" id="pm-keyboard"></div>
+  </div>
+</div>
+
+<!-- PM Finish -->
+<div id="screen-pm-finish" class="screen">
+  <div class="pm-finish-title" id="pm-finish-title">&#127928;</div>
+  <div class="pm-finish-sub" id="pm-finish-sub"></div>
+  <table class="pm-finish-stats" id="pm-finish-stats"><tbody id="pm-finish-stats-body"></tbody></table>
+  <div class="name-entry-section" id="pm-name-section" style="display:none">
+    <p>You made the top 100! Enter your name:</p>
+    <input class="name-input" id="pm-name-input" type="text" maxlength="12"
+           autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+    <button class="btn" onclick="PMScores.save()">Save Score</button>
+  </div>
+  <button class="btn" id="pm-finish-play-again" onclick="PMUI.playAgain()">Play Again</button>
+  <button class="btn" onclick="showScreen('pm-title')">Return to Title Screen</button>
+</div>
+
+<!-- PM High Scores -->
+<div id="screen-pm-high-scores" class="screen">
+  <div class="screen-heading">Music Memory &mdash; High Scores</div>
+  <div style="margin-bottom:16px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#bbb;">Simon Mode</div>
+  <table class="scores-table" id="pm-scores-table">
+    <thead><tr><th>Rank</th><th>Name</th><th>Score</th></tr></thead>
+    <tbody id="pm-scores-tbody"></tbody>
+  </table>
+  <div class="scores-empty" id="pm-scores-empty" style="display:none">No scores yet &mdash; play Simon Mode to get on the board!</div>
+  <button class="btn" onclick="showScreen('pm-title')">Return to Title Screen</button>
 </div>
 
 <!-- ══════════════════════════════ MEMORY MASTER SCREENS -->
@@ -2483,24 +2844,24 @@ const GMUI = {
     document.getElementById('gm-diff-heading').textContent = 'Practice \u2014 Choose Type';
     document.getElementById('gm-diff-options').innerHTML = `
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('add')">
-        <span class="hub-game-name">Addition</span>
-        <span class="hub-game-desc">10 addition problems</span>
+        <span class="hub-game-info"><span class="hub-game-name">Addition</span><span class="hub-game-desc">10 addition problems</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('sub')">
-        <span class="hub-game-name">Subtraction</span>
-        <span class="hub-game-desc">10 subtraction problems</span>
+        <span class="hub-game-info"><span class="hub-game-name">Subtraction</span><span class="hub-game-desc">10 subtraction problems</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('mul')">
-        <span class="hub-game-name">Multiplication</span>
-        <span class="hub-game-desc">10 multiplication problems</span>
+        <span class="hub-game-info"><span class="hub-game-name">Multiplication</span><span class="hub-game-desc">10 multiplication problems</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('div')">
-        <span class="hub-game-name">Division</span>
-        <span class="hub-game-desc">10 division problems</span>
+        <span class="hub-game-info"><span class="hub-game-name">Division</span><span class="hub-game-desc">10 division problems</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('all')">
-        <span class="hub-game-name">All Operations</span>
-        <span class="hub-game-desc">Mix of all four operations</span>
+        <span class="hub-game-info"><span class="hub-game-name">All Operations</span><span class="hub-game-desc">Mix of all four operations</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>`;
     showScreen('gm-difficulty');
   },
@@ -2510,16 +2871,16 @@ const GMUI = {
     document.getElementById('gm-diff-heading').textContent = 'Select Difficulty';
     document.getElementById('gm-diff-options').innerHTML = `
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('easy')">
-        <span class="hub-game-name">Easy</span>
-        <span class="hub-game-desc">Addition &amp; subtraction only</span>
+        <span class="hub-game-info"><span class="hub-game-name">Easy</span><span class="hub-game-desc">Addition &amp; subtraction only</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('medium')">
-        <span class="hub-game-name">Medium</span>
-        <span class="hub-game-desc">Addition, subtraction &amp; multiplication</span>
+        <span class="hub-game-info"><span class="hub-game-name">Medium</span><span class="hub-game-desc">Addition, subtraction &amp; multiplication</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('hard')">
-        <span class="hub-game-name">Hard</span>
-        <span class="hub-game-desc">All four operations including division</span>
+        <span class="hub-game-info"><span class="hub-game-name">Hard</span><span class="hub-game-desc">All four operations including division</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
       </button>`;
     showScreen('gm-difficulty');
   },
@@ -2537,7 +2898,8 @@ const GMUI = {
 const HubUI = {
   goMM(){ showScreen('mm-title'); },
   goMC(){ showScreen('mc-title'); },
-  goGM(){ showScreen('gm-title'); }
+  goGM(){ showScreen('gm-title'); },
+  goPM(){ showScreen('pm-title'); }
 };
 
 /* ── Hub background symbols ── */
@@ -2552,7 +2914,9 @@ const HubUI = {
     '\u2605\uFE0E','\u2699\uFE0E','\u266B\uFE0E','\u265B\uFE0E',
     '\u262F\uFE0E','\u25B2\uFE0E','\u2702\uFE0E','\u2692\uFE0E',
     // Extras
-    '\u2211','\u221E'  // ∑ ∞
+    '\u2211','\u221E',  // ∑ ∞
+    // Music Memory
+    '\u266A\uFE0E','\u266B\uFE0E'  // ♪ ♫
   ];
   const bg = document.getElementById('hub-bg');
   if(!bg) return;
@@ -2567,6 +2931,892 @@ const HubUI = {
     bg.appendChild(el);
   }
 }());
+
+/* ════════════════════════════════════════════════════════════════════
+   ██████  MUSIC MEMORY
+════════════════════════════════════════════════════════════════════ */
+
+/* ── Note frequency table ── */
+const PM_FREQ = {
+  'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,'A4':440.00,'B4':493.88,
+  'C5':523.25,'D5':587.33,'E5':659.25,'F5':698.46,'G5':783.99,'A5':880.00,'B5':987.77,
+  'Cs4':277.18,'Ds4':311.13,'Fs4':369.99,'Gs4':415.30,'As4':466.16,
+  'Cs5':554.37,'Ds5':622.25,'Fs5':739.99,'Gs5':830.61,'As5':932.33
+};
+
+/* ── Song library ── */
+/* Each note: [noteName, durationMultiplier]  base = 320ms per beat */
+const PM_SONGS = [
+  {
+    id:'hcb', name:'Hot Cross Buns',
+    notes:[
+      ['E5',1],['D5',1],['C5',2],
+      ['E5',1],['D5',1],['C5',2],
+      ['C5',0.5],['C5',0.5],['C5',0.5],['C5',0.5],['D5',0.5],['D5',0.5],['D5',0.5],['D5',0.5],
+      ['E5',1],['D5',1],['C5',2]
+    ]
+  },
+  {
+    id:'mhl', name:'Mary Had a Little Lamb',
+    notes:[
+      ['E5',1],['D5',1],['C5',1],['D5',1],
+      ['E5',1],['E5',1],['E5',2],
+      ['D5',1],['D5',1],['D5',2],
+      ['E5',1],['G5',1],['G5',2],
+      ['E5',1],['D5',1],['C5',1],['D5',1],
+      ['E5',1],['E5',1],['E5',1],['E5',1],
+      ['D5',1],['D5',1],['E5',1],['D5',1],
+      ['C5',4]
+    ]
+  },
+  {
+    id:'ode', name:'Ode to Joy',
+    notes:[
+      ['E5',1],['E5',1],['F5',1],['G5',1],
+      ['G5',1],['F5',1],['E5',1],['D5',1],
+      ['C5',1],['C5',1],['D5',1],['E5',1],
+      ['E5',1.5],['D5',0.5],['D5',2],
+      ['E5',1],['E5',1],['F5',1],['G5',1],
+      ['G5',1],['F5',1],['E5',1],['D5',1],
+      ['C5',1],['C5',1],['D5',1],['E5',1],
+      ['D5',1.5],['C5',0.5],['C5',2]
+    ]
+  },
+  {
+    id:'ttl', name:'Twinkle Twinkle',
+    notes:[
+      ['C5',1],['C5',1],['G5',1],['G5',1],
+      ['A5',1],['A5',1],['G5',2],
+      ['F5',1],['F5',1],['E5',1],['E5',1],
+      ['D5',1],['D5',1],['C5',2],
+      ['G5',1],['G5',1],['F5',1],['F5',1],
+      ['E5',1],['E5',1],['D5',2],
+      ['G5',1],['G5',1],['F5',1],['F5',1],
+      ['E5',1],['E5',1],['D5',2],
+      ['C5',1],['C5',1],['G5',1],['G5',1],
+      ['A5',1],['A5',1],['G5',2],
+      ['F5',1],['F5',1],['E5',1],['E5',1],
+      ['D5',1],['D5',1],['C5',2]
+    ]
+  },
+  {
+    id:'jb', name:'Jingle Bells (chorus)',
+    notes:[
+      ['E5',1],['E5',1],['E5',2],
+      ['E5',1],['E5',1],['E5',2],
+      ['E5',1],['G5',1],['C5',1],['D5',1],
+      ['E5',4],
+      ['F5',1],['F5',1],['F5',1],['F5',1],
+      ['F5',1],['E5',1],['E5',1],['E5',0.5],['E5',0.5],
+      ['E5',1],['D5',1],['D5',1],['E5',1],
+      ['D5',2],['G5',2]
+    ]
+  },
+  {
+    id:'saints', name:"When the Saints Go Marching In",
+    notes:[
+      ['C5',1],['E5',1],['F5',1],['G5',2],
+      ['C5',1],['E5',1],['F5',1],['G5',2],
+      ['C5',1],['E5',1],['F5',1],['G5',1],['E5',1],
+      ['C5',1],['E5',1],['D5',2],
+      ['E5',1],['E5',1],['C5',1],['E5',1],
+      ['G5',1],['G5',1],['F5',2],
+      ['C5',1],['D5',1],['E5',1],['F5',1],
+      ['G5',1],['E5',1],['C5',1],['D5',1],
+      ['C5',4]
+    ]
+  }
+];
+
+/* ── Piano synth (Web Audio) ── */
+const PMAudio = (function(){
+  let ctx = null;
+  function getCtx(){
+    if(!ctx){
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch(e){ ctx = null; }
+    }
+    return ctx;
+  }
+  function resume(){
+    const c = getCtx();
+    if(c && c.state === 'suspended') c.resume();
+  }
+  /* Simple piano-like tone: triangle + slight attack/decay envelope */
+  function playNote(noteName, duration, volume){
+    const c = getCtx();
+    if(!c) return;
+    const freq = PM_FREQ[noteName];
+    if(!freq) return;
+    const vol = (volume === undefined ? 0.45 : volume);
+    const now = c.currentTime;
+    const att = 0.008, dec = 0.08, sus = 0.55, rel = 0.22;
+    const totalTime = (duration || 0.35);
+
+    const osc  = c.createOscillator();
+    const gain = c.createGain();
+    const osc2 = c.createOscillator(); // 2nd harmonic for richness
+    const gain2= c.createGain();
+
+    osc.type  = 'triangle';
+    osc.frequency.value = freq;
+    osc2.type = 'sine';
+    osc2.frequency.value = freq * 2;
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(vol, now + att);
+    gain.gain.linearRampToValueAtTime(vol * sus, now + att + dec);
+    gain.gain.setValueAtTime(vol * sus, now + totalTime - rel);
+    gain.gain.linearRampToValueAtTime(0, now + totalTime);
+
+    gain2.gain.setValueAtTime(0, now);
+    gain2.gain.linearRampToValueAtTime(vol * 0.12, now + att);
+    gain2.gain.linearRampToValueAtTime(vol * 0.06, now + att + dec);
+    gain2.gain.setValueAtTime(vol * 0.06, now + totalTime - rel);
+    gain2.gain.linearRampToValueAtTime(0, now + totalTime);
+
+    osc.connect(gain);    gain.connect(c.destination);
+    osc2.connect(gain2);  gain2.connect(c.destination);
+    osc.start(now);   osc.stop(now + totalTime);
+    osc2.start(now);  osc2.stop(now + totalTime);
+  }
+  return { playNote, resume };
+}());
+
+/* ── Piano keyboard builder ── */
+const PMKeyboard = (function(){
+  /* Two octaves: C4–B5 — 14 white keys, 10 black keys */
+  const WHITE = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5'];
+  const BLACK_MAP = {
+    'C4':'Cs4','D4':'Ds4','F4':'Fs4','G4':'Gs4','A4':'As4',
+    'C5':'Cs5','D5':'Ds5','F5':'Fs5','G5':'Gs5','A5':'As5'
+  };
+  /* Only label the C notes (octave markers) for a clean minimal look */
+  const WHITE_LABEL = {
+    'C4':'C4','D4':'','E4':'','F4':'','G4':'','A4':'','B4':'',
+    'C5':'C5','D5':'','E5':'','F5':'','G5':'','A5':'','B5':''
+  };
+
+  let keyEls = {}; // noteName → element
+
+  function build(container, onPress, onRelease){
+    container.innerHTML = '';
+    keyEls = {};
+
+    const W = container.offsetWidth || window.innerWidth;
+    const wKeyW = W / WHITE.length;
+    const wKeyH = Math.min(120, Math.max(60, window.innerHeight * 0.22));
+    const bKeyW = wKeyW * 0.6;
+    const bKeyH = wKeyH * 0.62;
+
+    container.style.height = wKeyH + 'px';
+
+    WHITE.forEach((note, i) => {
+      const el = document.createElement('div');
+      el.className = 'pm-wkey';
+      el.dataset.note = note;
+      el.style.cssText = `left:${i*wKeyW}px;width:${wKeyW}px;height:${wKeyH}px;`;
+      const lbl = document.createElement('span');
+      lbl.className = 'pm-wkey-label';
+      lbl.textContent = WHITE_LABEL[note] || '';
+      el.appendChild(lbl);
+      container.appendChild(el);
+      keyEls[note] = el;
+
+      el.addEventListener('pointerdown', e=>{
+        e.preventDefault();
+        PMAudio.resume();
+        onPress && onPress(note);
+      });
+      el.addEventListener('pointerup',   e=>{ e.preventDefault(); onRelease && onRelease(note); });
+      el.addEventListener('pointerleave',e=>{ e.preventDefault(); onRelease && onRelease(note); });
+    });
+
+    WHITE.forEach((wNote, i) => {
+      const bNote = BLACK_MAP[wNote];
+      if(!bNote) return;
+      const el = document.createElement('div');
+      el.className = 'pm-bkey';
+      el.dataset.note = bNote;
+      const bLeft = (i + 0.7) * wKeyW - bKeyW/2;
+      el.style.cssText = `left:${bLeft}px;width:${bKeyW}px;height:${bKeyH}px;top:0;`;
+      container.appendChild(el);
+      keyEls[bNote] = el;
+
+      el.addEventListener('pointerdown', e=>{
+        e.preventDefault();
+        PMAudio.resume();
+        onPress && onPress(bNote);
+      });
+      el.addEventListener('pointerup',   e=>{ e.preventDefault(); onRelease && onRelease(bNote); });
+      el.addEventListener('pointerleave',e=>{ e.preventDefault(); onRelease && onRelease(bNote); });
+    });
+  }
+
+  function setClass(note, cls, on){
+    const el = keyEls[note];
+    if(!el) return;
+    if(on) el.classList.add(cls);
+    else   el.classList.remove(cls);
+  }
+
+  function flash(note, cls, ms){
+    setClass(note, cls, true);
+    setTimeout(()=> setClass(note, cls, false), ms||180);
+  }
+
+  function clearAll(cls){
+    Object.values(keyEls).forEach(el => el.classList.remove(cls));
+  }
+
+  return { build, setClass, flash, clearAll };
+}());
+
+/* ── Piano Roll canvas renderer ── */
+const PMRoll = (function(){
+  const ROW_H    = 14;   // px per note row
+  const BEAT_W   = 40;   // px per beat unit
+  const LANE_PAD = 2;
+  const NOTE_COLORS = {
+    white: { fill:'#555', active:'#f59e0b' },
+    black: { fill:'#444', active:'#d97706' }
+  };
+  const BLACK_NOTES = ['Cs4','Ds4','Fs4','Gs4','As4','Cs5','Ds5','Fs5','Gs5','As5'];
+
+  /* All display notes top→bottom */
+  const DISPLAY_NOTES = [
+    'B5','As5','A5','Gs5','G5','Fs5','F5','E5','Ds5','D5','Cs5','C5',
+    'B4','As4','A4','Gs4','G4','Fs4','F4','E4','Ds4','D4','Cs4','C4'
+  ];
+  const NOTE_ROW = {};
+  DISPLAY_NOTES.forEach((n,i)=>{ NOTE_ROW[n]=i; });
+
+  let canvas=null, ctx2d=null, notes=[], scrollX=0, playheadX=160;
+  let totalW=0, visibleW=0, canvasH=0;
+
+  function init(canvasEl, songNotes, baseMs){
+    canvas = canvasEl;
+    ctx2d  = canvas.getContext('2d');
+    scrollX = 0;
+    playheadX = canvasEl.offsetWidth * 0.3;
+
+    /* build renderable note list with pixel positions */
+    const base = baseMs || 320;
+    notes = [];
+    let x = playheadX;
+    songNotes.forEach(([n, dur]) => {
+      const w = dur * base * BEAT_W / 320;
+      notes.push({ note:n, x, w, row:NOTE_ROW[n] });
+      x += w + 2;
+    });
+    totalW = x + 200;
+    resize();
+  }
+
+  function resize(){
+    if(!canvas) return;
+    const area = canvas.parentElement;
+    canvasH = area ? area.offsetHeight : 80;
+    if(canvasH < 60) canvasH = Math.min(80, Math.floor(window.innerHeight * 0.18));
+    canvas.width  = canvas.offsetWidth || window.innerWidth;
+    canvas.height = canvasH;
+    canvas.style.height = canvasH + 'px';
+    visibleW = canvas.width;
+    draw();
+  }
+
+  function draw(){
+    if(!ctx2d || !canvas) return;
+    const W = canvas.width, H = canvas.height;
+    ctx2d.clearRect(0,0,W,H);
+
+    /* background */
+    ctx2d.fillStyle = '#f8f8f8';
+    ctx2d.fillRect(0,0,W,H);
+
+    /* alternating note lanes (only white/black distinction) */
+    DISPLAY_NOTES.forEach((n,i)=>{
+      const y = i * ROW_H;
+      if(ROW_H > H) return;
+      ctx2d.fillStyle = BLACK_NOTES.includes(n) ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0)';
+      ctx2d.fillRect(0, y, W, ROW_H);
+    });
+
+    /* grid lines */
+    ctx2d.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx2d.lineWidth = 1;
+    for(let i=0;i<DISPLAY_NOTES.length;i++){
+      const y = i * ROW_H;
+      if(y >= H) break;
+      ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(W,y); ctx2d.stroke();
+    }
+
+    /* note blocks */
+    notes.forEach(n=>{
+      const screenX = n.x - scrollX;
+      if(screenX + n.w < 0 || screenX > W) return;
+      const y = n.row * ROW_H + LANE_PAD;
+      const h = ROW_H - LANE_PAD*2;
+      const isActive = (screenX <= playheadX && screenX + n.w >= playheadX);
+      ctx2d.fillStyle = isActive ? NOTE_COLORS.white.active : '#555';
+      ctx2d.fillRect(screenX, y, Math.max(4, n.w-2), h);
+    });
+
+    /* playhead */
+    ctx2d.strokeStyle = '#e53935';
+    ctx2d.lineWidth = 2;
+    ctx2d.beginPath(); ctx2d.moveTo(playheadX,0); ctx2d.lineTo(playheadX,H); ctx2d.stroke();
+  }
+
+  /* scrollTo: move roll so note index i is at playhead */
+  function scrollToNote(idx){
+    if(!notes[idx]) return;
+    scrollX = notes[idx].x - playheadX;
+    draw();
+  }
+
+  function reset(){
+    scrollX = 0;
+    draw();
+  }
+
+  return { init, resize, draw, scrollToNote, reset };
+}());
+
+/* ── Scores ── */
+const PMScores = (function(){
+  const KEY = 'pm_simon_scores_v1';
+  let pending = null;
+  function load(){ try{ return JSON.parse(localStorage.getItem(KEY))||[]; }catch(e){ return []; } }
+  function save(){
+    if(!pending) return;
+    const name = (document.getElementById('pm-name-input').value||'').trim()||'Anonymous';
+    const scores = load();
+    scores.push({ name, score:pending.score });
+    scores.sort((a,b)=>b.score-a.score);
+    scores.splice(100);
+    localStorage.setItem(KEY, JSON.stringify(scores));
+    pending = null;
+    document.getElementById('pm-name-section').style.display='none';
+    renderScores();
+  }
+  function qualifies(score){
+    const s = load();
+    return s.length < 100 || score > s[s.length-1].score;
+  }
+  function renderScores(){
+    const s = load();
+    const tbody = document.getElementById('pm-scores-tbody');
+    const empty = document.getElementById('pm-scores-empty');
+    if(!tbody) return;
+    if(!s.length){ tbody.innerHTML=''; if(empty) empty.style.display=''; return; }
+    if(empty) empty.style.display='none';
+    tbody.innerHTML = s.slice(0,100).map((r,i)=>`
+      <tr><td>${i+1}</td><td>${r.name}</td><td>${r.score}</td></tr>`).join('');
+  }
+  function setPending(score){ pending = { score }; }
+  return { save, qualifies, renderScores, setPending };
+}());
+
+/* ── Main Music Memory state ── */
+const PMState = {
+  mode: null,       // 'learning' | 'simon'
+  song: null,       // current song object
+  phase: null,      // 'listen' | 'follow' | 'perform' | 'simon'
+  noteIdx: 0,       // current note index
+  lives: 3,
+  simonSeq: [],     // growing Simon sequence (note names)
+  simonUserIdx: 0,  // how far user has replayed
+  simonScore: 0,
+  playbackTimers: [],
+  pendingModeAfterOverlay: null,
+  quitRequested: false
+};
+
+function pm_clearTimers(){
+  PMState.playbackTimers.forEach(t=> { clearTimeout(t); clearInterval(t); });
+  PMState.playbackTimers = [];
+}
+
+/* ── Portrait detection ── */
+function pm_checkOrientation(){
+  const overlay = document.getElementById('pm-portrait-overlay');
+  if(!overlay) return;
+  const inPianoRound = document.getElementById('screen-pm-round') &&
+    document.getElementById('screen-pm-round').classList.contains('active');
+  if(!inPianoRound){ overlay.classList.remove('visible'); return; }
+  const isPortrait = window.innerHeight > window.innerWidth;
+  overlay.classList.toggle('visible', isPortrait);
+}
+window.addEventListener('resize', pm_checkOrientation);
+window.addEventListener('orientationchange', ()=>setTimeout(pm_checkOrientation,200));
+
+/* ── Learning Mode ── */
+const PMLearn = (function(){
+
+  function start(song){
+    PMState.mode    = 'learning';
+    PMState.song    = song;
+    PMState.lives   = 3;
+    PMState.noteIdx = 0;
+    PMState.quitRequested = false;
+    showScreen('pm-round');
+    pm_checkOrientation();
+    _buildKeyboard();
+    _initRoll();
+    _showPhaseOverlay('listen');
+  }
+
+  function _buildKeyboard(){
+    const kb = document.getElementById('pm-keyboard');
+    if(!kb) return;
+    PMKeyboard.build(kb, _onPress, null);
+  }
+
+  function _initRoll(){
+    const cvs = document.getElementById('pm-roll-canvas');
+    if(!cvs) return;
+    PMRoll.init(cvs, PMState.song.notes, 320);
+    PMRoll.scrollToNote(0);
+  }
+
+  function _showPhaseOverlay(phase){
+    pm_clearTimers();
+    PMKeyboard.clearAll('highlight');
+    PMState.phase = phase;
+    _updatePhaseBadge(phase);
+
+    const title = document.getElementById('pm-phase-title');
+    const desc  = document.getElementById('pm-phase-desc');
+    const btn   = document.getElementById('pm-phase-btn');
+    const ol    = document.getElementById('pm-phase-overlay');
+
+    const map = {
+      listen:  { t:'Listen',  d:'Watch and listen. The song will play automatically.', b:'Begin \u203a' },
+      follow:  { t:'Follow',  d:'The next note is highlighted. Tap it to continue.', b:'Begin \u203a' },
+      perform: { t:'Perform', d:'Play from memory. 3 lives remaining.', b:'Begin \u203a' }
+    };
+    const cfg = map[phase] || { t:phase, d:'', b:'Begin \u203a' };
+    if(title) title.textContent = cfg.t;
+    if(desc)  desc.textContent  = cfg.d;
+    if(btn)   btn.textContent   = cfg.b;
+    if(ol)    ol.classList.add('active');
+    _updateLives();
+    _updateProgress();
+  }
+
+  function _updatePhaseBadge(phase){
+    const badge = document.getElementById('pm-phase-badge');
+    if(!badge) return;
+    badge.className = 'pm-phase-badge ' + phase;
+    badge.textContent = phase.charAt(0).toUpperCase() + phase.slice(1);
+  }
+
+  function _updateLives(){
+    const el = document.getElementById('pm-lives');
+    if(!el) return;
+    el.textContent = PMState.phase === 'perform' ? '♥'.repeat(PMState.lives) : '';
+  }
+
+  function _updateProgress(){
+    const el = document.getElementById('pm-progress-label');
+    if(!el) return;
+    if(PMState.phase === 'listen' || PMState.phase === 'follow'){
+      el.textContent = '';
+    } else {
+      const total = PMState.song.notes.length;
+      el.textContent = (PMState.noteIdx+1) + ' / ' + total;
+    }
+  }
+
+  function dismissOverlay(){
+    const ol = document.getElementById('pm-phase-overlay');
+    if(ol) ol.classList.remove('active');
+    if(PMState.phase === 'listen')  _startListen();
+    else if(PMState.phase === 'follow')  _startFollow();
+    else if(PMState.phase === 'perform') _startPerform();
+  }
+
+  /* ── LISTEN ── */
+  function _startListen(){
+    const notes = PMState.song.notes;
+    const BASE  = 320;
+    let delay   = 200;
+    pm_clearTimers();
+    notes.forEach(([note, dur], i) => {
+      const ms = dur * BASE;
+      PMState.playbackTimers.push(setTimeout(()=>{
+        if(PMState.quitRequested) return;
+        PMRoll.scrollToNote(i);
+        PMKeyboard.clearAll('highlight');
+        PMKeyboard.setClass(note,'highlight',true);
+        PMAudio.playNote(note, ms/1000, 0.4);
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), ms*0.85));
+      }, delay));
+      delay += ms + 60;
+    });
+    /* after last note → go to Follow */
+    PMState.playbackTimers.push(setTimeout(()=>{
+      if(PMState.quitRequested) return;
+      PMKeyboard.clearAll('highlight');
+      _showPhaseOverlay('follow');
+    }, delay + 400));
+  }
+
+  /* ── FOLLOW ── */
+  function _startFollow(){
+    PMState.noteIdx = 0;
+    _highlightNextFollow();
+  }
+
+  function _highlightNextFollow(){
+    if(PMState.quitRequested) return;
+    PMRoll.scrollToNote(PMState.noteIdx);
+    _updateProgress();
+    const [note] = PMState.song.notes[PMState.noteIdx];
+    PMKeyboard.clearAll('highlight');
+    PMKeyboard.setClass(note,'highlight',true);
+  }
+
+  function _onPress(note){
+    if(PMState.quitRequested) return;
+    if(PMState.phase === 'follow')  _handleFollow(note);
+    else if(PMState.phase === 'perform') _handlePerform(note);
+    PMAudio.playNote(note, 0.35, 0.5);
+  }
+
+  function _handleFollow(note){
+    const [expected] = PMState.song.notes[PMState.noteIdx];
+    if(note !== expected){
+      /* wrong: replay hint */
+      PMKeyboard.flash(note,'wrong',300);
+      pm_clearTimers();
+      PMState.playbackTimers.push(setTimeout(()=>{
+        const [n2, dur2] = PMState.song.notes[PMState.noteIdx];
+        PMKeyboard.clearAll('highlight');
+        PMAudio.playNote(n2, dur2*0.32, 0.4);
+        PMKeyboard.setClass(n2,'highlight',true);
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(n2,'highlight',false), dur2*320*0.85));
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(n2,'highlight',true),  dur2*320+60));
+      }, 350));
+      return;
+    }
+    PMKeyboard.flash(note,'correct',200);
+    PMState.noteIdx++;
+    if(PMState.noteIdx >= PMState.song.notes.length){
+      PMState.noteIdx = 0;
+      _showPhaseOverlay('perform');
+    } else {
+      PMState.playbackTimers.push(setTimeout(_highlightNextFollow, 250));
+    }
+  }
+
+  /* ── PERFORM ── */
+  function _startPerform(){
+    PMState.noteIdx = 0;
+    PMKeyboard.clearAll('highlight');
+    PMRoll.scrollToNote(0);
+    _updateProgress();
+  }
+
+  function _handlePerform(note){
+    const [expected] = PMState.song.notes[PMState.noteIdx];
+    if(note !== expected){
+      PMKeyboard.flash(note,'wrong',350);
+      PMState.lives--;
+      _updateLives();
+      if(PMState.lives <= 0){
+        pm_clearTimers();
+        PMState.playbackTimers.push(setTimeout(()=>_finishLearning(false), 600));
+      }
+      return;
+    }
+    PMKeyboard.flash(note,'correct',180);
+    PMState.noteIdx++;
+    PMRoll.scrollToNote(PMState.noteIdx < PMState.song.notes.length ? PMState.noteIdx : PMState.song.notes.length-1);
+    _updateProgress();
+    if(PMState.noteIdx >= PMState.song.notes.length){
+      pm_clearTimers();
+      PMState.playbackTimers.push(setTimeout(()=>_finishLearning(true), 400));
+    }
+  }
+
+  function _finishLearning(success){
+    if(PMState.quitRequested) return;
+    PMKeyboard.clearAll('highlight');
+    const el = document.getElementById('pm-finish-title');
+    const sub= document.getElementById('pm-finish-sub');
+    const statsBody = document.getElementById('pm-finish-stats-body');
+    const again = document.getElementById('pm-finish-play-again');
+    const ns = document.getElementById('pm-name-section');
+    if(el) el.textContent = success ? '🎉' : '😔';
+    if(sub) sub.textContent = success
+      ? `You played ${PMState.song.name} perfectly!`
+      : `Nice try! ${PMState.song.name} takes practice.`;
+    if(again) again.textContent = 'Try Again';
+    if(ns) ns.style.display='none';
+    if(statsBody) statsBody.innerHTML = `
+      <tr><td>Song</td><td>${PMState.song.name}</td></tr>
+      <tr><td>Lives remaining</td><td>${PMState.lives}</td></tr>
+      <tr><td>Mode</td><td>Learning Mode</td></tr>`;
+    showScreen('pm-finish');
+  }
+
+  function playAgain(){
+    start(PMState.song);
+  }
+
+  return { start, dismissOverlay, playAgain, handleKey: _onPress };
+}());
+
+/* ── Simon Mode ── */
+const PMSimon = (function(){
+  /* White keys only for Simon (easier to distinguish) */
+  const SIMON_NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5','B5'];
+  const BASE_STEP_MS  = 500;
+  const STEP_NOTE_DUR = 0.38;
+
+  function start(){
+    PMState.mode        = 'simon';
+    PMState.song        = null;
+    PMState.simonSeq    = [];
+    PMState.simonUserIdx= 0;
+    PMState.simonScore  = 0;
+    PMState.lives       = 3;
+    PMState.quitRequested = false;
+
+    showScreen('pm-round');
+    pm_checkOrientation();
+
+    /* set phase badge */
+    const badge = document.getElementById('pm-phase-badge');
+    if(badge){ badge.className='pm-phase-badge simon'; badge.textContent='Simon'; }
+    document.getElementById('pm-song-name-hud') && (document.getElementById('pm-song-name-hud').textContent='Simon Mode');
+    document.getElementById('pm-roll-text') && (document.getElementById('pm-roll-text').textContent='Watch the keys…');
+
+    /* hide roll canvas, show text hint */
+    const rollArea = document.getElementById('pm-roll-area');
+    const cvs      = document.getElementById('pm-roll-canvas');
+    if(cvs) cvs.style.display='none';
+
+    _buildKeyboard();
+    _updateLives();
+    _updateProgressLabel();
+    _nextRound();
+  }
+
+  function _buildKeyboard(){
+    const kb = document.getElementById('pm-keyboard');
+    if(!kb) return;
+    PMKeyboard.build(kb, _onPress, null);
+  }
+
+  function _updateLives(){
+    const el=document.getElementById('pm-lives');
+    if(el) el.textContent='♥'.repeat(PMState.lives);
+  }
+
+  function _updateProgressLabel(){
+    const el=document.getElementById('pm-progress-label');
+    if(el) el.textContent = PMState.simonSeq.length ? 'Round ' + PMState.simonSeq.length : '';
+  }
+
+  function _nextRound(){
+    pm_clearTimers();
+    /* add one random note */
+    const pick = SIMON_NOTES[Math.floor(Math.random()*SIMON_NOTES.length)];
+    PMState.simonSeq.push(pick);
+    PMState.simonUserIdx = 0;
+    _updateProgressLabel();
+
+    const rollText=document.getElementById('pm-roll-text');
+    if(rollText) rollText.textContent='Watch…';
+
+    /* disable input during playback */
+    PMState.phase='simon-playing';
+
+    let delay=600;
+    PMState.simonSeq.forEach((note,i)=>{
+      PMState.playbackTimers.push(setTimeout(()=>{
+        if(PMState.quitRequested) return;
+        PMKeyboard.setClass(note,'highlight',true);
+        PMAudio.playNote(note, STEP_NOTE_DUR, 0.5);
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), STEP_NOTE_DUR*1000*0.85));
+      }, delay));
+      delay += BASE_STEP_MS + 80;
+    });
+
+    PMState.playbackTimers.push(setTimeout(()=>{
+      if(PMState.quitRequested) return;
+      PMState.phase='simon';
+      if(rollText) rollText.textContent='Your turn!';
+      PMKeyboard.clearAll('highlight');
+    }, delay + 200));
+  }
+
+  function _onPress(note){
+    if(PMState.quitRequested) return;
+    if(PMState.phase !== 'simon') return; /* locked during playback */
+    PMAudio.playNote(note, STEP_NOTE_DUR, 0.5);
+
+    const expected = PMState.simonSeq[PMState.simonUserIdx];
+    if(note !== expected){
+      PMKeyboard.flash(note,'wrong',400);
+      PMState.lives--;
+      _updateLives();
+      if(PMState.lives<=0){
+        pm_clearTimers();
+        PMState.playbackTimers.push(setTimeout(()=>_finish(), 700));
+      } else {
+        /* replay sequence */
+        PMState.playbackTimers.push(setTimeout(()=>{
+          PMState.simonUserIdx=0;
+          const rt=document.getElementById('pm-roll-text');
+          if(rt) rt.textContent='Try again…';
+          _replaySeq(()=>{ PMState.phase='simon'; if(rt) rt.textContent='Your turn!'; });
+        }, 500));
+      }
+      return;
+    }
+
+    PMKeyboard.flash(note,'correct',180);
+    PMState.simonUserIdx++;
+    if(PMState.simonUserIdx >= PMState.simonSeq.length){
+      /* completed round */
+      PMState.simonScore = PMState.simonSeq.length;
+      PMState.playbackTimers.push(setTimeout(_nextRound, 700));
+    }
+  }
+
+  function _replaySeq(done){
+    pm_clearTimers();
+    PMState.phase='simon-playing';
+    let delay=400;
+    PMState.simonSeq.forEach(note=>{
+      PMState.playbackTimers.push(setTimeout(()=>{
+        if(PMState.quitRequested) return;
+        PMKeyboard.setClass(note,'highlight',true);
+        PMAudio.playNote(note, STEP_NOTE_DUR, 0.5);
+        PMState.playbackTimers.push(setTimeout(()=>PMKeyboard.setClass(note,'highlight',false), STEP_NOTE_DUR*1000*0.85));
+      }, delay));
+      delay += BASE_STEP_MS;
+    });
+    PMState.playbackTimers.push(setTimeout(done, delay+200));
+  }
+
+  function _finish(){
+    if(PMState.quitRequested) return;
+    PMKeyboard.clearAll('highlight');
+    const score = PMState.simonSeq.length;
+    const el    = document.getElementById('pm-finish-title');
+    const sub   = document.getElementById('pm-finish-sub');
+    const statsBody = document.getElementById('pm-finish-stats-body');
+    const again = document.getElementById('pm-finish-play-again');
+    const ns    = document.getElementById('pm-name-section');
+
+    if(el) el.textContent='🎹';
+    if(sub) sub.textContent=`You reached round ${score}!`;
+    if(again) again.textContent='Play Again';
+    if(statsBody) statsBody.innerHTML=`
+      <tr><td>Rounds completed</td><td>${score}</td></tr>
+      <tr><td>Mode</td><td>Simon Mode</td></tr>`;
+
+    PMScores.setPending(score);
+    if(ns){
+      if(PMScores.qualifies(score)){
+        ns.style.display='';
+      } else {
+        ns.style.display='none';
+      }
+    }
+    showScreen('pm-finish');
+  }
+
+  function playAgain(){
+    start();
+  }
+
+  return { start, playAgain };
+}());
+
+/* ── PMUI — navigation & glue ── */
+const PMUI = {
+  goSongs(mode){
+    PMState.pendingModeAfterOverlay = mode;
+    const list = document.getElementById('pm-song-list');
+    if(list){
+      list.innerHTML = PM_SONGS.map((s,i)=>`
+        <button class="pm-song-btn" onclick="PMUI.startSong(${i})">
+          <span class="pm-song-info">
+            <span class="pm-song-name">${s.name}</span>
+            <span class="pm-song-keys">${s.notes.length} notes</span>
+          </span>
+          <span class="pm-song-arrow">&#8594;</span>
+        </button>`).join('');
+    }
+    showScreen('pm-songs');
+  },
+  startSong(idx){
+    const song = PM_SONGS[idx];
+    if(!song) return;
+    /* show piano roll canvas */
+    const cvs = document.getElementById('pm-roll-canvas');
+    if(cvs) cvs.style.display='';
+    /* update title in hud */
+    const hud = document.getElementById('pm-song-name-hud');
+    if(hud) hud.textContent = song.name;
+    PMLearn.start(song);
+  },
+  startSimon(){
+    const cvs = document.getElementById('pm-roll-canvas');
+    if(cvs) cvs.style.display='none';
+    PMSimon.start();
+  },
+  dismissPhaseOverlay(){
+    PMLearn.dismissOverlay();
+  },
+  playAgain(){
+    pm_clearTimers();
+    PMKeyboard.clearAll('highlight');
+    if(PMState.mode==='simon') PMSimon.playAgain();
+    else PMLearn.playAgain();
+  },
+  confirmQuit(){
+    pm_clearTimers();
+    PMState.quitRequested=true;
+    PMKeyboard.clearAll('highlight');
+    const ol=document.getElementById('pm-phase-overlay');
+    if(ol) ol.classList.remove('active');
+    showScreen('pm-title');
+  },
+  goHighScores(){
+    PMScores.renderScores();
+    showScreen('pm-high-scores');
+  },
+  onEnterRound(){
+    /* Called whenever pm-round becomes active screen; rebuild keyboard in case viewport changed */
+    const kb=document.getElementById('pm-keyboard');
+    if(kb && kb.children.length) {
+      /* just resize roll */
+      PMRoll.resize();
+    }
+    pm_checkOrientation();
+  }
+};
+
+/* ── Resize piano when window resizes ── */
+window.addEventListener('resize', ()=>{
+  const kb=document.getElementById('pm-keyboard');
+  const roundScreen=document.getElementById('screen-pm-round');
+  if(!kb || !roundScreen || !roundScreen.classList.contains('active')) return;
+  if(PMState.mode==='learning'){
+    PMKeyboard.build(kb, PMLearn.handleKey, null);
+  } else if(PMState.mode==='simon'){
+    /* Simon rebuilds its own keyboard; just resize */
+  }
+  PMRoll.resize();
+});
 
 /* ════════════════════════════════════════════════════════════════════
    INIT

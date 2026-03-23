@@ -592,6 +592,7 @@
     /* White keys */
     .pm-wkey {
       position: absolute; bottom: 0;
+      touch-action: none; /* must be on the element itself — abs-pos children don't inherit from parent on iOS Safari */
       background: linear-gradient(to bottom, #f8f8f8 0%, #ffffff 40%, #f4f4f4 100%);
       /* side borders only — no top/bottom outline, gives a clean divided look */
       border-left: 1px solid #c8c8c8;
@@ -636,6 +637,7 @@
     /* Black keys */
     .pm-bkey {
       position: absolute;
+      touch-action: none; /* same fix — abs-pos children don't inherit touch-action on iOS Safari */
       background: linear-gradient(160deg, #3a3a3a 0%, #1a1a1a 30%, #111 70%, #0a0a0a 100%);
       border-left: 1px solid #000;
       border-right: 1px solid #000;

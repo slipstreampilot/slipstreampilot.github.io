@@ -2566,7 +2566,18 @@ const KarateFight = (function(){
 
   /* ── Palettes ────────────────────────────────────────────────── */
   const PC  = { hair:'#111122', skin:'#e8b88a', gi:'#f4f4f0', belt:'#111111', shoe:'#333333', eye:'#111111' };
-  const EC  = { hair:'#bb1e00', skin:'#e8b88a', gi:'#111a2e', belt:'#cc0000', shoe:'#111111', eye:'#111111' };
+  const EC     = { hair:'#bb1e00', skin:'#e8b88a', gi:'#111a2e', belt:'#cc0000', shoe:'#111111', eye:'#111111' };
+  // Medium: royal-blue gi, same human sprite
+  const EC_MED = { hair:'#bb1e00', skin:'#e8b88a', gi:'#1e3eaa', belt:'#cc0000', shoe:'#111111', eye:'#111111' };
+  // Hard: Red Wyvern — entirely different sprite (POSES_WYVERN)
+  const EC_HARD = {
+    s0:'#3a0808', s1:'#8c1818', s2:'#cc2e2e',
+    bel:'#cc6622', hrn:'#c8c8b8', eye:'#ffcc00',
+    wmb:'#180808', whi:'#ee4433', fir:'#ff7700', fid:'#ffee00'
+  };
+  // Arena canvas heights and enemy pixel scales per difficulty
+  const ARENA_HEIGHT = { easy: 150, medium: 200, hard: 200 };
+  const ENEMY_SCALE  = { easy: 3,   medium: 4.5, hard: 5   };
   const HP_HI = '#22cc22', HP_MID = '#cccc22', HP_LO = '#cc2222', HP_OFF = '#9a7840';
 
   /* ── State ───────────────────────────────────────────────────── */
@@ -2578,6 +2589,7 @@ const KarateFight = (function(){
   let hitWord = null, hitWordSub = null, hitWordTimer = null;
   let autoTimer = null, autoKOcb = null; // 12-second enemy auto-attack
   let duelMode = false, duelMaxHP = 0;   // Duel Mode: variable enemy HP, damage = answer
+  let enemyVariant = 'easy';             // 'easy' | 'medium' | 'hard' — controls sprite/scale
 
   /* ── Pixel helpers ─────────────────────────────────────────────── */
   // Emit [col, row, ck] pixel entries for a filled rectangle of units
@@ -2589,19 +2601,21 @@ const KarateFight = (function(){
     return out;
   }
 
-  // Draw a NES-pixel sprite onto the active canvas/ctx
-  // col 0 = centre, +col = toward enemy; row 0 = ground, +row = up
-  function drawPxFighter(cx, poseKey, colors, mirror) {
-    const pixels = POSES_NES[poseKey] || POSES_NES.idle;
-    const S = SCALE;
-    const dir = mirror ? -1 : 1;
+  // Draw a pixel sprite onto the active canvas/ctx.
+  // col 0 = centre, +col = toward enemy; row 0 = ground, +row = up.
+  // poseLib defaults to POSES_NES; S (px/unit) defaults to SCALE.
+  function drawPxFighter(cx, poseKey, colors, mirror, poseLib, S) {
+    const lib    = poseLib || POSES_NES;
+    const scale  = S || SCALE;
+    const pixels = lib[poseKey] || lib.idle;
+    const dir    = mirror ? -1 : 1;
     for(let i = 0; i < pixels.length; i++) {
       const [col, row, ck] = pixels[i];
       ctx.fillStyle = colors[ck];
       ctx.fillRect(
-        Math.round(cx + dir * col * S),
-        Math.round(groundY - (row + 1) * S),
-        S, S
+        Math.round(cx + dir * col * scale),
+        Math.round(groundY - (row + 1) * scale),
+        scale, scale
       );
     }
   }
@@ -2696,6 +2710,152 @@ const KarateFight = (function(){
     };
   }());
 
+  /* ── Wyvern pose library (Hard difficulty enemy) ────────────────
+     Red Wyvern: spread wings, short neck, fire breath attack.
+     Scale is ENEMY_SCALE.hard = 5 px/unit.
+     Color keys match EC_HARD palette.                            */
+  const POSES_WYVERN = (function(){
+    function WPR(r0,r1,c0,c1,ck){ return PR(r0,r1,c0,c1,ck); }
+
+    // ── Shared body/wings/legs/tail (reused across poses) ────────
+    function body() {
+      return [
+        // ── Barrel body ──────────────────────────────────────
+        ...WPR( 7,13,-4, 3,'s1'),
+        ...WPR(10,13,-2, 2,'s2'),   // dorsal highlight
+        ...WPR( 7,11,-1, 1,'bel'),  // belly
+        ...WPR( 7,10,-4,-4,'s0'),   // left-edge shadow
+        // ── Wings spread wide (threat display) ───────────────
+        ...WPR(13,16, 4, 4,'s0'),   // right wing leading bone
+        ...WPR(13,16, 5,13,'wmb'),  // right wing upper membrane
+        ...WPR(13,14,12,13,'s0'),   // right wingtip bone
+        ...WPR(13,15, 6,10,'whi'),  // right membrane inner glow
+        ...WPR(10,12, 5,14,'wmb'),  // right wing mid membrane
+        ...WPR(10,11,12,14,'s0'),
+        ...WPR(10,12, 7,11,'whi'),
+        ...WPR( 7, 9, 6,13,'wmb'),  // right wing lower
+        ...WPR( 7, 8, 9,12,'whi'),
+        [ 6, 9,'hrn'],              // right wing wrist claw
+        ...WPR(13,16,-13,-5,'wmb'), // left wing upper
+        ...WPR(13,16,-13,-13,'s0'),
+        ...WPR(10,12,-12,-5,'wmb'), // left wing mid
+        ...WPR(10,11,-11,-9,'whi'),
+        [-11, 9,'hrn'],             // left wing wrist claw
+        // ── Short powerful legs ───────────────────────────────
+        ...WPR( 2, 6,-4,-2,'s1'), ...WPR( 4, 6,-4,-3,'s2'), ...WPR( 2, 4,-4,-3,'s0'),
+        ...WPR( 2, 6, 2, 4,'s1'), ...WPR( 4, 6, 3, 4,'s2'),
+        // ── Massive claws ────────────────────────────────────
+        ...WPR( 0, 1,-5,-3,'hrn'), ...WPR( 0, 0,-6,-2,'hrn'),
+        ...WPR( 0, 1, 3, 5,'hrn'), ...WPR( 0, 0, 2, 6,'hrn'),
+        // ── Spiked tail (raised for balance) ─────────────────
+        ...WPR( 9,12,-7,-5,'s1'), ...WPR(10,12,-6,-6,'s0'),
+        ...WPR( 6, 8,-9,-6,'s1'), ...WPR( 4, 5,-10,-8,'s1'), ...WPR( 2, 3,-11,-9,'s1'),
+        [-7,11,'hrn'],[-9,8,'hrn'],[-11,4,'hrn'],
+        ...WPR( 1, 2,-12,-10,'hrn'),
+      ];
+    }
+
+    // ── Head in idle (upright, threat display) ────────────────────
+    function headIdle() {
+      return [
+        ...WPR(21,23,-1, 1,'hrn'),  // short forward-pointing horns
+        [ 2,21,'hrn'],              // small brow spike
+        ...WPR(20,22,-2, 2,'s2'),   // skull top highlight
+        ...WPR(18,21,-2, 2,'s1'),   // skull mid
+        ...WPR(17,19, 1, 5,'s1'),   // pointed snout
+        ...WPR(18,19, 2, 4,'s2'),   // snout top
+        ...WPR(15,17, 0, 5,'s0'),   // lower jaw shadow
+        ...WPR(15,16, 1, 4,'bel'),  // inner throat
+        [ 2,16,'hrn'],[ 4,16,'hrn'], // teeth
+        [ 0,20,'eye'],
+        // short thick neck
+        ...WPR(13,18,-2, 1,'s1'), ...WPR(14,17,-1, 0,'s2'),
+        ...WPR(13,16, 1, 2,'bel'), ...WPR(13,17,-3,-3,'s0'),
+      ];
+    }
+
+    // ── Head in fire-breath (lowered, mouth open, flame) ──────────
+    function headFire() {
+      return [
+        ...WPR(14,16,-2, 2,'s2'),   // skull top (lowered)
+        ...WPR(12,15,-2, 2,'s1'),   // skull mid
+        ...WPR(11,13, 1, 5,'s1'),   // snout
+        ...WPR(12,13, 2, 4,'s2'),   // snout top
+        ...WPR( 9,11, 0, 5,'s0'),   // lower jaw open/down
+        ...WPR( 9,10, 1, 4,'bel'),  // inner mouth
+        [ 2,10,'hrn'],[ 4,10,'hrn'], // teeth
+        [ 0,14,'eye'],              // eye in lowered position
+        ...WPR(15,17,-1, 1,'hrn'),  // horns follow head down
+        [ 2,14,'hrn'],
+        // neck connecting lowered head to body
+        ...WPR(12,16,-2, 1,'s1'), ...WPR(13,15,-1, 0,'s2'),
+        ...WPR(12,14, 1, 2,'bel'), ...WPR(12,15,-3,-3,'s0'),
+        // ── Fire stream (fires toward +col = toward player when mirrored)
+        ...WPR( 9,10, 6,11,'fir'),
+        ...WPR( 8, 9, 6,14,'fid'),  // bright yellow core
+        ...WPR( 7, 8,10,17,'fir'),
+        ...WPR( 8, 9,12,16,'fid'),
+        ...WPR( 6, 7,14,19,'fir'),
+        [ 19, 6,'fir'],[ 20, 5,'fir'],[ 18, 5,'fid'], // fire tips
+      ];
+    }
+
+    // ── Head hit (snapped backward) ───────────────────────────────
+    function headHit() {
+      return [
+        ...WPR(21,23,-3,-1,'hrn'), [ 0,21,'hrn'],
+        ...WPR(20,22,-4, 0,'s2'), ...WPR(18,21,-4, 0,'s1'),
+        ...WPR(17,19,-1, 3,'s1'), ...WPR(18,19, 0, 2,'s2'),
+        ...WPR(15,17,-2, 3,'s0'), ...WPR(15,16,-1, 2,'bel'),
+        [-2,20,'eye'],
+        ...WPR(13,18,-4,-1,'s1'), ...WPR(14,17,-3,-2,'s2'),
+        ...WPR(13,16,-1, 0,'bel'), ...WPR(13,17,-5,-5,'s0'),
+      ];
+    }
+
+    return {
+      idle: [ ...headIdle(), ...body() ],
+
+      punch: [ ...headFire(), ...body() ],  // fire breath
+      kick:  [ ...headFire(), ...body() ],  // same fire breath (dragon only attacks one way)
+
+      hit: [ ...headHit(), ...body() ],
+
+      ko: [
+        // Wyvern lying flat — wings drape out dramatically
+        ...WPR( 4, 6, 7,12,'s1'), ...WPR( 4, 6, 9,12,'s2'),
+        ...WPR( 3, 5,11,15,'bel'), ...WPR( 2, 4,13,15,'s0'),
+        [ 8, 5,'eye'],
+        ...WPR( 6, 7, 3, 8,'hrn'),          // horns point upward when lying
+        ...WPR( 2, 5,-6, 9,'s1'), ...WPR( 3, 5,-5, 8,'s2'), ...WPR( 2, 3,-6, 7,'bel'),
+        // Wings draped flat — spread for dramatic KO look
+        ...WPR( 4, 7,-4, 6,'wmb'), ...WPR( 4, 6,-5, 5,'whi'),
+        ...WPR( 5, 8,-3, 4,'wmb'), ...WPR( 3, 5, 3, 8,'wmb'),
+        ...WPR( 1, 2,-8,-5,'s1'), ...WPR( 1, 2,-2, 0,'s1'),
+        ...WPR( 0, 0,-9,-5,'hrn'), ...WPR( 0, 0,-3, 1,'hrn'),
+        ...WPR( 4, 6,-11,-8,'s1'), ...WPR( 2, 3,-12,-9,'hrn'),
+      ],
+
+      victory: [
+        // Head raised high, wings thrust upward triumphantly
+        ...WPR(24,26,-1, 1,'hrn'),
+        ...WPR(23,25,-2, 2,'s2'), ...WPR(21,24,-2, 2,'s1'),
+        ...WPR(20,22, 1, 5,'s1'), ...WPR(21,22, 2, 4,'s2'),
+        ...WPR(18,20, 0, 5,'s0'), ...WPR(18,19, 1, 4,'bel'),
+        [ 0,23,'eye'],
+        ...WPR(15,21,-2, 1,'s1'), ...WPR(16,20,-1, 0,'s2'),
+        ...WPR(15,19, 1, 2,'bel'),
+        ...body().filter(p => p[2] !== 'wmb' && p[2] !== 'whi'),
+        // Wings thrust fully up
+        ...WPR(13,20, 4,16,'wmb'), ...WPR(15,19, 5, 5,'s0'),
+        ...WPR(13,15,15,16,'s0'),  ...WPR(13,18, 6,12,'whi'),
+        ...WPR(13,20,-16,-5,'wmb'),...WPR(15,19,-16,-16,'s0'),
+        ...WPR(13,18,-12,-7,'whi'),
+        [ 6,13,'hrn'],[-11,13,'hrn'],
+      ],
+    };
+  }());
+
   function drawHPPips(x, y, hp, rtl) {
     const PW = 8, PH = 7, GAP = 2, step = PW + GAP;
     const col = hp > 5 ? HP_HI : hp > 2 ? HP_MID : HP_LO;
@@ -2755,7 +2915,12 @@ const KarateFight = (function(){
 
     /* Characters */
     drawPxFighter(px, playerPose, PC, false);
-    drawPxFighter(ex, enemyPose, EC, true);
+    const ePal   = enemyVariant === 'hard'   ? EC_HARD
+                 : enemyVariant === 'medium' ? EC_MED
+                 : EC;
+    const ePoses = enemyVariant === 'hard' ? POSES_WYVERN : POSES_NES;
+    const eScale = ENEMY_SCALE[enemyVariant] || SCALE;
+    drawPxFighter(ex, enemyPose, ePal, true, ePoses, eScale);
 
     /* Hit word flash */
     if(hitWord) {
@@ -2961,8 +3126,21 @@ const KarateFight = (function(){
     }, intervalMs);
   }
 
+  function applyArenaSize() {
+    if(!canvas) return;
+    const h = ARENA_HEIGHT[enemyVariant] || 150;
+    canvas.style.height = h + 'px';
+    canvas.width  = canvas.offsetWidth || 320;
+    canvas.height = h;
+  }
+
+  function setVariant(difficulty) {
+    enemyVariant = difficulty || 'easy';
+  }
+
   function reset() {
     if(!initialized) init();
+    applyArenaSize();
     stopAutoAttack();
     clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
     playerHP = MAX_HP; enemyHP = MAX_HP;
@@ -2974,6 +3152,7 @@ const KarateFight = (function(){
 
   function resetDuel(maxHP) {
     if(!initialized) init();
+    applyArenaSize();
     stopAutoAttack();
     clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
     playerHP = MAX_HP;
@@ -3007,7 +3186,7 @@ const KarateFight = (function(){
 
   function getEnemyHP() { return enemyHP; }
 
-  return { init, playerAttack, enemyAttack, reset, resetDuel, showResult, getEnemyHP, startAutoAttack, stopAutoAttack };
+  return { init, playerAttack, enemyAttack, reset, resetDuel, showResult, getEnemyHP, startAutoAttack, stopAutoAttack, setVariant };
 }());
 
 /* ── Problem generation ── */
@@ -3290,6 +3469,9 @@ function gm_startCountdown(callback) {
 function gm_startRound() {
   // Generate problems first — duel mode needs them to compute enemy HP
   GMState.problems = gm_generateProblems(GMState.difficulty);
+
+  // Set enemy appearance before reset so the arena resizes correctly
+  KarateFight.setVariant(GMState.difficulty);
 
   if(GMState.mode === 'duel') {
     const totalDmg = GMState.problems.reduce((s, p) => s + p.answer, 0);

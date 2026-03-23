@@ -1257,6 +1257,7 @@
   <button class="btn" onclick="GMUI.goHowToPlay()">How to Play</button>
   <button class="btn" onclick="GMUI.startPractice()">Practice Mode</button>
   <button class="btn" onclick="GMUI.startGame()">Play Game</button>
+  <button class="btn" onclick="GMUI.startDuel()">&#x2694;&#xFE0F; Duel Mode</button>
   <button class="btn" onclick="GMUI.goHighScores()">View High Scores</button>
 </div>
 
@@ -1408,6 +1409,8 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById('screen-' + id);
   if (el) el.classList.add('active');
+  /* Title music: play on hub, pause everywhere else */
+  if (id === 'hub') TitleMusic.start(); else TitleMusic.stop();
 }
 
 function escHtml(str) {
@@ -1498,6 +1501,89 @@ const Audio = (() => {
 
   return { countdownBeat, correct, wrong, flip, match, mismatch, roundComplete, unlock, getCtx };
 })();
+
+/* ════════════════════════════════════════════════════════════════════
+   TITLE MUSIC  — procedural looping jingle for the hub screen
+   Uses the shared Audio.getCtx() — never creates its own AudioContext.
+════════════════════════════════════════════════════════════════════ */
+const TitleMusic = (function(){
+  let active  = false;  // true while hub is showing
+  let loopId  = null;   // setTimeout handle for next loop iteration
+  let pending = false;  // start() was called but context was still suspended
+
+  /* Tempo & note lengths */
+  const BPM  = 130;
+  const Q    = 60 / BPM;   // quarter note ≈ 0.4615 s
+  const E    = Q / 2;      // eighth note  ≈ 0.2308 s
+
+  /* Greg's Games Theme — 4 bars, C-major pentatonic (C D E G A)
+     Bars 1-3: all eighth notes (8 per bar)
+     Bar 4:    6 eighths + quarter (= 4 beats)                    */
+  const SEQ = [
+    // Bar 1 — bright, rising opening
+    [523,E],[659,E],[784,E],[659,E],
+    [523,E],[659,E],[784,E],[880,E],
+    // Bar 2 — energetic bounce higher
+    [880,E],[784,E],[659,E],[784,E],
+    [880,E],[784,E],[659,E],[587,E],
+    // Bar 3 — climb to the top
+    [659,E],[784,E],[880,E],[1047,E],
+    [880,E],[784,E],[659,E],[880,E],
+    // Bar 4 — exciting descending resolution, held final note
+    [784,E],[659,E],[587,E],[523,E],
+    [659,E],[784,E],[523,Q],
+  ];
+
+  /* Total loop duration in seconds (used to schedule the next loop) */
+  const LOOP_DUR = SEQ.reduce((s, [, d]) => s + d, 0);
+
+  function schedNote(c, freq, t, dur) {
+    const osc  = c.createOscillator();
+    const gain = c.createGain();
+    osc.type   = 'triangle';    /* warmer than square, more character than sine */
+    osc.frequency.setValueAtTime(freq, t);
+    osc.connect(gain); gain.connect(c.destination);
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.07, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.78);
+    osc.start(t);
+    osc.stop(t + dur);
+  }
+
+  function playLoop() {
+    if (!active) return;
+    try {
+      const c = Audio.getCtx();
+      if (c.state === 'suspended') { pending = true; return; }
+      pending = false;
+      let t = c.currentTime + 0.04;
+      for (const [freq, dur] of SEQ) { schedNote(c, freq, t, dur); t += dur; }
+      /* Schedule next iteration slightly before current one ends (avoids gaps) */
+      loopId = setTimeout(playLoop, (LOOP_DUR - 0.12) * 1000);
+    } catch(e) {}
+  }
+
+  function start() {
+    if (active) return;
+    active = true;
+    playLoop();
+  }
+
+  function stop() {
+    active = false;
+    pending = false;
+    clearTimeout(loopId);
+    loopId = null;
+    /* Already-scheduled notes fade out naturally via their exponential ramp */
+  }
+
+  /* Called after a user gesture unlocks the AudioContext */
+  function onUnlock() {
+    if (active && pending) playLoop();
+  }
+
+  return { start, stop, onUnlock };
+}());
 
 /* ════════════════════════════════════════════════════════════════════
    ██████  MEMORY MASTER
@@ -2333,14 +2419,12 @@ const MCUI = {
    ██  GREG'S MATH GAME
 ════════════════════════════════════════════════════════════════════ */
 
-/* ── Audio (standalone module; shares AudioContext family with Audio) ── */
+/* ── Audio (standalone module; delegates to shared Audio context) ────────
+   IMPORTANT: must NOT create its own AudioContext. iOS Safari silently
+   suspends or kills any context beyond the first one on the page.        */
 const GMAudio = (() => {
-  let ctx = null;
-  function getCtx() {
-    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-    if (ctx.state === 'suspended') ctx.resume();
-    return ctx;
-  }
+  // Delegate entirely to the single shared AudioContext
+  function getCtx() { return Audio.getCtx(); }
   function tone(freq, type, dur, vol, delay = 0) {
     try {
       const c = getCtx();
@@ -2355,14 +2439,7 @@ const GMAudio = (() => {
       osc.stop(c.currentTime + delay + dur + 0.01);
     } catch(e) {}
   }
-  function unlock() {
-    try {
-      const c = getCtx();
-      const buf = c.createBuffer(1,1,22050);
-      const src = c.createBufferSource();
-      src.buffer = buf; src.connect(c.destination); src.start(0);
-    } catch(e) {}
-  }
+  function unlock() { Audio.unlock(); } // delegate — same context
   // Short rising chime — correct answer
   function correct() {
     tone(880,  'sine', 0.10, 0.28, 0.00);
@@ -2424,8 +2501,9 @@ const KarateFight = (function(){
   let playerPose = 'idle', enemyPose = 'idle';
   let pTimer = null, eTimer = null;
   let attackCount = 0, initialized = false;
-  let hitWord = null, hitWordTimer = null;
+  let hitWord = null, hitWordSub = null, hitWordTimer = null;
   let autoTimer = null, autoKOcb = null; // 12-second enemy auto-attack
+  let duelMode = false, duelMaxHP = 0;   // Duel Mode: variable enemy HP, damage = answer
 
   /* ── Pixel helpers ─────────────────────────────────────────────── */
   // Emit [col, row, ck] pixel entries for a filled rectangle of units
@@ -2574,16 +2652,32 @@ const KarateFight = (function(){
     ctx.fillStyle = '#8b5e28'; ctx.fillRect(0, groundY, W, H - groundY);
     ctx.fillStyle = '#a07838'; ctx.fillRect(0, groundY, W, 3);
 
-    /* HP pips */
+    /* HP display */
     const PIP_TOTAL = MAX_HP * 10 - 2; // 10×(8+2)-2 = 98px wide
-    drawHPPips(6,           4, playerHP, false);
-    drawHPPips(W - 6 - PIP_TOTAL, 4, enemyHP, true);
+    drawHPPips(6, 4, playerHP, false);
+    if(duelMode) {
+      // Wide HP bar for enemy — width fills right side proportionally
+      const barW = Math.max(80, Math.min(150, Math.round(W * 0.44)));
+      const barH = 8, barX = W - 6 - barW;
+      const pct  = duelMaxHP > 0 ? Math.max(0, enemyHP / duelMaxHP) : 0;
+      const barColor = pct > 0.5 ? HP_HI : pct > 0.25 ? HP_MID : HP_LO;
+      ctx.fillStyle = HP_OFF;
+      ctx.fillRect(barX, 4, barW, barH);
+      if(pct > 0) { ctx.fillStyle = barColor; ctx.fillRect(barX, 4, Math.round(barW * pct), barH); }
+    } else {
+      drawHPPips(W - 6 - PIP_TOTAL, 4, enemyHP, true);
+    }
 
     /* Labels */
     ctx.fillStyle = '#4a3010'; ctx.font = 'bold 8px monospace';
     ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';  ctx.fillText('YOU',   6, 14);
-    ctx.textAlign = 'right'; ctx.fillText('ENEMY', W - 6, 14);
+    ctx.textAlign = 'left'; ctx.fillText('YOU', 6, 14);
+    if(duelMode) {
+      ctx.textAlign = 'right';
+      ctx.fillText(enemyHP + '/' + duelMaxHP + ' HP', W - 6, 14);
+    } else {
+      ctx.textAlign = 'right'; ctx.fillText('ENEMY', W - 6, 14);
+    }
 
     /* Characters */
     drawPxFighter(px, playerPose, PC, false);
@@ -2592,13 +2686,20 @@ const KarateFight = (function(){
     /* Hit word flash */
     if(hitWord) {
       ctx.save();
-      ctx.font = 'bold 18px monospace';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      // Outline
+      const hitY = hitWordSub ? groundY * 0.50 : groundY * 0.58;
+      ctx.font = 'bold 18px monospace';
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
-      ctx.strokeText(hitWord, W/2, groundY * 0.58);
+      ctx.strokeText(hitWord, W/2, hitY);
       ctx.fillStyle = hitWord === 'MISS!' ? '#cc2222' : '#cc6600';
-      ctx.fillText(hitWord, W/2, groundY * 0.58);
+      ctx.fillText(hitWord, W/2, hitY);
+      if(hitWordSub) {
+        ctx.font = 'bold 10px monospace';
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+        ctx.strokeText(hitWordSub, W/2, hitY + 22);
+        ctx.fillStyle = '#4a3010';
+        ctx.fillText(hitWordSub, W/2, hitY + 22);
+      }
       ctx.restore();
     }
 
@@ -2692,33 +2793,40 @@ const KarateFight = (function(){
     } catch(e){}
   }
 
-  function showHitWord(word) {
+  function showHitWord(word, sub) {
     clearTimeout(hitWordTimer);
     hitWord = word;
-    hitWordTimer = setTimeout(() => { hitWord = null; draw(); }, 500);
+    hitWordSub = sub || null;
+    hitWordTimer = setTimeout(() => { hitWord = null; hitWordSub = null; draw(); }, 500);
   }
 
   /* ── Public API ──────────────────────────────────────────────── */
-  function playerAttack() {
+  function playerAttack(damage) {
     if(!initialized) init();
-    if(enemyHP <= 0 || playerHP <= 0) return;
+    if(enemyHP <= 0 || playerHP <= 0) return false;
     attackCount++;
     const atk = attackCount % 2 === 1 ? 'punch' : 'kick';
     clearTimeout(pTimer);
     playerPose = atk;
     pTimer = setTimeout(() => { playerPose = 'idle'; draw(); }, ATTACK_DUR);
-    enemyHP = Math.max(0, enemyHP - 1);
+    const dmg = (duelMode && damage != null) ? damage : 1;
+    enemyHP = Math.max(0, enemyHP - dmg);
     clearTimeout(eTimer);
     if(enemyHP <= 0) {
       enemyPose = 'ko';
-      kfSound('ko'); showHitWord(KO_WORD);
+      kfSound('ko');
+      showHitWord(KO_WORD, duelMode ? '\u2212' + dmg + ' DMG' : null);
     } else {
       enemyPose = 'hit';
       eTimer = setTimeout(() => { enemyPose = 'idle'; draw(); }, HIT_DUR);
       kfSound('hit');
-      showHitWord(HIT_WORDS[attackCount % HIT_WORDS.length]);
+      const sub = duelMode
+        ? (dmg > 0 ? '\u2212' + dmg + ' \u2022 ' + enemyHP + '/' + duelMaxHP + ' HP' : 'NO DAMAGE!')
+        : null;
+      showHitWord(HIT_WORDS[attackCount % HIT_WORDS.length], sub);
     }
     draw();
+    return enemyHP <= 0;
   }
 
   function enemyAttack() {
@@ -2784,8 +2892,20 @@ const KarateFight = (function(){
     stopAutoAttack();
     clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
     playerHP = MAX_HP; enemyHP = MAX_HP;
+    duelMode = false; duelMaxHP = 0;
     playerPose = 'idle'; enemyPose = 'idle';
-    attackCount = 0; hitWord = null;
+    attackCount = 0; hitWord = null; hitWordSub = null;
+    draw();
+  }
+
+  function resetDuel(maxHP) {
+    if(!initialized) init();
+    stopAutoAttack();
+    clearTimeout(pTimer); clearTimeout(eTimer); clearTimeout(hitWordTimer);
+    playerHP = MAX_HP;
+    enemyHP = maxHP; duelMaxHP = maxHP; duelMode = true;
+    playerPose = 'idle'; enemyPose = 'idle';
+    attackCount = 0; hitWord = null; hitWordSub = null;
     draw();
   }
 
@@ -2813,7 +2933,7 @@ const KarateFight = (function(){
 
   function getEnemyHP() { return enemyHP; }
 
-  return { init, playerAttack, enemyAttack, reset, showResult, getEnemyHP, startAutoAttack, stopAutoAttack };
+  return { init, playerAttack, enemyAttack, reset, resetDuel, showResult, getEnemyHP, startAutoAttack, stopAutoAttack };
 }());
 
 /* ── Problem generation ── */
@@ -2870,11 +2990,12 @@ function gm_generateProblems(difficulty) {
 
 /* ── State ── */
 const GMState = {
-  score:         0,
-  multiplier:    1.0,
-  mode:          null,      // 'practice' | 'game'
-  pendingMode:   null,      // set before difficulty screen
-  difficulty:    'hard',    // 'easy' | 'medium' | 'hard'
+  score:           0,
+  multiplier:      1.0,
+  mode:            null,    // 'practice' | 'game' | 'duel'
+  pendingMode:     null,    // set before difficulty screen
+  difficulty:      'hard',  // 'easy' | 'medium' | 'hard'
+  duelEnemyMaxHP:  0,       // Duel Mode: enemy starting HP (80% of total possible damage)
   problems:      [],
   current:       0,
   input:         '',
@@ -2950,7 +3071,7 @@ function gm_renderAllRows() {
     inner.appendChild(row);
   });
 
-  document.getElementById('gm-hud-count').textContent = '1 / 10';
+  document.getElementById('gm-hud-count').textContent = '1 / ' + GMState.problems.length;
   GMState.input = '';
   // Re-enable transition after layout settles (double-rAF ensures paint completes first)
   requestAnimationFrame(() => { requestAnimationFrame(() => { inner.style.transition = ''; }); });
@@ -2966,7 +3087,7 @@ function gm_activateRow(index) {
   });
   const rowH = parseInt(document.getElementById('gm-scroll-window').dataset.rowH || '64', 10);
   document.getElementById('gm-scroll-inner').style.transform = `translateY(${(1 - index) * rowH}px)`;
-  document.getElementById('gm-hud-count').textContent = `${index + 1} / 10`;
+  document.getElementById('gm-hud-count').textContent = `${index + 1} / ${GMState.problems.length}`;
   GMState.input = '';
   const ansEl = document.getElementById('gm-ans-' + index);
   if(ansEl){ ansEl.textContent = ''; ansEl.classList.remove('gm-wrong', 'gm-correct'); }
@@ -2995,10 +3116,16 @@ function gm_updateAnswerDisplay(flashWrong) {
 
 /* ── Correct-answer handler: green answer + checkmark, then slide up ── */
 function gm_onCorrect() {
-  KarateFight.playerAttack();
   GMAudio.correct();
   GMState.wrongFlash = true;
-  const i     = GMState.current;
+  const i = GMState.current;
+  // In duel mode, deal the answer value as damage; track if enemy is downed
+  let enemyDown = false;
+  if(GMState.mode === 'duel') {
+    enemyDown = KarateFight.playerAttack(GMState.problems[i].answer);
+  } else {
+    KarateFight.playerAttack();
+  }
   // Award points in game mode
   if(GMState.mode === 'game'){
     GMState.score += Math.round(100 * GMState.multiplier);
@@ -3015,7 +3142,7 @@ function gm_onCorrect() {
   gm_addPhase(setTimeout(() => {
     GMState.wrongFlash = false;
     GMState.current++;
-    if(GMState.current >= GMState.problems.length){
+    if(enemyDown || GMState.current >= GMState.problems.length){
       gm_finish();
     } else {
       gm_activateRow(GMState.current);
@@ -3086,7 +3213,17 @@ function gm_startCountdown(callback) {
 }
 
 function gm_startRound() {
-  KarateFight.reset();
+  // Generate problems first — duel mode needs them to compute enemy HP
+  GMState.problems = gm_generateProblems(GMState.difficulty);
+
+  if(GMState.mode === 'duel') {
+    const totalDmg = GMState.problems.reduce((s, p) => s + p.answer, 0);
+    GMState.duelEnemyMaxHP = Math.max(60, Math.floor(totalDmg * 0.80));
+    KarateFight.resetDuel(GMState.duelEnemyMaxHP);
+  } else {
+    KarateFight.reset();
+  }
+
   // Reset any finish-screen colour tinting on the time element
   const fte = document.getElementById('gm-finish-time');
   if(fte) fte.style.color = '';
@@ -3097,13 +3234,12 @@ function gm_startRound() {
   GMState.wrongFlash = false;
   GMState.elapsed = 0;
   GMState.retries = 0;
-  GMState.problemRetries = new Array(10).fill(0);
+  GMState.problemRetries = new Array(GMState.problems.length).fill(0);
   GMState.score = 0;
   GMState.multiplier = 1.0;
-  GMState.problems = gm_generateProblems(GMState.difficulty);
   showScreen('gm-round');
   // Game mode: show score + multiplier, hide timer
-  // Practice mode: show timer, hide score + multiplier
+  // Practice / duel mode: show timer, hide score + multiplier
   const isGame = GMState.mode === 'game';
   const timerEl    = document.getElementById('gm-hud-timer');
   const gameRight  = document.getElementById('gm-hud-game-right');
@@ -3112,7 +3248,7 @@ function gm_startRound() {
   gm_updateHUD();
   gm_renderAllRows();
   gm_startTimer(); // always start, even in practice (for elapsed tracking)
-  if(GMState.mode === 'game') KarateFight.startAutoAttack(12000, gm_finish);
+  if(GMState.mode === 'game' || GMState.mode === 'duel') KarateFight.startAutoAttack(12000, gm_finish);
 }
 
 function gm_finish() {
@@ -3192,6 +3328,15 @@ const GMFinish = {
       rankEl.textContent = 'Try the full game to get on the leaderboard!';
       nameSec.style.display = 'none';
       GMAudio.complete();
+    } else if(GMState.mode === 'duel') {
+      timeEl.textContent = playerWon ? 'Victory!' : 'Defeated!';
+      timeEl.style.color = playerWon ? '#1a7a1a' : '#bb0000';
+      const dmgDealt = GMState.duelEnemyMaxHP - KarateFight.getEnemyHP();
+      rankEl.textContent = playerWon
+        ? `Enemy defeated! \u2014 ${dmgDealt} / ${GMState.duelEnemyMaxHP} damage dealt`
+        : `${dmgDealt} / ${GMState.duelEnemyMaxHP} damage dealt \u2014 not enough!`;
+      nameSec.style.display = 'none';
+      if(playerWon) GMAudio.complete(); else GMAudio.wrong();
     } else {
       const score = GMState.score;
       timeEl.textContent = playerWon ? `K.O.!` : `K.O.!`;
@@ -3232,8 +3377,12 @@ const GMFinish = {
 
     let html = '';
     html += `<tr><td>Time</td><td>${gm_formatTime(GMState.elapsed)}</td></tr>`;
+    if(GMState.mode === 'duel') {
+      const dmgDealt = GMState.duelEnemyMaxHP - KarateFight.getEnemyHP();
+      html += `<tr><td>Damage dealt</td><td>${dmgDealt} / ${GMState.duelEnemyMaxHP}</td></tr>`;
+    }
     html += `<tr><td>Mistakes</td><td>${retries}</td></tr>`;
-    html += `<tr><td>First try</td><td>${firstTryCount} / 10</td></tr>`;
+    html += `<tr><td>First try</td><td>${firstTryCount} / ${probs.length}</td></tr>`;
     if(ops.length > 1){
       html += `<tr><td colspan="2" style="padding-top:10px;padding-bottom:2px;font-size:11px;`+
               `letter-spacing:0.08em;text-transform:uppercase;color:#bbb;border-bottom:none">`+
@@ -3326,6 +3475,29 @@ const GMUI = {
       </button>
       <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('all')">
         <span class="hub-game-info"><span class="hub-game-name">All Operations</span><span class="hub-game-desc">Mix of all four operations</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>`;
+    showScreen('gm-difficulty');
+  },
+  startDuel(){
+    GMAudio.unlock(); Audio.unlock();
+    GMState.pendingMode = 'duel';
+    document.getElementById('gm-diff-heading').textContent = 'Duel Mode \u2014 Select Difficulty';
+    document.getElementById('gm-diff-options').innerHTML = `
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('easy')">
+        <span class="hub-game-info"><span class="hub-game-name">Easy</span><span class="hub-game-desc">Addition &amp; subtraction</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('medium')">
+        <span class="hub-game-info"><span class="hub-game-name">Medium</span><span class="hub-game-desc">Addition, subtraction &amp; multiplication</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('hard')">
+        <span class="hub-game-info"><span class="hub-game-name">Hard</span><span class="hub-game-desc">All four operations including division</span></span>
+        <span class="hub-game-arrow">&#8594;</span>
+      </button>
+      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('mul')">
+        <span class="hub-game-info"><span class="hub-game-name">Times Tables</span><span class="hub-game-desc">Multiplication only (0\u201312 \u00D7 0\u201312)</span></span>
         <span class="hub-game-arrow">&#8594;</span>
       </button>`;
     showScreen('gm-difficulty');
@@ -4338,6 +4510,28 @@ window.addEventListener('resize', ()=>{
   }
   PMRoll.resize();
 });
+
+/* ════════════════════════════════════════════════════════════════════
+   AUDIO LIFECYCLE HELPERS
+════════════════════════════════════════════════════════════════════ */
+
+/* Resume AudioContext whenever the page regains focus.
+   iOS Safari suspends the context when the user switches apps or tabs. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    try { Audio.getCtx(); } catch(e) {}   /* getCtx() calls ctx.resume() internally */
+    TitleMusic.onUnlock();                /* restart music if hub is showing */
+  }
+});
+
+/* Unlock AudioContext on the very first user gesture anywhere on the page.
+   iOS Safari will not allow sound until a touch/click event has occurred.
+   { once: true } ensures this runs exactly once and then removes itself.   */
+(function(){
+  function firstGesture() { Audio.unlock(); TitleMusic.onUnlock(); }
+  document.addEventListener('touchstart', firstGesture, { once: true, passive: true });
+  document.addEventListener('click',      firstGesture, { once: true });
+}());
 
 /* ════════════════════════════════════════════════════════════════════
    INIT

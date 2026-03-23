@@ -141,6 +141,37 @@
     }
     .hub-game-btn:hover .hub-game-arrow { color: #000; transform: translateX(4px); }
 
+    /* ─── Music toggle button (top-left of hub) ─────────────────────── */
+    .music-btn {
+      position: absolute; top: 12px; left: 12px; z-index: 10;
+      width: 36px; height: 36px;
+      background: #f0f0f0; border: 1.5px solid #ccc; border-radius: 6px;
+      font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: #bbb;
+      touch-action: manipulation; -webkit-appearance: none;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      overflow: visible;
+    }
+    /* diagonal slash overlay when OFF */
+    .music-btn::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: calc(50% - 1px);
+      width: 2px; height: calc(100% - 6px);
+      background: #bbb;
+      transform: rotate(45deg);
+      border-radius: 1px;
+      pointer-events: none;
+    }
+    /* ON state */
+    .music-btn.on {
+      color: #1a1a1a;
+      background: #fff;
+      border-color: #888;
+    }
+    .music-btn.on::after { display: none; }
+
     /* ─── Practice Select Grid ──────────────────────────────────────── */
     .practice-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
@@ -763,6 +794,7 @@
 <!-- ══════════════════════════════════════════════════ HUB -->
 <div id="screen-hub" class="screen active">
   <div class="hub-bg" id="hub-bg"></div>
+  <button class="music-btn" id="music-btn" onclick="TitleMusic.toggle()" title="Music">&#9835;</button>
   <div class="hub-content">
     <div class="hub-eyebrow">A collection of games by Greg</div>
     <div class="hub-big-title">Greg's<br>Games</div>
@@ -1409,8 +1441,8 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById('screen-' + id);
   if (el) el.classList.add('active');
-  /* Title music: play on hub, pause everywhere else */
-  if (id === 'hub') TitleMusic.start(); else TitleMusic.stop();
+  /* Title music: stop when leaving hub; button is the only way to start it */
+  if (id !== 'hub') TitleMusic.stop();
 }
 
 function escHtml(str) {
@@ -1509,7 +1541,8 @@ const Audio = (() => {
 const TitleMusic = (function(){
   let active  = false;  // true while hub is showing
   let loopId  = null;   // setTimeout handle for next loop iteration
-  let pending = false;  // start() was called but context was still suspended
+  let pending = false;  // start() called but context was still suspended
+  let master  = null;   // single GainNode acting as a master fader for instant-stop
 
   /* Tempo & note lengths */
   const BPM  = 130;
@@ -1534,15 +1567,26 @@ const TitleMusic = (function(){
     [659,E],[784,E],[523,Q],
   ];
 
-  /* Total loop duration in seconds (used to schedule the next loop) */
+  /* Total loop duration in seconds */
   const LOOP_DUR = SEQ.reduce((s, [, d]) => s + d, 0);
+
+  /* Return (creating if needed) the master gain node.
+     All music notes route through this so stop() can silence them instantly. */
+  function getMaster(c) {
+    if (!master) {
+      master = c.createGain();
+      master.gain.setValueAtTime(1, c.currentTime);
+      master.connect(c.destination);
+    }
+    return master;
+  }
 
   function schedNote(c, freq, t, dur) {
     const osc  = c.createOscillator();
     const gain = c.createGain();
     osc.type   = 'triangle';    /* warmer than square, more character than sine */
     osc.frequency.setValueAtTime(freq, t);
-    osc.connect(gain); gain.connect(c.destination);
+    osc.connect(gain); gain.connect(getMaster(c)); /* route via master fader */
     gain.gain.setValueAtTime(0.001, t);
     gain.gain.linearRampToValueAtTime(0.07, t + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.78);
@@ -1556,6 +1600,8 @@ const TitleMusic = (function(){
       const c = Audio.getCtx();
       if (c.state === 'suspended') { pending = true; return; }
       pending = false;
+      /* getMaster() creates a fresh gain node if stop() orphaned the old one */
+      const mg = getMaster(c);
       let t = c.currentTime + 0.04;
       for (const [freq, dur] of SEQ) { schedNote(c, freq, t, dur); t += dur; }
       /* Schedule next iteration slightly before current one ends (avoids gaps) */
@@ -1563,9 +1609,16 @@ const TitleMusic = (function(){
     } catch(e) {}
   }
 
+  function updateBtn() {
+    const btn = document.getElementById('music-btn');
+    if (!btn) return;
+    if (active) btn.classList.add('on'); else btn.classList.remove('on');
+  }
+
   function start() {
     if (active) return;
     active = true;
+    updateBtn();
     playLoop();
   }
 
@@ -1574,7 +1627,26 @@ const TitleMusic = (function(){
     pending = false;
     clearTimeout(loopId);
     loopId = null;
-    /* Already-scheduled notes fade out naturally via their exponential ramp */
+    updateBtn();
+    /* Orphan the master node: fade it to silence then discard the reference.
+       Any pre-scheduled oscillators still in the audio graph will play silently
+       through the old (fading) node and naturally expire.  The next start() gets
+       a completely fresh gain node, so restored volume never re-amplifies old notes. */
+    if (master) {
+      try {
+        const c = Audio.getCtx();
+        const old = master;
+        master = null;   /* new start() will create a fresh gain node */
+        old.gain.cancelScheduledValues(c.currentTime);
+        old.gain.setValueAtTime(old.gain.value, c.currentTime);
+        old.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.06);
+      } catch(e) { master = null; }
+    }
+  }
+
+  function toggle() {
+    Audio.unlock();   /* ensure AudioContext is unlocked on this gesture */
+    if (active) stop(); else start();
   }
 
   /* Called after a user gesture unlocks the AudioContext */
@@ -1582,7 +1654,7 @@ const TitleMusic = (function(){
     if (active && pending) playLoop();
   }
 
-  return { start, stop, onUnlock };
+  return { start, stop, toggle, onUnlock };
 }());
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1708,6 +1780,7 @@ function mm_onBoxClick(e) {
 }
 
 function mm_startCountdown(callback) {
+  TitleMusic.stop();
   showScreen('mm-countdown');
   let n=2;
   const display=document.getElementById('mm-countdown-display');
@@ -2251,6 +2324,7 @@ function mc_startNextRound(){
 }
 
 function mc_startCountdown(callback){
+  TitleMusic.stop();
   showScreen('mc-countdown');
   let n=2;
   const display=document.getElementById('mc-countdown-display');
@@ -2669,7 +2743,7 @@ const KarateFight = (function(){
     }
 
     /* Labels */
-    ctx.fillStyle = '#4a3010'; ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#4a3010'; ctx.font = 'bold 11px monospace';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left'; ctx.fillText('YOU', 6, 14);
     if(duelMode) {
@@ -2797,7 +2871,7 @@ const KarateFight = (function(){
     clearTimeout(hitWordTimer);
     hitWord = word;
     hitWordSub = sub || null;
-    hitWordTimer = setTimeout(() => { hitWord = null; hitWordSub = null; draw(); }, 500);
+    hitWordTimer = setTimeout(() => { hitWord = null; hitWordSub = null; draw(); }, 1400);
   }
 
   /* ── Public API ──────────────────────────────────────────────── */
@@ -3201,6 +3275,7 @@ document.addEventListener('keydown', function(e){
 
 /* ── Game flow ── */
 function gm_startCountdown(callback) {
+  TitleMusic.stop();
   showScreen('gm-countdown');
   let n = 3;
   const display = document.getElementById('gm-countdown-display');
@@ -4520,7 +4595,7 @@ window.addEventListener('resize', ()=>{
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     try { Audio.getCtx(); } catch(e) {}   /* getCtx() calls ctx.resume() internally */
-    TitleMusic.onUnlock();                /* restart music if hub is showing */
+    TitleMusic.onUnlock();                /* resume music loop if user had it on */
   }
 });
 
@@ -4528,7 +4603,7 @@ document.addEventListener('visibilitychange', () => {
    iOS Safari will not allow sound until a touch/click event has occurred.
    { once: true } ensures this runs exactly once and then removes itself.   */
 (function(){
-  function firstGesture() { Audio.unlock(); TitleMusic.onUnlock(); }
+  function firstGesture() { Audio.unlock(); }
   document.addEventListener('touchstart', firstGesture, { once: true, passive: true });
   document.addEventListener('click',      firstGesture, { once: true });
 }());

@@ -81,22 +81,44 @@
         #dpad-down { bottom: 0; left: 76px; }
         #dpad-left { top: 76px; left: 0; }
         #dpad-right { top: 76px; right: 0; }
-        #menuBtn {
-            background: rgba(255, 50, 50, 0.3);
-            border: 2px solid rgba(255, 100, 100, 0.6);
+        .ctrl-btn {
+            width: 140px;
+            box-sizing: border-box;
             border-radius: 10px;
-            color: #ff6666;
             font-size: 15px;
+            font-weight: bold;
             font-family: Arial, sans-serif;
-            padding: 14px 20px;
+            padding: 14px 0;
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
             touch-action: none;
             -webkit-tap-highlight-color: transparent;
+            text-align: center;
+        }
+        #menuBtn {
+            background: rgba(255, 50, 50, 0.3);
+            border: 2px solid rgba(255, 100, 100, 0.6);
+            color: #ff6666;
         }
         #menuBtn:active {
             background: rgba(255, 50, 50, 0.6);
+        }
+        #htpBtn {
+            background: rgba(0, 100, 200, 0.3);
+            border: 2px solid rgba(100, 180, 255, 0.6);
+            color: #6af;
+        }
+        #htpBtn:active {
+            background: rgba(0, 100, 200, 0.6);
+        }
+        #soundBtn {
+            background: rgba(0, 100, 255, 0.3);
+            border: 2px solid rgba(100, 150, 255, 0.6);
+            color: #6af;
+        }
+        #soundBtn:active {
+            background: rgba(0, 100, 255, 0.6);
         }
     </style>
 </head>
@@ -105,8 +127,9 @@
         <canvas id="gameCanvas"></canvas>
         <div id="controls">
             <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
-                <div id="menuBtn">☰ MENU</div>
-                <div id="soundBtn" style="background:rgba(0,100,255,0.3); border:2px solid rgba(100,150,255,0.6); border-radius:10px; color:#6af; font-size:14px; font-family:Arial,sans-serif; padding:10px 16px; cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none; -webkit-tap-highlight-color:transparent; text-align:center;">🔊 ON</div>
+                <div id="menuBtn" class="ctrl-btn">☰ MENU</div>
+                <div id="htpBtn" class="ctrl-btn">? HOW TO PLAY</div>
+                <div id="soundBtn" class="ctrl-btn">🔊 ON</div>
             </div>
             <div id="dpad">
                 <div id="dpad-up" class="dpad-button">▲</div>
@@ -186,7 +209,9 @@
             sneakComboTimer: 0,  // resets combo after 10s of no stealth kills
             lastSneakScore: 0,   // for floating score display
             deathPauseTimer: 0,  // pause during death animation
-            deathCallback: null  // function to call after death animation
+            deathCallback: null, // function to call after death animation
+            showHowToPlay: false, // how to play screen
+            levelAnnounce: 0     // countdown for level announcement overlay
         };
 
         let player = {
@@ -208,11 +233,58 @@
             animSpeed: 0.1     // seconds per frame
         };
 
+        // Patrol paths: each ghost follows waypoints in SCATTER mode.
+        // Combined, these cover every pellet tile in the maze.
+        // 'stop' waypoints cause a brief pause (0.4-0.6s).
+        const PATROL_PATHS = [
+            // Blinky (Red): Top-Left + left spine
+            [
+                {x:1,y:1,stop:true},{x:12,y:1},{x:12,y:5},{x:6,y:5,stop:true},
+                {x:6,y:1},{x:1,y:1},{x:1,y:5},{x:5,y:5},
+                {x:1,y:5},{x:1,y:8,stop:true},{x:6,y:8},{x:6,y:20},
+                {x:1,y:20},{x:1,y:27,stop:true},{x:12,y:27},{x:12,y:29},
+                {x:1,y:29},{x:1,y:20}
+            ],
+            // Pinky (Pink): Top-Right + right spine
+            [
+                {x:26,y:1,stop:true},{x:15,y:1},{x:15,y:5},{x:21,y:5,stop:true},
+                {x:21,y:1},{x:26,y:1},{x:26,y:5},{x:22,y:5},
+                {x:26,y:5},{x:26,y:8,stop:true},{x:21,y:8},{x:21,y:20},
+                {x:26,y:20},{x:26,y:27,stop:true},{x:15,y:27},{x:15,y:29},
+                {x:26,y:29},{x:26,y:20}
+            ],
+            // Inky (Cyan): Bottom-Left + middle connectors
+            [
+                {x:1,y:20,stop:true},{x:12,y:20},{x:12,y:23},{x:7,y:23},
+                {x:1,y:23},{x:3,y:23,stop:true},{x:3,y:26},{x:1,y:26},
+                {x:12,y:26},{x:6,y:26},{x:6,y:23,stop:true},{x:6,y:20},
+                {x:9,y:6},{x:6,y:6},{x:6,y:7},{x:9,y:7},
+                {x:9,y:8,stop:true},{x:12,y:8},{x:14,y:29},{x:1,y:29},
+                {x:13,y:5},{x:14,y:5}
+            ],
+            // Clyde (Orange): Bottom-Right + middle connectors
+            [
+                {x:26,y:20,stop:true},{x:15,y:20},{x:15,y:23},{x:20,y:23},
+                {x:26,y:23},{x:24,y:23,stop:true},{x:24,y:26},{x:26,y:26},
+                {x:15,y:26},{x:21,y:26},{x:21,y:23,stop:true},{x:21,y:20},
+                {x:18,y:6},{x:21,y:6},{x:21,y:7},{x:18,y:7},
+                {x:18,y:8,stop:true},{x:15,y:8},{x:13,y:29},{x:26,y:29}
+            ]
+        ];
+
         let ghostData = [
-            { name: 'Blinky', color: '#FF0000', startX: 13, startY: 11, releaseTime: 0, scatter: { x: 27, y: 0 } },
-            { name: 'Pinky', color: '#FFB8FF', startX: 12, startY: 13, releaseTime: 5, scatter: { x: 0, y: 0 } },
-            { name: 'Inky', color: '#00FFFF', startX: 13, startY: 13, releaseTime: 15, scatter: { x: 27, y: 30 } },
-            { name: 'Clyde', color: '#FFB852', startX: 14, startY: 13, releaseTime: 25, scatter: { x: 0, y: 30 } }
+            { name: 'Blinky', color: '#FF0000', startX: 13, startY: 11, releaseTime: 0, scatter: { x: 27, y: 0 }, patrolIndex: 0 },
+            { name: 'Pinky', color: '#FFB8FF', startX: 12, startY: 13, releaseTime: 5, scatter: { x: 0, y: 0 }, patrolIndex: 1 },
+            { name: 'Inky', color: '#00FFFF', startX: 13, startY: 13, releaseTime: 15, scatter: { x: 27, y: 30 }, patrolIndex: 2 },
+            { name: 'Clyde', color: '#FFB852', startX: 14, startY: 13, releaseTime: 25, scatter: { x: 0, y: 30 }, patrolIndex: 3 }
+        ];
+
+        // Extra ghosts for level 3+ (use same patrol paths, offset start)
+        const extraGhostData = [
+            { name: 'Blinky2', color: '#FF6666', startX: 12, startY: 11, releaseTime: 3, scatter: { x: 27, y: 0 }, patrolIndex: 0 },
+            { name: 'Pinky2', color: '#FFD0FF', startX: 14, startY: 11, releaseTime: 8, scatter: { x: 0, y: 0 }, patrolIndex: 1 },
+            { name: 'Inky2', color: '#66FFFF', startX: 12, startY: 13, releaseTime: 20, scatter: { x: 27, y: 30 }, patrolIndex: 2 },
+            { name: 'Clyde2', color: '#FFD088', startX: 14, startY: 13, releaseTime: 30, scatter: { x: 0, y: 30 }, patrolIndex: 3 }
         ];
 
         let ghosts = [];
@@ -310,13 +382,28 @@
         }
 
         function createGhosts() {
-            ghosts = ghostData.map(g => ({
+            // Level progression:
+            // L1: 4 ghosts, normal speed
+            // L2: 4 ghosts, 95% of player speed
+            // L3+: 8 ghosts, 95% of player speed
+            const level = gameState.level;
+            let ghostSpeed;
+            if (level === 1) {
+                ghostSpeed = 4.05; // ~54% of player's 7.5
+            } else {
+                ghostSpeed = player.speed * 0.95; // 95% of player speed
+            }
+            const allGhostData = level >= 3
+                ? ghostData.concat(extraGhostData)
+                : ghostData;
+
+            ghosts = allGhostData.map(g => ({
                 ...g,
                 tileX: g.startX,
                 tileY: g.startY,
                 pixelProgress: 0,
                 direction: 'RIGHT',
-                speed: 4.05 + (gameState.level - 1) * 0.05,  // 10% slower than player
+                speed: ghostSpeed,
                 state: 'CAGE',
                 releaseCounter: 0,
                 mode: 'SCATTER',
@@ -330,7 +417,11 @@
                 aware: false,
                 pauseTimer: 0,
                 targetX: g.scatter.x,
-                targetY: g.scatter.y
+                targetY: g.scatter.y,
+                // Patrol state
+                patrol: PATROL_PATHS[g.patrolIndex],
+                patrolWaypoint: 0,  // current waypoint index
+                patrolForward: true // direction along path
             }));
         }
 
@@ -379,6 +470,12 @@
             if (!gameState.isTitle) return;
             const now = Date.now();
 
+            if (gameState.showHowToPlay) {
+                drawHowToPlay(now);
+                titleLoopId = requestAnimationFrame(showTitle);
+                return;
+            }
+
             // Draw the title screen image fitted to canvas (no stretching)
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -387,11 +484,9 @@
                 const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
                 let drawW, drawH;
                 if (imgAspect < canvasAspect) {
-                    // Image is taller — fit to height, center horizontally
                     drawH = CANVAS_HEIGHT;
                     drawW = drawH * imgAspect;
                 } else {
-                    // Image is wider — fit to width, center vertically
                     drawW = CANVAS_WIDTH;
                     drawH = drawW / imgAspect;
                 }
@@ -399,13 +494,12 @@
                 const drawY = (CANVAS_HEIGHT - drawH) / 2;
                 ctx.drawImage(titleScreenImg, drawX, drawY, drawW, drawH);
             } else {
-                // Fallback if image hasn't loaded yet
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
                 drawGradientText('FALLEN WARRIOR', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 36);
             }
 
-            // Overlay: high score (dynamic, always on top)
+            // Overlay: high score
             if (gameState.highScore > 0) {
                 ctx.save();
                 ctx.fillStyle = '#FFD700';
@@ -413,12 +507,252 @@
                 ctx.lineWidth = 3;
                 ctx.font = 'bold 15px Impact, Arial Black, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.strokeText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 12);
-                ctx.fillText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 12);
+                ctx.strokeText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, btnY - 8);
+                ctx.fillText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, btnY - 8);
                 ctx.restore();
             }
 
+            // Pulsing "TAP TO START" text
+            const pulse = 0.5 + Math.sin(now / 300) * 0.3;
+            ctx.fillStyle = 'rgba(255, 255, 255, ' + pulse + ')';
+            ctx.font = 'bold 13px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('TAP OR PRESS ENTER TO START', CANVAS_WIDTH / 2, btnY + btnH + 16);
+
             titleLoopId = requestAnimationFrame(showTitle);
+        }
+
+        // Helper: draw the player sprite at a given position and size for HTP illustrations
+        function drawHtpPlayer(sheet, frame, frameCount, px, py, size, flipX) {
+            if (!sheet || !sheet.complete || sheet.naturalWidth <= 0) return;
+            const FRAME_W = 60, FRAME_H = 60;
+            const sx = (frame % frameCount) * FRAME_W;
+            ctx.save();
+            ctx.translate(px, py);
+            if (flipX) ctx.scale(-1, 1);
+            // Gold outline glow (same technique as in-game renderPlayer)
+            const off = 2;
+            const dirs8 = [[-off,0],[off,0],[0,-off],[0,off],[-off,-off],[off,-off],[-off,off],[off,off]];
+            if (!drawHtpPlayer._oc) {
+                drawHtpPlayer._oc = document.createElement('canvas');
+                drawHtpPlayer._octx = drawHtpPlayer._oc.getContext('2d');
+            }
+            const oc = drawHtpPlayer._oc, octx = drawHtpPlayer._octx;
+            const pad = off * 2;
+            const ocW = size + pad * 2, ocH = size + pad * 2;
+            if (oc.width !== ocW || oc.height !== ocH) { oc.width = ocW; oc.height = ocH; }
+            octx.clearRect(0, 0, ocW, ocH);
+            for (const [ox, oy] of dirs8) {
+                octx.drawImage(sheet, sx, 0, FRAME_W, FRAME_H, pad + ox, pad + oy, size, size);
+            }
+            octx.globalCompositeOperation = 'source-in';
+            octx.fillStyle = '#FFD700';
+            octx.fillRect(0, 0, ocW, ocH);
+            octx.globalCompositeOperation = 'destination-out';
+            octx.drawImage(sheet, sx, 0, FRAME_W, FRAME_H, pad, pad, size, size);
+            octx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 0.9;
+            ctx.drawImage(oc, -size/2 - pad, -size/2 - pad);
+            ctx.globalAlpha = 1.0;
+            // Draw sprite
+            ctx.drawImage(sheet, sx, 0, FRAME_W, FRAME_H, -size/2, -size/2, size, size);
+            // Brightness boost
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.3;
+            ctx.drawImage(sheet, sx, 0, FRAME_W, FRAME_H, -size/2, -size/2, size, size);
+            ctx.restore();
+        }
+
+        // Helper: draw an in-game-style trapezoid vision cone for HTP illustrations
+        function drawHtpCone(gx, gy, direction, isAlert) {
+            var visionRange = 120; // long cone like in-game
+            var coneHalfWidth = 28;
+            var nearW = 9;
+            var x1, y1, x2, y2, x3, y3, x4, y4;
+            if (direction === 'RIGHT') {
+                x1 = gx; y1 = gy - nearW; x2 = gx; y2 = gy + nearW;
+                x3 = gx + visionRange; y3 = gy + coneHalfWidth;
+                x4 = gx + visionRange; y4 = gy - coneHalfWidth;
+            } else {
+                x1 = gx; y1 = gy - nearW; x2 = gx; y2 = gy + nearW;
+                x3 = gx - visionRange; y3 = gy + coneHalfWidth;
+                x4 = gx - visionRange; y4 = gy - coneHalfWidth;
+            }
+            var ddx = direction === 'RIGHT' ? 1 : -1;
+            var coneGrad = ctx.createLinearGradient(gx, gy, gx + ddx * visionRange, gy);
+            if (isAlert) {
+                var pulse = 0.45 + Math.sin(Date.now() / 100) * 0.1;
+                coneGrad.addColorStop(0, 'rgba(255, 30, 30, ' + pulse + ')');
+                coneGrad.addColorStop(0.7, 'rgba(255, 30, 30, 0.15)');
+                coneGrad.addColorStop(1, 'rgba(255, 30, 30, 0)');
+            } else {
+                coneGrad.addColorStop(0, 'rgba(255, 220, 50, 0.35)');
+                coneGrad.addColorStop(0.6, 'rgba(255, 180, 30, 0.12)');
+                coneGrad.addColorStop(1, 'rgba(255, 150, 0, 0)');
+            }
+            ctx.save();
+            ctx.fillStyle = coneGrad;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1); ctx.lineTo(x4, y4);
+            ctx.lineTo(x3, y3); ctx.lineTo(x2, y2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = isAlert ? 'rgba(255, 60, 60, 0.5)' : 'rgba(255, 200, 50, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawHowToPlay(now) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            var cx = CANVAS_WIDTH / 2;
+            var y = 28;
+            // Player sprite sizes: large for hero intro, medium for scenario illustrations
+            var heroSize = 105;  // big and recognizable for "this is you" (70*1.5)
+            var sceneSize = 84;  // clear in the stealth scenarios (56*1.5)
+            var ghostScale = 1.4; // scale up ghosts to match
+
+            // Title
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 28px Impact, Arial Black, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText('HOW TO PLAY', cx, y);
+            ctx.fillText('HOW TO PLAY', cx, y);
+            y += 38;
+
+            // === YOUR CHARACTER ===
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('YOUR CHARACTER', cx, y);
+            y += 24;
+            // Draw the player sprite large and centered so the player knows what they look like
+            var heroFrame = Math.floor(now / 120) % 8;
+            drawHtpPlayer(spriteRun, heroFrame, 8, cx, y + heroSize/2 - 6 - 15, heroSize, false);
+            // Draw pellet dots around the player to show the objective
+            ctx.fillStyle = '#FFB852';
+            var dotY = y + heroSize/2 + 15;
+            for (var di = 0; di < 4; di++) {
+                ctx.beginPath();
+                ctx.arc(cx + heroSize/2 + 12 + di * 18, dotY, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            for (var di = 0; di < 4; di++) {
+                ctx.beginPath();
+                ctx.arc(cx - heroSize/2 - 12 - di * 18, dotY, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            y += heroSize - 10;
+            ctx.font = '13px Arial';
+            ctx.fillStyle = '#CCC';
+            ctx.fillText('Eat all the dots to complete each level.', cx, y);
+            y += 24;
+
+            // === STEALTH KILLS ===
+            ctx.fillStyle = '#FF4444';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('STEALTH KILLS', cx, y);
+            y += 18;
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#CCC';
+            ctx.fillText('Ghosts can only see FORWARD.', cx, y);
+            y += 15;
+            ctx.fillText('Attack from behind or the side to defeat them!', cx, y);
+            y += 15;
+            ctx.fillStyle = '#8F8';
+            ctx.fillText('+800 points per kill, combos up to 5x!', cx, y);
+            y += 20;
+
+            // --- SAFE scenario: player behind ghost ---
+            // Layout: centered, with good spacing between elements
+            // [ checkmark ] [ PLAYER ] ---gap--- [ GHOST ] >>>cone>>>
+            var sceneCenter = cx;
+            var ghostX = sceneCenter + 30;
+            var playerX = sceneCenter - 50;
+            var sceneY = y + sceneSize/2 - 4;
+
+            // Vision cone first (behind everything) — amber, facing RIGHT (away from player)
+            drawHtpCone(ghostX, sceneY, 'RIGHT', false);
+            // Ghost (scaled up)
+            ctx.save();
+            ctx.translate(ghostX, sceneY);
+            ctx.scale(ghostScale, ghostScale);
+            renderGhost(0, 0, '#FF0000', 'RIGHT');
+            ctx.restore();
+            // Player attacking from behind
+            var aFrame = Math.floor(now / 150) % 5;
+            drawHtpPlayer(spriteAttack, aFrame, 5, playerX, sceneY - 24, sceneSize, false);
+            // Green checkmark to the left
+            ctx.fillStyle = '#0F0';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('\u2714', playerX - sceneSize/2 - 18, sceneY + 8);
+            // Label below
+            y = sceneY + sceneSize/2 + 4;
+            ctx.fillStyle = '#8F8';
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText('SAFE \u2014 Behind the ghost!', cx, y);
+            y += 20;
+
+            // --- DANGER scenario: player in ghost's vision cone ---
+            var d_ghostX = sceneCenter + 30;
+            var d_playerX = sceneCenter - 50;
+            var d_sceneY = y + sceneSize/2 - 4;
+
+            // Vision cone — red/alert, facing LEFT (toward player)
+            drawHtpCone(d_ghostX, d_sceneY, 'LEFT', true);
+            // Ghost facing left (scaled up)
+            ctx.save();
+            ctx.translate(d_ghostX, d_sceneY);
+            ctx.scale(ghostScale, ghostScale);
+            renderGhost(0, 0, '#FF0000', 'LEFT');
+            ctx.restore();
+            // Player caught in the cone, facing right
+            var rFrame = Math.floor(now / 120) % 8;
+            drawHtpPlayer(spriteRun, rFrame, 8, d_playerX, d_sceneY - 23, sceneSize, true);
+            // Red X to the left
+            ctx.fillStyle = '#F00';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('\u2718', d_playerX - sceneSize/2 - 18, d_sceneY + 8);
+            // Label below
+            y = d_sceneY + sceneSize/2 + 4;
+            ctx.fillStyle = '#F66';
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText('DANGER \u2014 Ghost sees you!', cx, y);
+            y += 22;
+
+            // === POWER PELLETS ===
+            ctx.fillStyle = '#FFB852';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('POWER PELLETS', cx, y);
+            y += 18;
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#CCC';
+            ctx.fillText('Large flashing dots make ghosts vulnerable.', cx, y);
+            y += 15;
+            ctx.fillText('Eat frightened ghosts for bonus points!', cx, y);
+            y += 22;
+
+            // === LEVELS ===
+            ctx.fillStyle = '#0AF';
+            ctx.font = 'bold 15px Arial';
+            ctx.fillText('LEVEL PROGRESSION', cx, y);
+            y += 18;
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#CCC';
+            ctx.fillText('L1: Normal speed ghosts', cx, y); y += 15;
+            ctx.fillText('L2: Ghosts get faster!', cx, y); y += 15;
+            ctx.fillText('L3+: EIGHT ghosts!', cx, y); y += 28;
+
+            // Back button
+            var pulse = 0.6 + Math.sin(now / 400) * 0.3;
+            ctx.fillStyle = 'rgba(255, 255, 255, ' + pulse + ')';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('TAP OR PRESS ANY KEY TO GO BACK', cx, y);
         }
 
         function startLevel() {
@@ -435,7 +769,8 @@
             player.animState = 'idle';
             player.animFrame = 0;
             player.animTimer = 0;
-            gameState.readyCounter = 2;
+            gameState.levelAnnounce = 2.5; // show level announcement for 2.5s
+            gameState.readyCounter = 1.5;  // then READY for 1.5s
             gameState.powerUpActive = false;
             gameState.powerUpTimer = 0;
             gameState.deathPauseTimer = 0;
@@ -455,6 +790,11 @@
         }
 
         function update(deltaTime) {
+            // Level announcement overlay (shows before READY)
+            if (gameState.levelAnnounce > 0) {
+                gameState.levelAnnounce -= deltaTime;
+                return;
+            }
             if (gameState.readyCounter > 0) {
                 gameState.readyCounter -= deltaTime;
                 return;
@@ -855,19 +1195,8 @@
             }
 
             if (ghost.pixelProgress === 0) {
-                // At tile center — check for intersection pause in scatter
                 const tileX = ghost.tileX;
                 const tileY = ghost.tileY;
-
-                if (ghost.mode === 'SCATTER' && !ghost.frightened) {
-                    const exits = ['UP','DOWN','LEFT','RIGHT'].filter(d =>
-                        isWalkable(moveInDir(tileX, tileY, d).x, moveInDir(tileX, tileY, d).y, true)
-                    ).length;
-                    // 3+ exits = intersection; pause 0.3-0.5s
-                    if (exits >= 3 && Math.random() < 0.4) {
-                        ghost.pauseTimer = 0.3 + Math.random() * 0.2;
-                    }
-                }
 
                 if (ghost.frightened) {
                     const directions = ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(d => {
@@ -880,7 +1209,20 @@
                 } else {
                     let target = { x: tileX, y: tileY };
                     if (ghost.mode === 'SCATTER') {
-                        target = ghost.scatter;
+                        // Follow patrol path waypoints
+                        const wp = ghost.patrol[ghost.patrolWaypoint];
+                        target = { x: wp.x, y: wp.y };
+                        // Check if ghost has reached the current waypoint
+                        if (tileX === wp.x && tileY === wp.y) {
+                            // Pause at stop waypoints
+                            if (wp.stop && ghost.pauseTimer <= 0) {
+                                ghost.pauseTimer = 0.4 + Math.random() * 0.2;
+                            }
+                            // Advance to next waypoint
+                            ghost.patrolWaypoint = (ghost.patrolWaypoint + 1) % ghost.patrol.length;
+                            const nextWp = ghost.patrol[ghost.patrolWaypoint];
+                            target = { x: nextWp.x, y: nextWp.y };
+                        }
                     } else {
                         if (ghost.name === 'Blinky') {
                             target = { x: player.tileX, y: player.tileY };
@@ -1177,7 +1519,31 @@
             renderFloatingTexts();
             renderHUD();
 
-            if (gameState.readyCounter > 0) {
+            if (gameState.levelAnnounce > 0) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.textAlign = 'center';
+                // Level title
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 48px Impact, Arial Black, sans-serif';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 4;
+                const lvlText = 'LEVEL ' + gameState.level;
+                ctx.strokeText(lvlText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+                ctx.fillText(lvlText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+                // Subtitle
+                const subtitles = {
+                    1: 'Good Luck!',
+                    2: 'Ghosts get faster!',
+                    3: 'Double the ghosts!'
+                };
+                const sub = subtitles[gameState.level] || 'Survive!';
+                ctx.fillStyle = '#FFF';
+                ctx.font = 'bold 24px Impact, Arial Black, sans-serif';
+                ctx.lineWidth = 3;
+                ctx.strokeText(sub, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+                ctx.fillText(sub, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+            } else if (gameState.readyCounter > 0) {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
                 ctx.fillStyle = '#FFD700';
@@ -1453,11 +1819,57 @@
 
             if (sheet.complete && sheet.naturalWidth > 0) {
                 ctx.save();
-                ctx.translate(cx, cy);
+                ctx.translate(cx + 5, cy);
                 if (flipX) ctx.scale(-1, 1);
-                // Offset upward so feet sit at tile center, no overlap with walls below
+                const dstX = -drawSize / 2, dstY = -drawSize * 0.75;
+
+                // === Outline glow: draw sprite silhouette offset in 8 directions ===
+                ctx.globalAlpha = 0.9;
+                const outlineColor = '#FFD700';
+                const off = 2; // outline thickness in pixels
+                // Use offscreen canvas to create colored silhouette
+                if (!renderPlayer._oc) {
+                    renderPlayer._oc = document.createElement('canvas');
+                    renderPlayer._octx = renderPlayer._oc.getContext('2d');
+                }
+                const oc = renderPlayer._oc;
+                const octx = renderPlayer._octx;
+                const pad = off * 2;
+                const ocW = drawSize + pad * 2;
+                const ocH = drawSize + pad * 2;
+                if (oc.width !== ocW || oc.height !== ocH) {
+                    oc.width = ocW;
+                    oc.height = ocH;
+                }
+                octx.clearRect(0, 0, ocW, ocH);
+                // Draw sprite shifted in 8 directions
+                const dirs8 = [[-off,0],[off,0],[0,-off],[0,off],[-off,-off],[off,-off],[-off,off],[off,off]];
+                for (const [ox, oy] of dirs8) {
+                    octx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H,
+                        pad + ox, pad + oy, drawSize, drawSize);
+                }
+                // Tint entire thing to outline color
+                octx.globalCompositeOperation = 'source-in';
+                octx.fillStyle = outlineColor;
+                octx.fillRect(0, 0, ocW, ocH);
+                octx.globalCompositeOperation = 'source-over';
+                // Cut out the original sprite shape so outline is only the edge
+                octx.globalCompositeOperation = 'destination-out';
+                octx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H,
+                    pad, pad, drawSize, drawSize);
+                octx.globalCompositeOperation = 'source-over';
+                // Draw the outline onto main canvas
+                ctx.drawImage(oc, dstX - pad, dstY - pad);
+                ctx.globalAlpha = 1.0;
+
+                // Draw sprite normally on top
                 ctx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H,
-                    -drawSize / 2, -drawSize * 0.75, drawSize, drawSize);
+                    dstX, dstY, drawSize, drawSize);
+                // Brighten: overdraw with 'lighter' blend to boost visibility
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = 0.35;
+                ctx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H,
+                    dstX, dstY, drawSize, drawSize);
                 ctx.restore();
             } else {
                 // Minimal fallback — small dot, no green circle
@@ -1609,11 +2021,23 @@
         }
 
         function startFromTitle() {
+            if (gameState.showHowToPlay) {
+                gameState.showHowToPlay = false;
+                return;
+            }
             if (gameState.isTitle) {
                 gameState.isTitle = false;
                 if (titleLoopId) cancelAnimationFrame(titleLoopId);
                 startLevel();
             }
+        }
+
+        function handleTitleClick(canvasX, canvasY) {
+            if (gameState.showHowToPlay) {
+                gameState.showHowToPlay = false;
+                return true;
+            }
+            return false;
         }
 
         const KEY_MAP = {
@@ -1623,6 +2047,11 @@
 
         function setupKeyboard() {
             document.addEventListener('keydown', (e) => {
+                if (gameState.showHowToPlay) {
+                    gameState.showHowToPlay = false;
+                    e.preventDefault();
+                    return;
+                }
                 if (e.key === 'Enter' || e.key === ' ') startFromTitle();
                 if (e.key === 'Escape') returnToTitle();
                 if (e.key === 'm' || e.key === 'M') {
@@ -1687,15 +2116,48 @@
                 };
             }
 
-            // Canvas tap to start game from title
-            const canvasStart = touchGuard(startFromTitle);
-            canvas.addEventListener('click', canvasStart);
-            canvas.addEventListener('touchstart', canvasStart, { passive: false });
+            // Canvas tap: check for HTP button first, then start game
+            function canvasInteract(e) {
+                let clientX, clientY;
+                if (e.type === 'touchstart') {
+                    lastTouchTime = Date.now();
+                    e.preventDefault();
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else if (e.type === 'click') {
+                    if (Date.now() - lastTouchTime < 500) return;
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+                // Convert to canvas coordinates
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const cx = (clientX - rect.left) * scaleX;
+                const cy = (clientY - rect.top) * scaleY;
+                // Check title screen buttons
+                if (!handleTitleClick(cx, cy)) {
+                    startFromTitle();
+                }
+            }
+            canvas.addEventListener('click', canvasInteract);
+            canvas.addEventListener('touchstart', canvasInteract, { passive: false });
 
             // Menu button
             const menuAction = touchGuard(returnToTitle);
             document.getElementById('menuBtn').addEventListener('click', menuAction);
             document.getElementById('menuBtn').addEventListener('touchstart', menuAction, { passive: false });
+
+            // How to Play button
+            const htpAction = touchGuard(function() {
+                if (gameState.isTitle) {
+                    gameState.showHowToPlay = true;
+                } else {
+                    gameState.showHowToPlay = !gameState.showHowToPlay;
+                }
+            });
+            document.getElementById('htpBtn').addEventListener('click', htpAction);
+            document.getElementById('htpBtn').addEventListener('touchstart', htpAction, { passive: false });
 
             // Sound toggle button
             const soundBtn = document.getElementById('soundBtn');

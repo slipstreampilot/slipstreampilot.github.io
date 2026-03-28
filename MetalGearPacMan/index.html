@@ -1620,8 +1620,26 @@
                 }
             });
             document.addEventListener('keyup', (e) => {
-                if (KEY_MAP[e.key] && KEY_MAP[e.key] === heldDirection) {
+                const dir = KEY_MAP[e.key];
+                if (dir && dir === heldDirection) {
                     heldDirection = 'NONE';
+                    // If player hasn't started moving yet (still at tile center),
+                    // start a one-tile coast so a quick tap = one tile of movement
+                    if (player.stopped && player.direction === 'NONE' && player.nextDirection === dir) {
+                        if (canMoveTo(player.tileX, player.tileY, dir)) {
+                            player.direction = dir;
+                            player.lastFacing = dir;
+                            player.stopped = false;
+                            player.coasting = true;
+                            player.pixelProgress = 0;
+                        }
+                        player.nextDirection = 'NONE';
+                    } else {
+                        // Clear buffered direction so coasting kicks in
+                        if (player.nextDirection === dir) {
+                            player.nextDirection = 'NONE';
+                        }
+                    }
                 }
             });
         }
@@ -1684,7 +1702,24 @@
                 }
                 function releaseDir(e) {
                     if (e) e.preventDefault();
-                    if (heldDirection === dir) heldDirection = 'NONE';
+                    if (heldDirection === dir) {
+                        heldDirection = 'NONE';
+                        // If player hasn't started moving yet, start a one-tile coast
+                        if (player.stopped && player.direction === 'NONE' && player.nextDirection === dir) {
+                            if (canMoveTo(player.tileX, player.tileY, dir)) {
+                                player.direction = dir;
+                                player.lastFacing = dir;
+                                player.stopped = false;
+                                player.coasting = true;
+                                player.pixelProgress = 0;
+                            }
+                            player.nextDirection = 'NONE';
+                        } else {
+                            if (player.nextDirection === dir) {
+                                player.nextDirection = 'NONE';
+                            }
+                        }
+                    }
                     btn.classList.remove('active');
                 }
 
@@ -1715,6 +1750,7 @@
                         btn.classList.remove('active');
                     });
                     heldDirection = 'NONE';
+                    player.nextDirection = 'NONE';
                 }
             }
             document.addEventListener('touchend', globalTouchCleanup, { passive: true });

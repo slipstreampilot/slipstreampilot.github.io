@@ -51,22 +51,22 @@
         }
         #dpad {
             position: relative;
-            width: 160px;
-            height: 160px;
+            width: 220px;
+            height: 220px;
             flex-shrink: 0;
         }
         .dpad-button {
             position: absolute;
-            width: 52px;
-            height: 52px;
+            width: 68px;
+            height: 68px;
             background: rgba(0, 200, 0, 0.3);
             border: 2px solid rgba(0, 255, 0, 0.6);
-            border-radius: 10px;
+            border-radius: 14px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 30px;
             color: #0f0;
             user-select: none;
             -webkit-user-select: none;
@@ -77,10 +77,10 @@
             background: rgba(0, 255, 0, 0.5);
             border-color: #0f0;
         }
-        #dpad-up { top: 0; left: 54px; }
-        #dpad-down { bottom: 0; left: 54px; }
-        #dpad-left { top: 54px; left: 0; }
-        #dpad-right { top: 54px; right: 0; }
+        #dpad-up { top: 0; left: 76px; }
+        #dpad-down { bottom: 0; left: 76px; }
+        #dpad-left { top: 76px; left: 0; }
+        #dpad-right { top: 76px; right: 0; }
         #menuBtn {
             background: rgba(255, 50, 50, 0.3);
             border: 2px solid rgba(255, 100, 100, 0.6);
@@ -1009,31 +1009,50 @@
             ghost.frightened = false;
         }
 
-        // Returns positions for collision facing checks
-        function getCollisionPositions(ghost) {
+        function isGhostFacingPlayer(ghost) {
+            // Use DIRECTION-BASED logic, not position vectors.
+            // Position vectors become unreliable at close range (near-zero distance).
+            //
+            // Ghost facing player = ghost's facing direction points toward player's position.
+            // We check: is the ghost's next step bringing it closer to the player?
             const gd = dirToDelta(ghost.direction);
             const gp = ghost.pixelProgress || 0;
             const gx = ghost.tileX + gd.dx * gp;
             const gy = ghost.tileY + gd.dy * gp;
+            const pd = dirToDelta(player.direction);
+            const pp = player.stopped ? 0 : player.pixelProgress;
+            const px = player.tileX + pd.dx * pp;
+            const py = player.tileY + pd.dy * pp;
+            const dx = px - gx;
+            const dy = py - gy;
+            const dist = Math.abs(dx) + Math.abs(dy); // manhattan distance
+
+            if (dist < 0.1) {
+                // Overlapping — use raw directions to decide.
+                // If ghost is moving toward where the player IS (or was),
+                // ghost wins. Compare ghost direction to player's last known position.
+                // Use tile positions as tiebreaker.
+                const tdx = player.tileX - ghost.tileX;
+                const tdy = player.tileY - ghost.tileY;
+                const tileDot = gd.dx * tdx + gd.dy * tdy;
+                // If on the same tile, ghost is actively moving into the player = ghost wins
+                if (tileDot >= 0) return true;
+                return false;
+            }
+
+            return (gd.dx * dx + gd.dy * dy) > 0;
+        }
+
+        function isPlayerFacingGhost(ghost) {
             const pDir = player.direction !== 'NONE' ? player.direction : player.lastFacing;
             const pd = dirToDelta(pDir);
             const pp = player.stopped ? 0 : player.pixelProgress;
             const px = player.tileX + pd.dx * pp;
             const py = player.tileY + pd.dy * pp;
-            return { gx, gy, gd, px, py, pd };
-        }
-
-        function isGhostFacingPlayer(ghost) {
-            // Is the player in the ghost's forward half? (ghost can "see" player)
-            const { gx, gy, gd, px, py } = getCollisionPositions(ghost);
-            const dx = px - gx;
-            const dy = py - gy;
-            return (gd.dx * dx + gd.dy * dy) > 0;
-        }
-
-        function isPlayerFacingGhost(ghost) {
-            // Is the ghost in the player's forward half? (player approaching ghost)
-            const { gx, gy, px, py, pd } = getCollisionPositions(ghost);
+            const gd = dirToDelta(ghost.direction);
+            const gp = ghost.pixelProgress || 0;
+            const gx = ghost.tileX + gd.dx * gp;
+            const gy = ghost.tileY + gd.dy * gp;
             const dx = gx - px;
             const dy = gy - py;
             return (pd.dx * dx + pd.dy * dy) > 0;

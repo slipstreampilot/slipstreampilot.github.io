@@ -48,6 +48,8 @@
             width: 100%;
             padding: 4px 0;
             flex-shrink: 0;
+            position: relative;
+            z-index: 10;
         }
         #dpad {
             position: relative;
@@ -92,9 +94,11 @@
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
-            touch-action: none;
+            touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
             text-align: center;
+            position: relative;
+            z-index: 11;
         }
         #menuBtn {
             background: rgba(255, 50, 50, 0.3);
@@ -128,7 +132,7 @@
         <div id="controls">
             <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
                 <div id="menuBtn" class="ctrl-btn">☰ MENU</div>
-                <div id="htpBtn" class="ctrl-btn">? HOW TO PLAY</div>
+                <div id="htpBtn" class="ctrl-btn">HOW TO PLAY</div>
                 <div id="soundBtn" class="ctrl-btn">🔊 ON</div>
             </div>
             <div id="dpad">
@@ -507,8 +511,8 @@
                 ctx.lineWidth = 3;
                 ctx.font = 'bold 15px Impact, Arial Black, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.strokeText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, btnY - 8);
-                ctx.fillText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, btnY - 8);
+                ctx.strokeText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 40);
+                ctx.fillText('HIGH SCORE: ' + gameState.highScore, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 40);
                 ctx.restore();
             }
 
@@ -517,7 +521,7 @@
             ctx.fillStyle = 'rgba(255, 255, 255, ' + pulse + ')';
             ctx.font = 'bold 13px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('TAP OR PRESS ENTER TO START', CANVAS_WIDTH / 2, btnY + btnH + 16);
+            ctx.fillText('TAP OR PRESS ENTER TO START', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 18);
 
             titleLoopId = requestAnimationFrame(showTitle);
         }
@@ -780,6 +784,14 @@
 
         // ============= GAME LOOP =============
         function gameLoop() {
+            // Stop the game loop when returning to title
+            if (gameState.isTitle) return;
+            // Pause gameplay and show HTP overlay
+            if (gameState.showHowToPlay) {
+                drawHowToPlay(Date.now());
+                requestAnimationFrame(gameLoop);
+                return;
+            }
             const now = Date.now();
             const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.1);
             lastFrameTime = now;
@@ -2008,6 +2020,7 @@
 
         function returnToTitle() {
             gameState.isTitle = true;
+            gameState.showHowToPlay = false;
             gameState.gameOver = false;
             gameState.score = 0;
             gameState.lives = 3;
@@ -2135,6 +2148,11 @@
                 const scaleY = canvas.height / rect.height;
                 const cx = (clientX - rect.left) * scaleX;
                 const cy = (clientY - rect.top) * scaleY;
+                // Dismiss HTP if showing (works on title and during gameplay)
+                if (gameState.showHowToPlay) {
+                    gameState.showHowToPlay = false;
+                    return;
+                }
                 // Check title screen buttons
                 if (!handleTitleClick(cx, cy)) {
                     startFromTitle();
@@ -2144,30 +2162,40 @@
             canvas.addEventListener('touchstart', canvasInteract, { passive: false });
 
             // Menu button
-            const menuAction = touchGuard(returnToTitle);
-            document.getElementById('menuBtn').addEventListener('click', menuAction);
-            document.getElementById('menuBtn').addEventListener('touchstart', menuAction, { passive: false });
+            var menuEl = document.getElementById('menuBtn');
+            function doMenu(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.type === 'touchstart') lastTouchTime = Date.now();
+                else if (e && e.type === 'click' && Date.now() - lastTouchTime < 500) return;
+                returnToTitle();
+            }
+            menuEl.addEventListener('click', doMenu);
+            menuEl.addEventListener('touchstart', doMenu, { passive: false });
 
             // How to Play button
-            const htpAction = touchGuard(function() {
-                if (gameState.isTitle) {
-                    gameState.showHowToPlay = true;
-                } else {
-                    gameState.showHowToPlay = !gameState.showHowToPlay;
-                }
-            });
-            document.getElementById('htpBtn').addEventListener('click', htpAction);
-            document.getElementById('htpBtn').addEventListener('touchstart', htpAction, { passive: false });
+            var htpEl = document.getElementById('htpBtn');
+            function doHtp(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.type === 'touchstart') lastTouchTime = Date.now();
+                else if (e && e.type === 'click' && Date.now() - lastTouchTime < 500) return;
+                gameState.showHowToPlay = !gameState.showHowToPlay;
+                // If we're on the title screen, make sure the title loop is running
+                if (gameState.isTitle) showTitle();
+            }
+            htpEl.addEventListener('click', doHtp);
+            htpEl.addEventListener('touchstart', doHtp, { passive: false });
 
             // Sound toggle button
-            const soundBtn = document.getElementById('soundBtn');
-            function doToggleSound() {
+            var soundBtn = document.getElementById('soundBtn');
+            function doToggleSound(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.type === 'touchstart') lastTouchTime = Date.now();
+                else if (e && e.type === 'click' && Date.now() - lastTouchTime < 500) return;
                 gameState.soundEnabled = !gameState.soundEnabled;
                 soundBtn.textContent = gameState.soundEnabled ? '🔊 ON' : '🔇 OFF';
             }
-            const soundAction = touchGuard(doToggleSound);
-            soundBtn.addEventListener('click', soundAction);
-            soundBtn.addEventListener('touchstart', soundAction, { passive: false });
+            soundBtn.addEventListener('click', doToggleSound);
+            soundBtn.addEventListener('touchstart', doToggleSound, { passive: false });
 
             // D-pad buttons — held while pressed, release stops movement
             Object.entries(dpadButtons).forEach(([id, dir]) => {

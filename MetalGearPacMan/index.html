@@ -116,6 +116,14 @@
         #htpBtn:active {
             background: rgba(0, 100, 200, 0.6);
         }
+        #lvlBtn {
+            background: rgba(0, 150, 50, 0.3);
+            border: 2px solid rgba(50, 200, 100, 0.6);
+            color: #5d5;
+        }
+        #lvlBtn:active {
+            background: rgba(0, 150, 50, 0.6);
+        }
         #soundBtn {
             background: rgba(0, 100, 255, 0.3);
             border: 2px solid rgba(100, 150, 255, 0.6);
@@ -133,6 +141,7 @@
             <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
                 <div id="menuBtn" class="ctrl-btn">☰ MENU</div>
                 <div id="htpBtn" class="ctrl-btn">HOW TO PLAY</div>
+                <div id="lvlBtn" class="ctrl-btn">LEVELS</div>
                 <div id="soundBtn" class="ctrl-btn">🔊 ON</div>
             </div>
             <div id="dpad">
@@ -215,7 +224,13 @@
             deathPauseTimer: 0,  // pause during death animation
             deathCallback: null, // function to call after death animation
             showHowToPlay: false, // how to play screen
-            levelAnnounce: 0     // countdown for level announcement overlay
+            showLevelSelect: false, // level select screen
+            levelAnnounce: 0,    // countdown for level announcement overlay
+            // Global alarm system (level 4+)
+            alarmActive: false,
+            alarmTimer: 0,
+            alarmBroadcastTimer: 0, // counts up; emits ring every 1.5s for first 9s
+            alarmRings: []          // active expanding rings: [{x, y, radius, maxRadius, opacity}]
         };
 
         let player = {
@@ -237,42 +252,27 @@
             animSpeed: 0.1     // seconds per frame
         };
 
-        // Patrol paths: each ghost follows waypoints in SCATTER mode.
-        // Combined, these cover every pellet tile in the maze.
-        // 'stop' waypoints cause a brief pause (0.4-0.6s).
+        // Patrol paths: simple quadrant loops with stop points for look-around behavior
         const PATROL_PATHS = [
-            // Blinky (Red): Top-Left + left spine
+            // Blinky (Red) - Top-Left quadrant
             [
-                {x:1,y:1,stop:true},{x:12,y:1},{x:12,y:5},{x:6,y:5,stop:true},
-                {x:6,y:1},{x:1,y:1},{x:1,y:5},{x:5,y:5},
-                {x:1,y:5},{x:1,y:8,stop:true},{x:6,y:8},{x:6,y:20},
-                {x:1,y:20},{x:1,y:27,stop:true},{x:12,y:27},{x:12,y:29},
-                {x:1,y:29},{x:1,y:20}
+                {x:1,y:1,stop:true}, {x:12,y:1}, {x:12,y:5,stop:true}, {x:6,y:5},
+                {x:6,y:8,stop:true}, {x:1,y:8}, {x:1,y:5,stop:true}, {x:1,y:1}
             ],
-            // Pinky (Pink): Top-Right + right spine
+            // Pinky (Pink) - Top-Right quadrant
             [
-                {x:26,y:1,stop:true},{x:15,y:1},{x:15,y:5},{x:21,y:5,stop:true},
-                {x:21,y:1},{x:26,y:1},{x:26,y:5},{x:22,y:5},
-                {x:26,y:5},{x:26,y:8,stop:true},{x:21,y:8},{x:21,y:20},
-                {x:26,y:20},{x:26,y:27,stop:true},{x:15,y:27},{x:15,y:29},
-                {x:26,y:29},{x:26,y:20}
+                {x:26,y:1,stop:true}, {x:15,y:1}, {x:15,y:5,stop:true}, {x:21,y:5},
+                {x:21,y:8,stop:true}, {x:26,y:8}, {x:26,y:5,stop:true}, {x:26,y:1}
             ],
-            // Inky (Cyan): Bottom-Left + middle connectors
+            // Inky (Cyan) - Bottom-Left quadrant
             [
-                {x:1,y:20,stop:true},{x:12,y:20},{x:12,y:23},{x:7,y:23},
-                {x:1,y:23},{x:3,y:23,stop:true},{x:3,y:26},{x:1,y:26},
-                {x:12,y:26},{x:6,y:26},{x:6,y:23,stop:true},{x:6,y:20},
-                {x:9,y:6},{x:6,y:6},{x:6,y:7},{x:9,y:7},
-                {x:9,y:8,stop:true},{x:12,y:8},{x:14,y:29},{x:1,y:29},
-                {x:13,y:5},{x:14,y:5}
+                {x:1,y:20,stop:true}, {x:12,y:20}, {x:12,y:23,stop:true}, {x:6,y:23},
+                {x:6,y:26,stop:true}, {x:1,y:26}, {x:1,y:29,stop:true}, {x:6,y:29}
             ],
-            // Clyde (Orange): Bottom-Right + middle connectors
+            // Clyde (Orange) - Bottom-Right quadrant
             [
-                {x:26,y:20,stop:true},{x:15,y:20},{x:15,y:23},{x:20,y:23},
-                {x:26,y:23},{x:24,y:23,stop:true},{x:24,y:26},{x:26,y:26},
-                {x:15,y:26},{x:21,y:26},{x:21,y:23,stop:true},{x:21,y:20},
-                {x:18,y:6},{x:21,y:6},{x:21,y:7},{x:18,y:7},
-                {x:18,y:8,stop:true},{x:15,y:8},{x:13,y:29},{x:26,y:29}
+                {x:26,y:20,stop:true}, {x:15,y:20}, {x:15,y:23,stop:true}, {x:21,y:23},
+                {x:21,y:26,stop:true}, {x:26,y:26}, {x:26,y:29,stop:true}, {x:21,y:29}
             ]
         ];
 
@@ -285,10 +285,10 @@
 
         // Extra ghosts for level 3+ (use same patrol paths, offset start)
         const extraGhostData = [
-            { name: 'Blinky2', color: '#FF6666', startX: 12, startY: 11, releaseTime: 3, scatter: { x: 27, y: 0 }, patrolIndex: 0 },
-            { name: 'Pinky2', color: '#FFD0FF', startX: 14, startY: 11, releaseTime: 8, scatter: { x: 0, y: 0 }, patrolIndex: 1 },
-            { name: 'Inky2', color: '#66FFFF', startX: 12, startY: 13, releaseTime: 20, scatter: { x: 27, y: 30 }, patrolIndex: 2 },
-            { name: 'Clyde2', color: '#FFD088', startX: 14, startY: 13, releaseTime: 30, scatter: { x: 0, y: 30 }, patrolIndex: 3 }
+            { name: 'Blinky2', color: '#FF6666', startX: 12, startY: 11, releaseTime: 30, scatter: { x: 27, y: 0 }, patrolIndex: 0 },
+            { name: 'Pinky2', color: '#FFD0FF', startX: 14, startY: 11, releaseTime: 35, scatter: { x: 0, y: 0 }, patrolIndex: 1 },
+            { name: 'Inky2', color: '#66FFFF', startX: 12, startY: 13, releaseTime: 40, scatter: { x: 27, y: 30 }, patrolIndex: 2 },
+            { name: 'Clyde2', color: '#FFD088', startX: 14, startY: 13, releaseTime: 45, scatter: { x: 0, y: 30 }, patrolIndex: 3 }
         ];
 
         let ghosts = [];
@@ -387,13 +387,15 @@
 
         function createGhosts() {
             // Level progression:
-            // L1: 4 ghosts, normal speed
-            // L2: 4 ghosts, 95% of player speed
-            // L3+: 8 ghosts, 95% of player speed
+            // L1: 4 ghosts, ~54% player speed
+            // L2-3: 4/8 ghosts, 95% of player speed
+            // L4+: 8 ghosts, 90% of player speed (alarm cascade adds difficulty)
             const level = gameState.level;
             let ghostSpeed;
             if (level === 1) {
                 ghostSpeed = 4.05; // ~54% of player's 7.5
+            } else if (level >= 4) {
+                ghostSpeed = player.speed * 0.90; // 90% of player speed
             } else {
                 ghostSpeed = player.speed * 0.95; // 95% of player speed
             }
@@ -401,32 +403,60 @@
                 ? ghostData.concat(extraGhostData)
                 : ghostData;
 
-            ghosts = allGhostData.map(g => ({
-                ...g,
-                tileX: g.startX,
-                tileY: g.startY,
-                pixelProgress: 0,
-                direction: 'RIGHT',
-                speed: ghostSpeed,
-                state: 'CAGE',
-                releaseCounter: 0,
-                mode: 'SCATTER',
-                modeTimer: 0,
-                lastDirection: 'RIGHT',
-                frightened: false,
-                frightenedTimer: 0,
-                eaten: false,
-                eatenTimer: 0,
-                canReverse: true,
-                aware: false,
-                pauseTimer: 0,
-                targetX: g.scatter.x,
-                targetY: g.scatter.y,
-                // Patrol state
-                patrol: PATROL_PATHS[g.patrolIndex],
-                patrolWaypoint: 0,  // current waypoint index
-                patrolForward: true // direction along path
-            }));
+            ghosts = allGhostData.map((g, idx) => {
+                // For level 3-4, stagger extra ghosts to halfway point of patrol
+                let patrolWaypoint = 0;
+                if (level >= 3 && idx >= 4) {
+                    patrolWaypoint = Math.floor(PATROL_PATHS[g.patrolIndex].length / 2);
+                }
+
+                // Level 5: all ghosts start at their patrol positions (not in cage)
+                let startTileX = g.startX;
+                let startTileY = g.startY;
+                let startState = 'CAGE';
+                let startRelease = 0;
+                if (level >= 5) {
+                    const wp = PATROL_PATHS[g.patrolIndex][patrolWaypoint];
+                    startTileX = wp.x;
+                    startTileY = wp.y;
+                    startState = 'SCATTER';
+                    startRelease = g.releaseTime; // already "released"
+                }
+
+                return {
+                    ...g,
+                    tileX: startTileX,
+                    tileY: startTileY,
+                    pixelProgress: 0,
+                    direction: 'RIGHT',
+                    speed: ghostSpeed,
+                    state: startState,
+                    releaseCounter: startRelease,
+                    mode: 'SCATTER',
+                    modeTimer: 0,
+                    lastDirection: 'RIGHT',
+                    frightened: false,
+                    frightenedTimer: 0,
+                    eaten: false,
+                    eatenTimer: 0,
+                    canReverse: true,
+                    aware: false,
+                    chaseTimer: 0,
+                    alarmed: false,
+                    alarmTimer: 0,
+                    pauseTimer: 0,
+                    lookingAround: false,
+                    lookDirs: [],
+                    lookPhase: 0,
+                    preStopDirection: 'RIGHT',
+                    targetX: g.scatter.x,
+                    targetY: g.scatter.y,
+                    // Patrol state
+                    patrol: PATROL_PATHS[g.patrolIndex],
+                    patrolWaypoint: patrolWaypoint,  // current waypoint index
+                    patrolForward: true // direction along path
+                };
+            });
         }
 
         function startGame() {
@@ -473,6 +503,12 @@
         function showTitle() {
             if (!gameState.isTitle) return;
             const now = Date.now();
+
+            if (gameState.showLevelSelect) {
+                drawLevelSelect(now);
+                titleLoopId = requestAnimationFrame(showTitle);
+                return;
+            }
 
             if (gameState.showHowToPlay) {
                 drawHowToPlay(now);
@@ -759,11 +795,109 @@
             ctx.fillText('TAP OR PRESS ANY KEY TO GO BACK', cx, y);
         }
 
+        function drawLevelSelect(now) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            var cx = CANVAS_WIDTH / 2;
+            var y = 30;
+
+            // Title
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 28px Impact, Arial Black, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText('SELECT LEVEL', cx, y);
+            ctx.fillText('SELECT LEVEL', cx, y);
+            y += 50;
+
+            // Level data: [level, subtitle]
+            var levels = [
+                { level: 1, subtitle: 'Good Luck!' },
+                { level: 2, subtitle: 'Ghosts get faster!' },
+                { level: 3, subtitle: 'Double the ghosts!' },
+                { level: 4, subtitle: 'Ghosts communicate!' },
+                { level: 5, subtitle: 'No place to hide!' },
+                { level: 6, subtitle: 'Locked and loaded!' }
+            ];
+
+            drawLevelSelect._buttons = [];
+
+            // 2 columns, 3 rows layout (5 buttons, last one centered)
+            var gridStartX = cx - 90;  // two columns with spacing
+            var gridStartY = y;
+            var colSpacing = 110;
+            var rowSpacing = 90;
+            var btnWidth = 70;
+            var btnHeight = 70;
+            var btnRadius = 8;
+
+            for (var i = 0; i < levels.length; i++) {
+                var col = i % 2;
+                var row = Math.floor(i / 2);
+                var btnX = gridStartX + col * colSpacing;
+                var btnY = gridStartY + row * rowSpacing;
+
+                // Center last button if it's in the 3rd row
+                if (i === 4) {
+                    btnX = cx - btnWidth / 2;
+                }
+
+                // Draw rounded rectangle button
+                ctx.fillStyle = '#444';
+                ctx.strokeStyle = '#0AF';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(btnX, btnY, btnWidth, btnHeight, btnRadius);
+                ctx.fill();
+                ctx.stroke();
+
+                // Store bounds for click detection
+                drawLevelSelect._buttons.push({
+                    x: btnX,
+                    y: btnY,
+                    w: btnWidth,
+                    h: btnHeight,
+                    level: levels[i].level
+                });
+
+                // Draw level number
+                ctx.fillStyle = '#0AF';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('L' + levels[i].level, btnX + btnWidth / 2, btnY + btnHeight / 2 - 10);
+
+                // Draw subtitle below button
+                ctx.fillStyle = '#AAA';
+                ctx.font = '11px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(levels[i].subtitle, btnX + btnWidth / 2, btnY + btnHeight + 5);
+            }
+
+            y = gridStartY + 3 * rowSpacing + 50;
+
+            // Back button
+            var pulse = 0.6 + Math.sin(now / 400) * 0.3;
+            ctx.fillStyle = 'rgba(255, 255, 255, ' + pulse + ')';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('TAP OR PRESS ANY KEY TO GO BACK', cx, y);
+        }
+
         function startLevel() {
             setupMazeState();
             createGhosts();
-            player.tileX = 14;
-            player.tileY = 23;
+            if (gameState.level >= 5) {
+                player.tileX = 14;
+                player.tileY = 11; // above cage exit
+            } else {
+                player.tileX = 14;
+                player.tileY = 23;
+            }
             player.pixelProgress = 0;
             player.direction = 'NONE';
             player.lastFacing = 'DOWN';
@@ -779,13 +913,31 @@
             gameState.powerUpTimer = 0;
             gameState.deathPauseTimer = 0;
             gameState.deathCallback = null;
+            gameState.alarmActive = false;
+            gameState.alarmTimer = 0;
+            gameState.alarmBroadcastTimer = 0;
+            gameState.alarmRings = [];
             gameLoop();
+        }
+
+        function startAtLevel(level) {
+            gameState.level = level;
+            gameState.showLevelSelect = false;
+            gameState.isTitle = false;
+            if (titleLoopId) cancelAnimationFrame(titleLoopId);
+            startLevel();
         }
 
         // ============= GAME LOOP =============
         function gameLoop() {
             // Stop the game loop when returning to title
             if (gameState.isTitle) return;
+            // Pause gameplay and show level select overlay
+            if (gameState.showLevelSelect) {
+                drawLevelSelect(Date.now());
+                requestAnimationFrame(gameLoop);
+                return;
+            }
             // Pause gameplay and show HTP overlay
             if (gameState.showHowToPlay) {
                 drawHowToPlay(Date.now());
@@ -831,8 +983,15 @@
             }
 
             updatePlayerMovement(deltaTime);
+            diagDeathsThisFrame = 0;
             ghosts.forEach(ghost => updateGhost(ghost, deltaTime));
+            updateGlobalAlarm(deltaTime);
             checkCollisions();
+            if (diagDeathsThisFrame > 1) {
+                diagStats.multiDeath++;
+                diagAddLog('MULTI-DEATH: ' + diagDeathsThisFrame + ' deaths in one frame');
+            }
+            runDiagnostics(deltaTime);
             updateFloatingTexts(deltaTime);
 
             // Decay sneak combo timer
@@ -847,6 +1006,8 @@
                 gameState.powerUpTimer -= deltaTime;
                 if (gameState.powerUpTimer <= 0) {
                     gameState.powerUpActive = false;
+                    // Power pellet wipes all alarms — clean slate
+                    deactivateAllAlarms();
                     ghosts.forEach(g => g.frightened = false);
                 }
             }
@@ -870,8 +1031,11 @@
         function nextTileInDir(tx, ty, dir) {
             const d = dirToDelta(dir);
             let nx = tx + d.dx, ny = ty + d.dy;
-            if (nx < 0) nx = MAZE_WIDTH - 1;
-            if (nx >= MAZE_WIDTH) nx = 0;
+            // Only wrap x at the tunnel row
+            if (ny === TUNNEL_ROW) {
+                if (nx < 0) nx = MAZE_WIDTH - 1;
+                if (nx >= MAZE_WIDTH) nx = 0;
+            }
             return { x: nx, y: ny };
         }
 
@@ -1103,6 +1267,57 @@
             }
         }
 
+        // How far (in pixels) a ghost can see before hitting a wall.
+        // Takes the ghost's pixel-center position for smooth shrinking as the ghost walks.
+        function getVisionDistPx(px, py, dir) {
+            const d = dirToDelta(dir);
+            const baseTX = Math.round((px - TILE_SIZE / 2) / TILE_SIZE);
+            const baseTY = Math.round((py - TILE_SIZE / 2) / TILE_SIZE);
+            const maxRange = 5 * TILE_SIZE;
+            for (let i = 1; i <= 6; i++) {
+                const tx = baseTX + d.dx * i;
+                const ty = baseTY + d.dy * i;
+                if (tx < 0 || tx >= MAZE_WIDTH || ty < 0 || ty >= MAZE_HEIGHT || MAZE[ty][tx] === 1) {
+                    // Pixel distance from ghost center to the near edge of wall tile
+                    let dist;
+                    if (dir === 'RIGHT') dist = tx * TILE_SIZE - px;
+                    else if (dir === 'LEFT') dist = px - (tx + 1) * TILE_SIZE;
+                    else if (dir === 'DOWN') dist = ty * TILE_SIZE - py;
+                    else dist = py - (ty + 1) * TILE_SIZE;
+                    return Math.min(Math.max(0, dist), maxRange);
+                }
+            }
+            return maxRange;
+        }
+
+        // Integer tile version for detection logic (doesn't need sub-tile precision)
+        function getVisionDistTiles(tileX, tileY, dir) {
+            const d = dirToDelta(dir);
+            for (let i = 1; i <= 5; i++) {
+                const tx = Math.round(tileX) + d.dx * i;
+                const ty = Math.round(tileY) + d.dy * i;
+                if (tx < 0 || tx >= MAZE_WIDTH || ty < 0 || ty >= MAZE_HEIGHT) return i - 1;
+                if (MAZE[ty][tx] === 1) return i - 1;
+            }
+            return 5;
+        }
+
+        // Line-of-sight check: returns true if no wall tile blocks the path from (x0,y0) to (x1,y1)
+        function hasLineOfSight(x0, y0, x1, y1) {
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)));
+            if (steps === 0) return true;
+            for (let i = 1; i < steps; i++) {
+                const t = i / steps;
+                const tx = Math.round(x0 + dx * t);
+                const ty = Math.round(y0 + dy * t);
+                if (tx < 0 || tx >= MAZE_WIDTH || ty < 0 || ty >= MAZE_HEIGHT) return false;
+                if (MAZE[ty][tx] === 1) return false;
+            }
+            return true;
+        }
+
         function eatPelletAt(tx, ty) {
             if (ty < 0 || ty >= MAZE_HEIGHT || tx < 0 || tx >= MAZE_WIDTH) return;
             if (mazeState[ty][tx] === 0) {
@@ -1126,7 +1341,182 @@
             }
         }
 
+        // ============= ALARM SYSTEM HELPERS =============
+        function activateGhostAlarm(ghost) {
+            if (ghost.alarmed) return;
+            ghost.alarmed = true;
+            ghost.alarmTimer = 15.0; // per-ghost timer (used on levels < 4)
+            ghost.mode = 'CHASE';
+            // Cancel look-around immediately to give chase
+            if (ghost.pauseTimer > 0) {
+                ghost.pauseTimer = 0;
+                ghost.lookingAround = false;
+                ghost.canReverse = true;
+            } else {
+                ghost.canReverse = true;
+            }
+            // Level 4+: activate or extend global alarm
+            if (gameState.level >= 4) {
+                if (!gameState.alarmActive) {
+                    // First ghost to trigger — start global alarm
+                    gameState.alarmActive = true;
+                    gameState.alarmTimer = 15.0;
+                    gameState.alarmBroadcastTimer = 0;
+                } else {
+                    // Additional ghost joining via cascade — add 5 seconds
+                    gameState.alarmTimer += 5.0;
+                    diagStats.alarmCascades++;
+                }
+            }
+        }
+
+        function deactivateGhostAlarm(ghost) {
+            ghost.alarmed = false;
+            ghost.alarmTimer = 0;
+            ghost.mode = 'SCATTER';
+            ghost.aware = false;
+            ghost.patrolWaypoint = 0;
+            ghost.patrolForward = true;
+            ghost.canReverse = true;
+            ghost._broadcastElapsed = undefined;
+            ghost._ringTimer = undefined;
+        }
+
+        function deactivateAllAlarms() {
+            gameState.alarmActive = false;
+            gameState.alarmTimer = 0;
+            gameState.alarmBroadcastTimer = 0;
+            ghosts.forEach(g => {
+                if (g.alarmed) {
+                    deactivateGhostAlarm(g);
+                }
+            });
+        }
+
+        // Called once per frame from update() — manages global alarm timer,
+        // ring emission, ring expansion, and cascade detection (level 4+ only)
+        function updateGlobalAlarm(deltaTime) {
+            if (gameState.level < 4 || !gameState.alarmActive) {
+                // Clean up any stale rings
+                gameState.alarmRings = [];
+                return;
+            }
+
+            // Count down global alarm timer
+            gameState.alarmTimer -= deltaTime;
+            if (gameState.alarmTimer <= 0) {
+                deactivateAllAlarms();
+                return;
+            }
+
+            // Emit rings for the first 9 seconds (timer counts from 15 down, so > 6)
+            const elapsed = 15.0 - gameState.alarmTimer; // approximate; resets extend timer
+            gameState.alarmBroadcastTimer += deltaTime;
+            if (gameState.alarmBroadcastTimer >= 1.5 && gameState.alarmTimer > (gameState.alarmTimer + elapsed - 9.0 > 0 ? 0 : 999)) {
+                // Simpler: broadcast while alarmBroadcastTimer < 9 seconds total
+                // We track cumulative broadcast time separately
+            }
+
+            // Actually, let's track broadcast time simply:
+            // Each alarmed ghost emits rings. We track per-ghost broadcast elapsed.
+            ghosts.forEach(ghost => {
+                if (!ghost.alarmed || ghost.frightened) return;
+                if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') return;
+
+                // Initialize broadcast tracking
+                if (ghost._broadcastElapsed === undefined) ghost._broadcastElapsed = 0;
+                ghost._broadcastElapsed += deltaTime;
+
+                // Only broadcast for first 9 seconds of this ghost's alarm
+                if (ghost._broadcastElapsed > 9.0) return;
+
+                // Track time since last ring emission
+                if (ghost._ringTimer === undefined) ghost._ringTimer = 0;
+                ghost._ringTimer += deltaTime;
+                if (ghost._ringTimer >= 0.75) {
+                    ghost._ringTimer -= 0.75;
+                    // Emit a ring from this ghost's position
+                    const gd = dirToDelta(ghost.direction);
+                    const gp = ghost.pixelProgress || 0;
+                    const px = (ghost.tileX + gd.dx * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    const py = (ghost.tileY + gd.dy * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    gameState.alarmRings.push({
+                        x: px,
+                        y: py,
+                        radius: 0,
+                        maxRadius: 6 * TILE_SIZE,
+                        opacity: 1.0,
+                        sourceGhost: ghost.name
+                    });
+                }
+            });
+
+            // Update existing rings: expand and check for cascade
+            const RING_SPEED = 6 * TILE_SIZE / 0.6; // reaches 6 tiles in 0.6 seconds
+            for (let i = gameState.alarmRings.length - 1; i >= 0; i--) {
+                const ring = gameState.alarmRings[i];
+                ring.radius += RING_SPEED * deltaTime;
+                ring.opacity = 1.0 - (ring.radius / ring.maxRadius);
+
+                // Check if ring touches any non-alarmed ghost (cascade)
+                ghosts.forEach(ghost => {
+                    if (ghost.alarmed || ghost.frightened) return;
+                    if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') return;
+                    const gd = dirToDelta(ghost.direction);
+                    const gp = ghost.pixelProgress || 0;
+                    const gx = (ghost.tileX + gd.dx * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    const gy = (ghost.tileY + gd.dy * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    const dist = Math.hypot(gx - ring.x, gy - ring.y);
+                    // Ring touches ghost if within ~half a tile of the ring edge
+                    if (Math.abs(dist - ring.radius) < TILE_SIZE * 0.6) {
+                        activateGhostAlarm(ghost);
+                    }
+                });
+
+                // Remove expired rings
+                if (ring.radius >= ring.maxRadius) {
+                    gameState.alarmRings.splice(i, 1);
+                }
+            }
+        }
+
         function updateGhost(ghost, deltaTime) {
+            // ═══ SAFETY LAYER 1: Per-frame position sanity check ═══
+            // If a ghost is on a non-walkable tile OR in an isolated pocket, rescue it.
+            if (ghost.state !== 'CAGE' && ghost.state !== 'EXITING' && ghost.state !== 'EATEN') {
+                const gx = Math.round(ghost.tileX);
+                const gy = Math.round(ghost.tileY);
+                let needsRescue = false;
+                if (gx < 0 || gx >= MAZE_WIDTH || gy < 0 || gy >= MAZE_HEIGHT) {
+                    needsRescue = true;
+                } else if (!isWalkable(gx, gy, true)) {
+                    needsRescue = true;
+                } else {
+                    // Check if ghost is in a disconnected pocket area
+                    // (e.g., x=0-4 at y=10-12 or y=16-18, which are walkable but unreachable)
+                    // Quick check: can we BFS to a known-good tile? Do this sparingly.
+                    if (!ghost._lastSafeCheck || ghost._lastSafeCheck <= 0) {
+                        ghost._lastSafeCheck = 2.0; // check every 2 seconds, not every frame
+                        if (bfsDist(gx, gy, 14, 11) === Infinity) {
+                            needsRescue = true;
+                            console.warn(`Ghost ${ghost.name} stuck in isolated area at (${gx}, ${gy})`);
+                        }
+                    } else {
+                        ghost._lastSafeCheck -= deltaTime;
+                    }
+                }
+                if (needsRescue) {
+                    console.warn(`Ghost ${ghost.name} rescued from invalid position (${ghost.tileX}, ${ghost.tileY})`);
+                    ghost.tileX = 13;
+                    ghost.tileY = 11;
+                    ghost.pixelProgress = 0;
+                    ghost.direction = 'LEFT';
+                    ghost.lastDirection = 'LEFT';
+                    ghost.canReverse = true;
+                    ghost._lastSafeCheck = 2.0;
+                }
+            }
+
             if (ghost.state === 'CAGE') {
                 ghost.releaseCounter += deltaTime;
                 if (ghost.releaseCounter >= ghost.releaseTime) {
@@ -1136,11 +1526,16 @@
             }
 
             if (ghost.state === 'EXITING') {
-                if (ghost.tileY > 10) {
+                if (ghost.tileY > 11) {
                     ghost.tileY -= 4 * deltaTime;
                 } else {
                     ghost.state = 'SCATTER';
-                    ghost.tileY = 10;
+                    ghost.tileX = 13;
+                    ghost.tileY = 11;
+                    ghost.pixelProgress = 0;
+                    ghost.direction = 'LEFT';
+                    ghost.lastDirection = 'LEFT';
+                    ghost.canReverse = true;
                 }
                 return;
             }
@@ -1162,36 +1557,65 @@
                 return;
             }
 
-            ghost.modeTimer += deltaTime;
-            // Scatter-heavy cycle: long patrol windows for stealth opportunities
-            // [scatter, chase, scatter, chase, scatter, chase, scatter(permanent)]
-            const modeSequence = [12, 8, 12, 8, 15, 8, 999];
-            let modeIndex = 0;
-            let elapsed = 0;
-            for (let i = 0; i < modeSequence.length; i++) {
-                elapsed += modeSequence[i];
-                if (ghost.modeTimer < elapsed) {
-                    modeIndex = i;
-                    break;
-                }
-            }
-            const baseMode = modeIndex % 2 === 0 ? 'SCATTER' : 'CHASE';
-
-            // Awareness cone: in scatter mode, ghost only chases if player is
-            // within 5 tiles AND in front of the ghost's facing direction
+            // Vision-cone awareness: ghost only chases if player is inside
+            // the actual rendered trapezoid cone (not just the forward hemisphere).
+            // Cone shape: nearW=0.45 tiles at ghost, spreads to coneHalfW=1.2 tiles at 5-tile range.
             ghost.aware = false;
-            if (baseMode === 'SCATTER' && !ghost.frightened) {
+            if (!ghost.frightened) {
                 const gdelta = dirToDelta(ghost.direction);
                 const dxP = player.tileX - ghost.tileX;
                 const dyP = player.tileY - ghost.tileY;
-                const dist = Math.hypot(dxP, dyP);
-                // Dot product: positive = player is in front of ghost
-                const dot = gdelta.dx * dxP + gdelta.dy * dyP;
-                if (dist < 5 && dot > 0) {
-                    ghost.aware = true;
+                // Forward distance along the ghost's facing direction
+                const forwardDist = gdelta.dx * dxP + gdelta.dy * dyP;
+                // Lateral (perpendicular) distance from the cone's center line
+                // Perpendicular vector is (-dy, dx) of the direction
+                const lateralDist = Math.abs(-gdelta.dy * dxP + gdelta.dx * dyP);
+                // Player must be in front and within 5-tile range
+                // Check range: must be within vision distance (wall-blocked)
+                const maxVisTiles = getVisionDistTiles(ghost.tileX, ghost.tileY, ghost.direction);
+                if (forwardDist > 0 && forwardDist <= maxVisTiles) {
+                    // Cone half-width at this forward distance (narrow: fits in 1-tile corridor)
+                    const nearW = 0.25;
+                    const farW = 0.45;
+                    const coneWidthAtDist = nearW + (farW - nearW) * (forwardDist / 5);
+                    if (lateralDist <= coneWidthAtDist) {
+                        // Final check: line of sight — walls block vision
+                        if (hasLineOfSight(ghost.tileX, ghost.tileY, player.tileX, player.tileY)) {
+                            ghost.aware = true;
+                        }
+                    }
                 }
             }
-            ghost.mode = (baseMode === 'SCATTER' && ghost.aware) ? 'CHASE' : baseMode;
+
+            // Stealth-based mode: ghosts patrol (SCATTER) by default.
+            // They only CHASE when they've spotted the player in their vision cone.
+            // Detection triggers a 15-second ALARMED state where the ghost pursues the player.
+            // Level 4+: alarm is shared globally with ring-based cascade.
+            if (ghost.aware && !ghost.alarmed) {
+                // Just spotted the player — enter alarmed state
+                activateGhostAlarm(ghost);
+                // Any ghost spotting the player resets global timer to 15
+                if (gameState.level >= 4 && gameState.alarmActive) {
+                    gameState.alarmTimer = 15.0;
+                }
+            } else if (ghost.aware && ghost.alarmed && gameState.level >= 4) {
+                // Ghost re-spots the player while already alarmed — reset global timer to 15
+                gameState.alarmTimer = 15.0;
+            }
+
+            if (ghost.alarmed) {
+                ghost.mode = 'CHASE';
+                // On levels < 4, use per-ghost timer (original behavior)
+                if (gameState.level < 4) {
+                    ghost.alarmTimer -= deltaTime;
+                    if (ghost.alarmTimer <= 0) {
+                        deactivateGhostAlarm(ghost);
+                    }
+                }
+                // On level 4+, the global timer in update() handles expiration
+            } else {
+                ghost.mode = 'SCATTER';
+            }
 
             // Scatter ghosts move slower — easier to catch from behind
             let speed = ghost.frightened ? (ghost.speed * 0.6) : ghost.speed;
@@ -1200,9 +1624,22 @@
             // Tile-to-tile ghost movement using pixelProgress
             if (!ghost.pixelProgress) ghost.pixelProgress = 0;
 
-            // Intersection hesitation: in scatter mode, pause briefly at intersections
+            // Stop-and-look-around: ghost pauses and scans open directions
             if (ghost.pauseTimer > 0) {
                 ghost.pauseTimer -= deltaTime;
+                if (ghost.lookingAround && ghost.lookDirs && ghost.lookDirs.length > 0) {
+                    // Cycle through open directions evenly across the pause
+                    const totalLookTime = 3.0; // total pause duration
+                    const elapsed = totalLookTime - ghost.pauseTimer;
+                    const perDir = totalLookTime / ghost.lookDirs.length;
+                    const dirIdx = Math.min(Math.floor(elapsed / perDir), ghost.lookDirs.length - 1);
+                    ghost.direction = ghost.lookDirs[dirIdx];
+                }
+                if (ghost.pauseTimer <= 0) {
+                    // Done looking around — resume patrol
+                    ghost.lookingAround = false;
+                    ghost.canReverse = true;
+                }
                 return;
             }
 
@@ -1211,63 +1648,93 @@
                 const tileY = ghost.tileY;
 
                 if (ghost.frightened) {
-                    const directions = ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(d => {
+                    let directions = ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(d => {
                         const newTile = moveInDir(tileX, tileY, d);
                         return isWalkable(newTile.x, newTile.y, true) && d !== oppositeDir(ghost.lastDirection);
                     });
+                    // Dead end: allow reverse as last resort
+                    if (directions.length === 0) {
+                        directions = ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(d => {
+                            const newTile = moveInDir(tileX, tileY, d);
+                            return isWalkable(newTile.x, newTile.y, true);
+                        });
+                    }
                     if (directions.length > 0) {
                         ghost.direction = directions[Math.floor(Math.random() * directions.length)];
                     }
-                } else {
-                    let target = { x: tileX, y: tileY };
-                    if (ghost.mode === 'SCATTER') {
-                        // Follow patrol path waypoints
-                        const wp = ghost.patrol[ghost.patrolWaypoint];
-                        target = { x: wp.x, y: wp.y };
-                        // Check if ghost has reached the current waypoint
-                        if (tileX === wp.x && tileY === wp.y) {
-                            // Pause at stop waypoints
-                            if (wp.stop && ghost.pauseTimer <= 0) {
-                                ghost.pauseTimer = 0.4 + Math.random() * 0.2;
-                            }
-                            // Advance to next waypoint
-                            ghost.patrolWaypoint = (ghost.patrolWaypoint + 1) % ghost.patrol.length;
-                            const nextWp = ghost.patrol[ghost.patrolWaypoint];
-                            target = { x: nextWp.x, y: nextWp.y };
+                } else if (ghost.mode === 'CHASE') {
+                    // ═══ INTERSECTION-BASED CHASE ═══
+                    // Ghost only recalculates path at intersections (3+ walkable exits).
+                    // In corridors/corners, it follows the only available non-reverse path.
+                    // This eliminates oscillation: the ghost commits to a path segment
+                    // between intersections, and only re-evaluates at decision points.
+                    const allWalkable = ['UP','DOWN','LEFT','RIGHT'].filter(d => {
+                        const t = moveInDir(tileX, tileY, d);
+                        return isWalkable(t.x, t.y, true);
+                    });
+                    const isIntersection = allWalkable.length >= 3;
+
+                    if (isIntersection || ghost.canReverse) {
+                        // Decision point (or first move after alarm trigger):
+                        // BFS to the player's CURRENT location, pick best direction
+                        let best = bfsDirection(tileX, tileY, player.tileX, player.tileY, ghost.lastDirection, ghost.canReverse);
+                        // Safety: verify the chosen direction is actually walkable
+                        const nextTile = moveInDir(tileX, tileY, best);
+                        if (!isWalkable(nextTile.x, nextTile.y, true)) {
+                            best = allWalkable.length > 0 ? allWalkable[0] : ghost.direction;
                         }
+                        ghost.direction = best;
                     } else {
-                        if (ghost.name === 'Blinky') {
-                            target = { x: player.tileX, y: player.tileY };
-                        } else if (ghost.name === 'Pinky') {
-                            const pd = dirToDelta(player.direction);
-                            target = { x: player.tileX + pd.dx * 4, y: player.tileY + pd.dy * 4 };
-                        } else if (ghost.name === 'Inky') {
-                            const blinky = ghosts[0];
-                            const pd = dirToDelta(player.direction);
-                            const px = player.tileX + pd.dx * 2;
-                            const py = player.tileY + pd.dy * 2;
-                            target = { x: px + (px - blinky.tileX), y: py + (py - blinky.tileY) };
-                        } else if (ghost.name === 'Clyde') {
-                            const dist = Math.hypot(tileX - player.tileX, tileY - player.tileY);
-                            target = dist > 8 ? { x: player.tileX, y: player.tileY } : ghost.scatter;
+                        // Corridor, corner, or dead end: no decision to make.
+                        // Take the only non-reverse walkable direction.
+                        const nonReverse = allWalkable.filter(d => d !== oppositeDir(ghost.lastDirection));
+                        if (nonReverse.length > 0) {
+                            ghost.direction = nonReverse[0];
+                        } else if (allWalkable.length > 0) {
+                            // Dead end — must reverse (only option)
+                            ghost.direction = allWalkable[0];
                         }
+                        // (if allWalkable is empty, ghost keeps current direction — sanity check will rescue)
+                    }
+                    ghost.lastDirection = ghost.direction;
+                    ghost.canReverse = false;
+                } else {
+                    // ═══ SCATTER MODE (patrol waypoints) — unchanged ═══
+                    let target = { x: tileX, y: tileY };
+                    const wp = ghost.patrol[ghost.patrolWaypoint];
+                    target = { x: wp.x, y: wp.y };
+                    // Check if ghost has reached the current waypoint
+                    if (tileX === wp.x && tileY === wp.y) {
+                        // Pause at stop waypoints: scan all open paths
+                        if (wp.stop && ghost.pauseTimer <= 0) {
+                            ghost.pauseTimer = 3.0;
+                            ghost.lookingAround = true;
+                            ghost.preStopDirection = ghost.direction;
+                            const openDirs = ['UP','DOWN','LEFT','RIGHT'].filter(d => {
+                                if (d === ghost.direction) return false;
+                                const adj = moveInDir(tileX, tileY, d);
+                                return isWalkable(adj.x, adj.y, true);
+                            });
+                            ghost.lookDirs = openDirs.length > 0 ? openDirs : [oppositeDir(ghost.direction)];
+                            ghost.direction = ghost.lookDirs[0];
+                            ghost.patrolWaypoint = (ghost.patrolWaypoint + 1) % ghost.patrol.length;
+                            return;
+                        }
+                        ghost.patrolWaypoint = (ghost.patrolWaypoint + 1) % ghost.patrol.length;
+                        const nextWp = ghost.patrol[ghost.patrolWaypoint];
+                        target = { x: nextWp.x, y: nextWp.y };
                     }
 
-                    const directions = ['UP', 'DOWN', 'LEFT', 'RIGHT'].filter(d => {
-                        const newTile = moveInDir(tileX, tileY, d);
-                        return isWalkable(newTile.x, newTile.y, true) && (ghost.canReverse || d !== oppositeDir(ghost.lastDirection));
-                    });
-
-                    let best = ghost.direction;
-                    let bestDist = Infinity;
-                    directions.forEach(d => {
-                        const newTile = moveInDir(tileX, tileY, d);
-                        const dist = Math.hypot(newTile.x - target.x, newTile.y - target.y);
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            best = d;
-                        }
-                    });
+                    // BFS toward next waypoint (no-reverse rule)
+                    let best = bfsDirection(tileX, tileY, target.x, target.y, ghost.lastDirection, ghost.canReverse);
+                    const nextTile = moveInDir(tileX, tileY, best);
+                    if (!isWalkable(nextTile.x, nextTile.y, true)) {
+                        const safeDirs = ['UP','DOWN','LEFT','RIGHT'].filter(d => {
+                            const t = moveInDir(tileX, tileY, d);
+                            return isWalkable(t.x, t.y, true);
+                        });
+                        best = safeDirs.length > 0 ? safeDirs[0] : ghost.direction;
+                    }
                     ghost.direction = best;
                     ghost.lastDirection = best;
                     ghost.canReverse = false;
@@ -1280,17 +1747,41 @@
             if (ghost.pixelProgress >= 1.0) {
                 ghost.pixelProgress = 0;
                 const d = dirToDelta(ghost.direction);
-                ghost.tileX += d.dx;
-                ghost.tileY += d.dy;
-                // Tunnel wrapping
-                if (ghost.tileX < 0) ghost.tileX = MAZE_WIDTH - 1;
-                if (ghost.tileX >= MAZE_WIDTH) ghost.tileX = 0;
+                let newX = ghost.tileX + d.dx;
+                let newY = ghost.tileY + d.dy;
+                // Tunnel wrapping — only at the designated tunnel row
+                if (newY === TUNNEL_ROW) {
+                    if (newX < 0) newX = MAZE_WIDTH - 1;
+                    if (newX >= MAZE_WIDTH) newX = 0;
+                }
+                // ═══ SAFETY LAYER 2: Validate BEFORE committing the move ═══
+                // Only move if the destination tile is actually walkable
+                if (newX >= 0 && newX < MAZE_WIDTH && newY >= 0 && newY < MAZE_HEIGHT && isWalkable(newX, newY, true)) {
+                    ghost.tileX = newX;
+                    ghost.tileY = newY;
+                } else {
+                    // Destination is a wall or out of bounds — ABORT the move.
+                    // Ghost stays on current tile. Do NOT set canReverse — that causes
+                    // oscillation. bfsDirection's last-resort fallback already tries all
+                    // directions (including reverse) if no non-reverse path exists.
+                    console.warn(`Ghost ${ghost.name} blocked from moving ${ghost.direction} to (${newX}, ${newY})`);
+                    ghost.pixelProgress = 0;
+                }
             }
         }
 
         function moveInDir(x, y, dir) {
-            const moves = { 'UP': { x, y: y - 1 }, 'DOWN': { x, y: y + 1 }, 'LEFT': { x: x - 1, y }, 'RIGHT': { x: x + 1, y } };
-            return moves[dir];
+            let nx = x, ny = y;
+            if (dir === 'UP') ny--;
+            else if (dir === 'DOWN') ny++;
+            else if (dir === 'LEFT') nx--;
+            else if (dir === 'RIGHT') nx++;
+            // Tunnel wrapping at designated row
+            if (ny === TUNNEL_ROW) {
+                if (nx < 0) nx = MAZE_WIDTH - 1;
+                if (nx >= MAZE_WIDTH) nx = 0;
+            }
+            return { x: nx, y: ny };
         }
 
         function oppositeDir(dir) {
@@ -1298,13 +1789,88 @@
             return opp[dir];
         }
 
+        // BFS pathfinding: returns the best first direction to reach (targetX, targetY)
+        // from (startX, startY), respecting the no-reverse constraint on lastDir.
+        function bfsDirection(startX, startY, targetX, targetY, lastDir, allowReverse) {
+            if (startX === targetX && startY === targetY) return lastDir;
+            const dirs = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+            const deltas = { 'UP': [0,-1], 'DOWN': [0,1], 'LEFT': [-1,0], 'RIGHT': [1,0] };
+            let bestDir = null;
+            let bestDist = Infinity;
+            let anyWalkableDir = null; // fallback: any direction that's at least walkable
+            for (const d of dirs) {
+                if (!allowReverse && d === oppositeDir(lastDir)) continue;
+                let nx = startX + deltas[d][0];
+                const ny = startY + deltas[d][1];
+                if (ny === TUNNEL_ROW) {
+                    if (nx < 0) nx = MAZE_WIDTH - 1;
+                    if (nx >= MAZE_WIDTH) nx = 0;
+                }
+                if (!isWalkable(nx, ny, true)) continue;
+                if (!anyWalkableDir) anyWalkableDir = d;
+                const dist = bfsDist(nx, ny, targetX, targetY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestDir = d;
+                }
+            }
+            // If BFS found a reachable path, use it
+            if (bestDir) return bestDir;
+            // No path found — return any walkable direction (NOT lastDir which may be a wall)
+            if (anyWalkableDir) return anyWalkableDir;
+            // Absolute last resort — try ALL directions including reverse
+            for (const d of dirs) {
+                let nx = startX + deltas[d][0];
+                const ny = startY + deltas[d][1];
+                if (ny === TUNNEL_ROW) {
+                    if (nx < 0) nx = MAZE_WIDTH - 1;
+                    if (nx >= MAZE_WIDTH) nx = 0;
+                }
+                if (isWalkable(nx, ny, true)) return d;
+            }
+            return lastDir; // truly stuck (sanity check will rescue)
+        }
+
+        // BFS shortest path distance between two tiles (ghost-walkable)
+        function bfsDist(sx, sy, tx, ty) {
+            if (sx === tx && sy === ty) return 0;
+            const visited = new Set();
+            const queue = [[sx, sy, 0]];
+            visited.add(sy * MAZE_WIDTH + sx);
+            const deltas = [[0,-1],[0,1],[-1,0],[1,0]];
+            while (queue.length > 0) {
+                const [x, y, dist] = queue.shift();
+                for (const [dx, dy] of deltas) {
+                    let nx = x + dx, ny = y + dy;
+                    // Only allow x-wrapping at the tunnel row
+                    if (ny === TUNNEL_ROW) {
+                        if (nx < 0) nx = MAZE_WIDTH - 1;
+                        if (nx >= MAZE_WIDTH) nx = 0;
+                    }
+                    if (ny < 0 || ny >= MAZE_HEIGHT) continue;
+                    if (nx < 0 || nx >= MAZE_WIDTH) continue;
+                    if (!isWalkable(nx, ny, true)) continue;
+                    const key = ny * MAZE_WIDTH + nx;
+                    if (visited.has(key)) continue;
+                    if (nx === tx && ny === ty) return dist + 1;
+                    visited.add(key);
+                    queue.push([nx, ny, dist + 1]);
+                }
+            }
+            return Infinity; // unreachable
+        }
+
         function checkCollisions() {
+            if (gameState.deathPauseTimer > 0) return; // already dying
             const delta = dirToDelta(player.direction);
             const progress = player.stopped ? 0 : player.pixelProgress;
             const px = player.tileX + delta.dx * progress;
             const py = player.tileY + delta.dy * progress;
-            ghosts.forEach((ghost, idx) => {
-                if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') return;
+            let died = false;
+            for (let idx = 0; idx < ghosts.length; idx++) {
+                if (died) break;
+                const ghost = ghosts[idx];
+                if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') continue;
                 const dist = Math.hypot(px - ghost.tileX, py - ghost.tileY);
                 if (dist < 0.7) {
                     if (ghost.frightened || gameState.powerUpActive) {
@@ -1312,18 +1878,25 @@
                         playGhostEaten();
                         ghost.state = 'EATEN';
                         ghost.frightened = false;
+                    } else if (player.stopped) {
+                        // Player is standing still — they can't stealth kill.
+                        // If ghost walks into them, ghost wins. If player is just
+                        // standing on a tile and the ghost arrives, it's always a death.
+                        playerDeath();
+                        died = true;
                     } else if (isGhostFacingPlayer(ghost)) {
                         // Ghost's front is toward the player — ghost wins
                         // (covers head-on AND ghost catching player from behind/side)
                         playerDeath();
+                        died = true;
                     } else {
-                        // Ghost is NOT facing the player:
+                        // Ghost is NOT facing the player AND player is moving:
                         // - Player's front → ghost's back/side = stealth kill
                         // - Neither facing (side-swipe) = stealth kill (ghost unaware)
                         performStealthKill(ghost);
                     }
                 }
-            });
+            }
         }
 
         function performStealthKill(ghost) {
@@ -1364,11 +1937,9 @@
         }
 
         function isGhostFacingPlayer(ghost) {
-            // Use DIRECTION-BASED logic, not position vectors.
-            // Position vectors become unreliable at close range (near-zero distance).
-            //
-            // Ghost facing player = ghost's facing direction points toward player's position.
-            // We check: is the ghost's next step bringing it closer to the player?
+            // Ghost "faces" the player only if the player is within a ~90° forward cone
+            // (45° each side of the ghost's facing direction).
+            // Outside this cone = side or behind = stealth kill opportunity.
             const gd = dirToDelta(ghost.direction);
             const gp = ghost.pixelProgress || 0;
             const gx = ghost.tileX + gd.dx * gp;
@@ -1379,22 +1950,28 @@
             const py = player.tileY + pd.dy * pp;
             const dx = px - gx;
             const dy = py - gy;
-            const dist = Math.abs(dx) + Math.abs(dy); // manhattan distance
+            const dist = Math.hypot(dx, dy);
 
-            if (dist < 0.1) {
-                // Overlapping — use raw directions to decide.
-                // If ghost is moving toward where the player IS (or was),
-                // ghost wins. Compare ghost direction to player's last known position.
-                // Use tile positions as tiebreaker.
+            // At very close range (overlapping/same tile), sub-pixel positions are
+            // unreliable. Fall back to tile-level check: was the ghost moving toward
+            // the player's tile? If so, it walked into them face-first.
+            if (dist < 0.3) {
                 const tdx = player.tileX - ghost.tileX;
                 const tdy = player.tileY - ghost.tileY;
+                // Ghost on same tile, or ghost's direction points toward player's tile
                 const tileDot = gd.dx * tdx + gd.dy * tdy;
-                // If on the same tile, ghost is actively moving into the player = ghost wins
-                if (tileDot >= 0) return true;
-                return false;
+                return tileDot >= 0;
             }
 
-            return (gd.dx * dx + gd.dy * dy) > 0;
+            // Forward distance: how far in front of the ghost the player is
+            const forwardDist = gd.dx * dx + gd.dy * dy;
+            // Lateral distance: how far to the side of the ghost's center line
+            const lateralDist = Math.abs(-gd.dy * dx + gd.dx * dy);
+
+            if (forwardDist <= 0) return false; // player is behind or exactly beside
+
+            // Player is "in front" only if more forward than sideways (45° half-angle)
+            return forwardDist > lateralDist;
         }
 
         function isPlayerFacingGhost(ghost) {
@@ -1417,10 +1994,21 @@
             return isWalkable(Math.round(newPos.x), Math.round(newPos.y));
         }
 
-        function isWalkable(x, y, isGhost = false) {
-            if (x < 0 || x >= MAZE_WIDTH || y < 0 || y >= MAZE_HEIGHT) return true;
+        const TUNNEL_ROW = 14; // only row where x-wrapping (tunnel) is allowed
+
+        function isWalkable(x, y, isGhost = false, allowHouse = false) {
+            // Handle tunnel wrapping at the designated tunnel row
+            if (y === TUNNEL_ROW) {
+                if (x < 0) x = MAZE_WIDTH - 1;
+                if (x >= MAZE_WIDTH) x = 0;
+            }
+            if (x < 0 || x >= MAZE_WIDTH || y < 0 || y >= MAZE_HEIGHT) return false;
             const cell = MAZE[y][x];
-            if (isGhost) return cell !== 1; // ghosts can enter house
+            if (isGhost) {
+                if (cell === 1) return false; // walls always block
+                if ((cell === 4 || cell === 5) && !allowHouse) return false; // ghost house blocked during patrol
+                return true;
+            }
             return cell !== 1 && cell !== 4 && cell !== 5; // player blocked from house
         }
 
@@ -1458,6 +2046,8 @@
         }
 
         function playerDeath() {
+            diagDeathsThisFrame++;
+            diagStats.totalDeaths++;
             gameState.lives--;
             playDeath();
             // Trigger die animation
@@ -1472,8 +2062,13 @@
                 gameState.deathCallback = function() { gameOver(); };
             } else {
                 gameState.deathCallback = function() {
-                    player.tileX = 14;
-                    player.tileY = 23;
+                    if (gameState.level >= 5) {
+                        player.tileX = 14;
+                        player.tileY = 11;
+                    } else {
+                        player.tileX = 14;
+                        player.tileY = 23;
+                    }
                     player.pixelProgress = 0;
                     player.direction = 'NONE';
                     player.lastFacing = 'DOWN';
@@ -1483,13 +2078,48 @@
                     player.animState = 'idle';
                     player.animFrame = 0;
                     gameState.readyCounter = 2;
-                    ghosts.forEach(g => {
-                        if (g.state !== 'CAGE') {
+                    gameState.alarmActive = false;
+                    gameState.alarmTimer = 0;
+                    gameState.alarmBroadcastTimer = 0;
+                    gameState.alarmRings = [];
+                    ghosts.forEach((g, idx) => {
+                        // Level 5: ghosts respawn at patrol positions, not in cage
+                        if (gameState.level >= 5) {
+                            let wp = 0;
+                            if (idx >= 4) {
+                                wp = Math.floor(PATROL_PATHS[g.patrolIndex].length / 2);
+                            }
+                            const patrolPos = PATROL_PATHS[g.patrolIndex][wp];
+                            g.tileX = patrolPos.x;
+                            g.tileY = patrolPos.y;
+                            g.state = 'SCATTER';
+                            g.releaseCounter = g.releaseTime;
+                            g.patrolWaypoint = wp;
+                        } else {
                             g.state = 'CAGE';
                             g.releaseCounter = 0;
                             g.tileX = g.startX;
                             g.tileY = g.startY;
+                            g.patrolWaypoint = 0;
                         }
+                        g.pixelProgress = 0;
+                        g.direction = 'RIGHT';
+                        g.lastDirection = 'RIGHT';
+                        g.canReverse = true;
+                        g.mode = 'SCATTER';
+                        g.modeTimer = 0;
+                        g.frightened = false;
+                        g.frightenedTimer = 0;
+                        g.aware = false;
+                        g.chaseTimer = 0;
+                        g.alarmed = false;
+                        g.alarmTimer = 0;
+                        g.pauseTimer = 0;
+                        g.lookingAround = false;
+                        g.lookPhase = 0;
+                        g.preStopDirection = 'RIGHT';
+                        g._broadcastElapsed = undefined;
+                        g._ringTimer = undefined;
                     });
                 };
             }
@@ -1521,6 +2151,137 @@
         }
 
         // ============= RENDERING =============
+        function diagAddLog(msg) {
+            const t = (diagStats.framesRun / 60).toFixed(1);
+            diagLog.unshift('[' + t + 's] ' + msg);
+            if (diagLog.length > DIAG_LOG_MAX) diagLog.pop();
+        }
+
+        function runDiagnostics(deltaTime) {
+            diagStats.framesRun++;
+            ghosts.forEach(ghost => {
+                if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') return;
+                const gx = Math.round(ghost.tileX);
+                const gy = Math.round(ghost.tileY);
+
+                // Init history tracking
+                if (!diagGhostHistory[ghost.name]) {
+                    diagGhostHistory[ghost.name] = { positions: [], stuckCounter: 0, lastTileX: -1, lastTileY: -1 };
+                }
+                const hist = diagGhostHistory[ghost.name];
+
+                // Out of bounds
+                if (gx < 0 || gx >= MAZE_WIDTH || gy < 0 || gy >= MAZE_HEIGHT) {
+                    diagStats.ghostOutOfBounds++;
+                    diagAddLog('OOB: ' + ghost.name + ' at (' + gx + ',' + gy + ')');
+                } else {
+                    // In wall
+                    if (MAZE[gy][gx] === 1) {
+                        diagStats.ghostInWall++;
+                        diagAddLog('WALL: ' + ghost.name + ' at (' + gx + ',' + gy + ')');
+                    }
+                    // In ghost house while patrolling/chasing
+                    if ((MAZE[gy][gx] === 4 || MAZE[gy][gx] === 5) && (ghost.mode === 'SCATTER' || ghost.mode === 'CHASE')) {
+                        diagStats.ghostInHouse++;
+                        diagAddLog('HOUSE: ' + ghost.name + ' at (' + gx + ',' + gy + ') mode=' + ghost.mode);
+                    }
+                }
+
+                // Stuck detection (same tile for 300+ frames = 5 sec)
+                if (gx === hist.lastTileX && gy === hist.lastTileY) {
+                    hist.stuckCounter++;
+                    if (hist.stuckCounter === 300) {
+                        diagStats.ghostStuck++;
+                        diagAddLog('STUCK: ' + ghost.name + ' at (' + gx + ',' + gy + ') for 5s');
+                    }
+                } else {
+                    hist.stuckCounter = 0;
+                    hist.lastTileX = gx;
+                    hist.lastTileY = gy;
+                }
+
+                // Oscillation detection: track last 10 positions, check A-B-A-B pattern
+                hist.positions.push(gx + ',' + gy);
+                if (hist.positions.length > 10) hist.positions.shift();
+                if (hist.positions.length >= 6) {
+                    const p = hist.positions;
+                    const len = p.length;
+                    // Check if last 6 alternate between 2 positions
+                    if (p[len-1] === p[len-3] && p[len-3] === p[len-5] &&
+                        p[len-2] === p[len-4] && p[len-4] === p[len-6] &&
+                        p[len-1] !== p[len-2]) {
+                        diagStats.ghostOscillation++;
+                        if (diagStats.ghostOscillation <= 5) { // only log first few
+                            diagAddLog('OSCILLATE: ' + ghost.name + ' between ' + p[len-1] + ' and ' + p[len-2]);
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderDiagOverlay() {
+            if (!diagEnabled) return;
+            const pad = 4;
+            const lineH = 11;
+            const x0 = 2;
+            const extraH = (gameState.level >= 4 ? lineH : 0) + ghosts.filter(g => g.state !== 'CAGE').length * lineH;
+            const panelH = 130 + extraH;
+            const y0 = CANVAS_HEIGHT - panelH - 2;
+            // Semi-transparent background
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(x0, y0, 200, panelH);
+            ctx.strokeStyle = '#0f0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x0, y0, 200, panelH);
+
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'left';
+            let ly = y0 + lineH;
+
+            ctx.fillStyle = '#0f0';
+            ctx.fillText('DIAG [D] L' + gameState.level + ' f:' + diagStats.framesRun, x0 + pad, ly); ly += lineH;
+
+            const hasIssues = (diagStats.ghostInWall + diagStats.ghostOutOfBounds +
+                diagStats.ghostOscillation + diagStats.ghostStuck +
+                diagStats.ghostInHouse + diagStats.multiDeath) > 0;
+            ctx.fillStyle = hasIssues ? '#f44' : '#0f0';
+            ctx.fillText(hasIssues ? 'STATUS: ISSUES FOUND' : 'STATUS: ALL CLEAR', x0 + pad, ly); ly += lineH;
+
+            ctx.fillStyle = diagStats.ghostInWall > 0 ? '#f44' : '#888';
+            ctx.fillText('InWall:  ' + diagStats.ghostInWall, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = diagStats.ghostOutOfBounds > 0 ? '#f44' : '#888';
+            ctx.fillText('OOB:     ' + diagStats.ghostOutOfBounds, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = diagStats.ghostOscillation > 0 ? '#fa0' : '#888';
+            ctx.fillText('Oscill:  ' + diagStats.ghostOscillation, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = diagStats.ghostStuck > 0 ? '#fa0' : '#888';
+            ctx.fillText('Stuck:   ' + diagStats.ghostStuck, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = diagStats.ghostInHouse > 0 ? '#f44' : '#888';
+            ctx.fillText('InHouse: ' + diagStats.ghostInHouse, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = diagStats.multiDeath > 0 ? '#f44' : '#888';
+            ctx.fillText('MultiDth:' + diagStats.multiDeath, x0 + pad, ly); ly += lineH;
+            ctx.fillStyle = '#aaa';
+            ctx.fillText('Deaths:  ' + diagStats.totalDeaths, x0 + pad, ly); ly += lineH;
+            if (gameState.level >= 4) {
+                ctx.fillStyle = '#f88';
+                ctx.fillText('Cascade: ' + diagStats.alarmCascades +
+                    (gameState.alarmActive ? '  ALARM ' + gameState.alarmTimer.toFixed(1) + 's' : ''), x0 + pad, ly);
+                ly += lineH;
+            }
+
+            // Ghost states
+            ly += 2;
+            ctx.fillStyle = '#0f0';
+            ctx.fillText('-- Ghost States --', x0 + pad, ly); ly += lineH;
+            ghosts.forEach(g => {
+                if (g.state === 'CAGE') return;
+                const modeChar = g.alarmed ? 'A' : (g.frightened ? 'F' : g.mode[0]);
+                const pos = Math.round(g.tileX) + ',' + Math.round(g.tileY);
+                ctx.fillStyle = g.color;
+                ctx.fillText(g.name.substring(0,6) + ' ' + g.state[0] + '/' + modeChar + ' (' + pos + ') ' + g.direction[0], x0 + pad, ly);
+                ly += lineH;
+            });
+        }
+
         function render() {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -1528,6 +2289,7 @@
             renderMaze();
             renderGhosts();
             renderPlayer();
+            renderAlarmRings();
             renderFloatingTexts();
             renderHUD();
 
@@ -1547,7 +2309,9 @@
                 const subtitles = {
                     1: 'Good Luck!',
                     2: 'Ghosts get faster!',
-                    3: 'Double the ghosts!'
+                    3: 'Double the ghosts!',
+                    4: 'They communicate!',
+                    5: 'No place to hide!'
                 };
                 const sub = subtitles[gameState.level] || 'Survive!';
                 ctx.fillStyle = '#FFF';
@@ -1572,6 +2336,8 @@
                 ctx.textAlign = 'center';
                 ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
             }
+
+            renderDiagOverlay();
         }
 
         function renderMaze() {
@@ -1610,6 +2376,20 @@
             }
         }
 
+        function renderAlarmRings() {
+            if (gameState.alarmRings.length === 0) return;
+            ctx.save();
+            gameState.alarmRings.forEach(ring => {
+                if (ring.opacity <= 0) return;
+                ctx.beginPath();
+                ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 40, 40, ' + (ring.opacity * 0.8).toFixed(2) + ')';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
         function renderGhosts() {
             ghosts.forEach((ghost, idx) => {
                 // Smooth interpolation for ghost position
@@ -1618,80 +2398,107 @@
                 const x = (ghost.tileX + gd.dx * gp) * TILE_SIZE + TILE_SIZE / 2;
                 const y = (ghost.tileY + gd.dy * gp) * TILE_SIZE + TILE_SIZE / 2;
 
-                // Awareness cone: shows where the ghost is looking and detection range
+                // Awareness cone: shows where the ghost is looking, blocked by walls
                 if (ghost.state !== 'EATEN' && ghost.state !== 'CAGE' &&
                     ghost.state !== 'EXITING' && !ghost.frightened) {
                     ctx.save();
-                    const visionRange = 5 * TILE_SIZE; // 5 tiles of vision
-                    const coneHalfWidth = TILE_SIZE * 1.2; // wide spread at far end
-
-                    // Build a trapezoid cone in the ghost's facing direction
                     const dir = ghost.direction || 'RIGHT';
-                    let x1, y1, x2, y2, x3, y3, x4, y4;
-                    const nearW = TILE_SIZE * 0.45; // near the ghost
 
-                    if (dir === 'RIGHT') {
-                        x1 = x; y1 = y - nearW;
-                        x2 = x; y2 = y + nearW;
-                        x3 = x + visionRange; y3 = y + coneHalfWidth;
-                        x4 = x + visionRange; y4 = y - coneHalfWidth;
-                    } else if (dir === 'LEFT') {
-                        x1 = x; y1 = y - nearW;
-                        x2 = x; y2 = y + nearW;
-                        x3 = x - visionRange; y3 = y + coneHalfWidth;
-                        x4 = x - visionRange; y4 = y - coneHalfWidth;
-                    } else if (dir === 'DOWN') {
-                        x1 = x - nearW; y1 = y;
-                        x2 = x + nearW; y2 = y;
-                        x3 = x + coneHalfWidth; y3 = y + visionRange;
-                        x4 = x - coneHalfWidth; y4 = y + visionRange;
-                    } else { // UP
-                        x1 = x - nearW; y1 = y;
-                        x2 = x + nearW; y2 = y;
-                        x3 = x + coneHalfWidth; y3 = y - visionRange;
-                        x4 = x - coneHalfWidth; y4 = y - visionRange;
+                    // Smooth pixel-accurate distance to first wall (shrinks as ghost walks toward it)
+                    const visionRange = getVisionDistPx(x, y, dir);
+                    if (visionRange > 2) {
+                        // Narrow widths: cone fits within a 1-tile corridor
+                        const nearW = TILE_SIZE * 0.25;
+                        const fullFarW = TILE_SIZE * 0.45;
+                        // Scale far-end width proportionally to actual range vs max range
+                        const ratio = visionRange / (5 * TILE_SIZE);
+                        const coneHalfWidth = nearW + (fullFarW - nearW) * ratio;
+
+                        // Build a trapezoid cone in the ghost's facing direction
+                        let x1, y1, x2, y2, x3, y3, x4, y4;
+
+                        if (dir === 'RIGHT') {
+                            x1 = x; y1 = y - nearW;
+                            x2 = x; y2 = y + nearW;
+                            x3 = x + visionRange; y3 = y + coneHalfWidth;
+                            x4 = x + visionRange; y4 = y - coneHalfWidth;
+                        } else if (dir === 'LEFT') {
+                            x1 = x; y1 = y - nearW;
+                            x2 = x; y2 = y + nearW;
+                            x3 = x - visionRange; y3 = y + coneHalfWidth;
+                            x4 = x - visionRange; y4 = y - coneHalfWidth;
+                        } else if (dir === 'DOWN') {
+                            x1 = x - nearW; y1 = y;
+                            x2 = x + nearW; y2 = y;
+                            x3 = x + coneHalfWidth; y3 = y + visionRange;
+                            x4 = x - coneHalfWidth; y4 = y + visionRange;
+                        } else { // UP
+                            x1 = x - nearW; y1 = y;
+                            x2 = x + nearW; y2 = y;
+                            x3 = x + coneHalfWidth; y3 = y - visionRange;
+                            x4 = x - coneHalfWidth; y4 = y - visionRange;
+                        }
+
+                        // Gradient: strong near ghost, fades at max range
+                        const gradDelta = dirToDelta(dir);
+                        const gradX1 = x + gradDelta.dx * visionRange;
+                        const gradY1 = y + gradDelta.dy * visionRange;
+                        const coneGrad = ctx.createLinearGradient(x, y, gradX1, gradY1);
+
+                        if (ghost.alarmed) {
+                            coneGrad.addColorStop(0, 'rgba(255, 30, 30, 0.45)');
+                            coneGrad.addColorStop(0.7, 'rgba(255, 30, 30, 0.15)');
+                            coneGrad.addColorStop(1, 'rgba(255, 30, 30, 0)');
+                        } else {
+                            coneGrad.addColorStop(0, 'rgba(255, 255, 50, 0.35)');
+                            coneGrad.addColorStop(0.6, 'rgba(255, 255, 30, 0.12)');
+                            coneGrad.addColorStop(1, 'rgba(255, 255, 0, 0)');
+                        }
+
+                        // Clip to non-wall tiles so cone edges can't bleed into walls
+                        const dd = dirToDelta(dir);
+                        const gTX = Math.round(ghost.tileX);
+                        const gTY = Math.round(ghost.tileY);
+                        const maxTilesForClip = Math.ceil(visionRange / TILE_SIZE) + 1;
+                        ctx.beginPath();
+                        for (let i = 0; i <= maxTilesForClip; i++) {
+                            for (let j = -1; j <= 1; j++) {
+                                const tx = gTX + dd.dx * i + (-dd.dy) * j;
+                                const ty = gTY + dd.dy * i + dd.dx * j;
+                                if (tx >= 0 && tx < MAZE_WIDTH && ty >= 0 && ty < MAZE_HEIGHT && MAZE[ty][tx] !== 1) {
+                                    ctx.rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                                }
+                            }
+                        }
+                        ctx.clip();
+
+                        // Filled cone
+                        ctx.fillStyle = coneGrad;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x4, y4);
+                        ctx.lineTo(x3, y3);
+                        ctx.lineTo(x2, y2);
+                        ctx.closePath();
+                        ctx.fill();
+
+                        // Bright 2px border
+                        ctx.strokeStyle = ghost.alarmed ? 'rgba(255, 40, 40, 0.7)' : 'rgba(255, 255, 50, 0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
                     }
-
-                    // Gradient: strong near ghost, fades at max range
-                    const gradDelta = dirToDelta(dir);
-                    const gradX1 = x + gradDelta.dx * visionRange;
-                    const gradY1 = y + gradDelta.dy * visionRange;
-                    const coneGrad = ctx.createLinearGradient(x, y, gradX1, gradY1);
-
-                    if (ghost.aware) {
-                        // ALERT — bright red, pulses
-                        const pulse = 0.45 + Math.sin(Date.now() / 100) * 0.1;
-                        coneGrad.addColorStop(0, 'rgba(255, 30, 30, ' + pulse + ')');
-                        coneGrad.addColorStop(0.7, 'rgba(255, 30, 30, 0.15)');
-                        coneGrad.addColorStop(1, 'rgba(255, 30, 30, 0)');
-                    } else {
-                        // Patrol — visible amber/yellow
-                        coneGrad.addColorStop(0, 'rgba(255, 220, 50, 0.35)');
-                        coneGrad.addColorStop(0.6, 'rgba(255, 180, 30, 0.12)');
-                        coneGrad.addColorStop(1, 'rgba(255, 150, 0, 0)');
-                    }
-
-                    // Filled cone
-                    ctx.fillStyle = coneGrad;
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x4, y4);
-                    ctx.lineTo(x3, y3);
-                    ctx.lineTo(x2, y2);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    // Edge outline for extra clarity
-                    ctx.strokeStyle = ghost.aware ? 'rgba(255, 60, 60, 0.5)' : 'rgba(255, 200, 50, 0.3)';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
                     ctx.restore();
                 }
 
                 if (ghost.state === 'EATEN') {
                     renderGhostEyes(x, y, ghost.direction);
                 } else if (ghost.frightened) {
-                    renderFrightenedGhost(x, y);
+                    // Flash between blue and original color in the last 2 seconds
+                    if (gameState.powerUpTimer <= 2 && Math.floor(gameState.powerUpTimer * 5) % 2 === 0) {
+                        renderGhost(x, y, ghost.color, ghost.direction);
+                    } else {
+                        renderFrightenedGhost(x, y);
+                    }
                 } else {
                     renderGhost(x, y, ghost.color, ghost.direction);
                 }
@@ -2018,9 +2825,29 @@
         // Track which direction keys/buttons are currently held
         let heldDirection = 'NONE';  // Currently held direction input
 
+        // ============= DIAGNOSTIC OVERLAY =============
+        let diagEnabled = false;
+        const diagLog = [];       // rolling log of recent issues
+        const DIAG_LOG_MAX = 20;
+        const diagStats = {
+            ghostInWall: 0,
+            ghostOutOfBounds: 0,
+            ghostOscillation: 0,
+            ghostStuck: 0,
+            ghostInHouse: 0,
+            multiDeath: 0,
+            totalDeaths: 0,
+            alarmCascades: 0,
+            framesRun: 0
+        };
+        // Per-ghost tracking
+        const diagGhostHistory = {};  // name -> { positions: [], stuckCounter: 0 }
+        let diagDeathsThisFrame = 0;
+
         function returnToTitle() {
             gameState.isTitle = true;
             gameState.showHowToPlay = false;
+            gameState.showLevelSelect = false;
             gameState.gameOver = false;
             gameState.score = 0;
             gameState.lives = 3;
@@ -2060,6 +2887,11 @@
 
         function setupKeyboard() {
             document.addEventListener('keydown', (e) => {
+                if (gameState.showLevelSelect) {
+                    gameState.showLevelSelect = false;
+                    e.preventDefault();
+                    return;
+                }
                 if (gameState.showHowToPlay) {
                     gameState.showHowToPlay = false;
                     e.preventDefault();
@@ -2070,6 +2902,9 @@
                 if (e.key === 'm' || e.key === 'M') {
                     gameState.soundEnabled = !gameState.soundEnabled;
                     localStorage.setItem('pacmanSound', gameState.soundEnabled ? 'true' : 'false');
+                }
+                if (e.key === 'd' || e.key === 'D') {
+                    diagEnabled = !diagEnabled;
                 }
                 if (KEY_MAP[e.key]) {
                     heldDirection = KEY_MAP[e.key];
@@ -2148,6 +2983,22 @@
                 const scaleY = canvas.height / rect.height;
                 const cx = (clientX - rect.left) * scaleX;
                 const cy = (clientY - rect.top) * scaleY;
+                // Dismiss level select if showing
+                if (gameState.showLevelSelect) {
+                    // Check if a level button was clicked
+                    if (drawLevelSelect._buttons) {
+                        for (let i = 0; i < drawLevelSelect._buttons.length; i++) {
+                            let btn = drawLevelSelect._buttons[i];
+                            if (cx >= btn.x && cx <= btn.x + btn.w && cy >= btn.y && cy <= btn.y + btn.h) {
+                                startAtLevel(btn.level);
+                                return;
+                            }
+                        }
+                    }
+                    // If clicked outside buttons, close level select
+                    gameState.showLevelSelect = false;
+                    return;
+                }
                 // Dismiss HTP if showing (works on title and during gameplay)
                 if (gameState.showHowToPlay) {
                     gameState.showHowToPlay = false;
@@ -2184,6 +3035,19 @@
             }
             htpEl.addEventListener('click', doHtp);
             htpEl.addEventListener('touchstart', doHtp, { passive: false });
+
+            // Level Select button
+            var lvlEl = document.getElementById('lvlBtn');
+            function doLvl(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.type === 'touchstart') lastTouchTime = Date.now();
+                else if (e && e.type === 'click' && Date.now() - lastTouchTime < 500) return;
+                gameState.showLevelSelect = !gameState.showLevelSelect;
+                // If we're on the title screen, make sure the title loop is running
+                if (gameState.isTitle) showTitle();
+            }
+            lvlEl.addEventListener('click', doLvl);
+            lvlEl.addEventListener('touchstart', doLvl, { passive: false });
 
             // Sound toggle button
             var soundBtn = document.getElementById('soundBtn');

@@ -42,33 +42,47 @@
         }
         #controls {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 24px;
+            gap: 4px;
             width: 100%;
-            padding: 4px 0;
+            max-width: 400px;
+            padding: 4px 8px;
             flex-shrink: 0;
             position: relative;
             z-index: 10;
         }
+        #menuRow {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            width: 100%;
+        }
+        #gameRow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            width: 100%;
+        }
         #dpad {
             position: relative;
-            width: 220px;
-            height: 220px;
+            width: 160px;
+            height: 160px;
             flex-shrink: 0;
         }
         .dpad-button {
             position: absolute;
-            width: 68px;
-            height: 68px;
+            width: 50px;
+            height: 50px;
             background: rgba(0, 200, 0, 0.3);
             border: 2px solid rgba(0, 255, 0, 0.6);
-            border-radius: 14px;
+            border-radius: 12px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 30px;
+            font-size: 24px;
             color: #0f0;
             user-select: none;
             -webkit-user-select: none;
@@ -79,18 +93,19 @@
             background: rgba(0, 255, 0, 0.5);
             border-color: #0f0;
         }
-        #dpad-up { top: 0; left: 76px; }
-        #dpad-down { bottom: 0; left: 76px; }
-        #dpad-left { top: 76px; left: 0; }
-        #dpad-right { top: 76px; right: 0; }
+        #dpad-up { top: 0; left: 55px; }
+        #dpad-down { bottom: 0; left: 55px; }
+        #dpad-left { top: 55px; left: 0; }
+        #dpad-right { top: 55px; right: 0; }
         .ctrl-btn {
-            width: 140px;
+            flex: 1;
+            min-width: 0;
             box-sizing: border-box;
-            border-radius: 10px;
-            font-size: 15px;
+            border-radius: 8px;
+            font-size: 11px;
             font-weight: bold;
             font-family: Arial, sans-serif;
-            padding: 14px 0;
+            padding: 8px 4px;
             cursor: pointer;
             user-select: none;
             -webkit-user-select: none;
@@ -99,6 +114,38 @@
             text-align: center;
             position: relative;
             z-index: 11;
+        }
+        #statusDisplay {
+            font-size: 13px;
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            color: #fff;
+            line-height: 1.4;
+            min-height: 0;
+        }
+        #fireBtn {
+            width: 70px;
+            height: 70px;
+            background: rgba(50,120,255,0.3);
+            border: 2px solid rgba(100,170,255,0.6);
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: bold;
+            color: #6af;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
+        }
+        #fireBtn:active {
+            background: rgba(80,160,255,0.6);
+            border-color: #8cf;
         }
         #menuBtn {
             background: rgba(255, 50, 50, 0.3);
@@ -138,21 +185,23 @@
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
         <div id="controls">
-            <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+            <div id="menuRow">
                 <div id="menuBtn" class="ctrl-btn">☰ MENU</div>
                 <div id="htpBtn" class="ctrl-btn">HOW TO PLAY</div>
                 <div id="lvlBtn" class="ctrl-btn">LEVELS</div>
                 <div id="soundBtn" class="ctrl-btn">🔊 ON</div>
             </div>
-            <div id="dpad">
-                <div id="dpad-up" class="dpad-button">▲</div>
-                <div id="dpad-down" class="dpad-button">▼</div>
-                <div id="dpad-left" class="dpad-button">◄</div>
-                <div id="dpad-right" class="dpad-button">►</div>
-            </div>
-            <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex-shrink:0; align-self:center;">
-                <div id="statusDisplay" style="font-size:13px; font-weight:bold; font-family:Arial,sans-serif; text-align:center; color:#fff; line-height:1.4; min-height:36px;"></div>
-                <div id="fireBtn" style="width:80px; height:80px; background:rgba(50,120,255,0.3); border:2px solid rgba(100,170,255,0.6); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; color:#6af; user-select:none; -webkit-user-select:none; touch-action:none; -webkit-tap-highlight-color:transparent;">FIRE</div>
+            <div id="gameRow">
+                <div id="dpad">
+                    <div id="dpad-up" class="dpad-button">▲</div>
+                    <div id="dpad-down" class="dpad-button">▼</div>
+                    <div id="dpad-left" class="dpad-button">◄</div>
+                    <div id="dpad-right" class="dpad-button">►</div>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                    <div id="statusDisplay"></div>
+                    <div id="fireBtn">FIRE</div>
+                </div>
             </div>
         </div>
     </div>
@@ -672,8 +721,8 @@
             var cx = CANVAS_WIDTH / 2;
             var y = 28;
             // Player sprite sizes: large for hero intro, medium for scenario illustrations
-            var heroSize = 105;  // big and recognizable for "this is you" (70*1.5)
-            var sceneSize = 84;  // clear in the stealth scenarios (56*1.5)
+            var heroSize = 85;   // recognizable for "this is you"
+            var sceneSize = 74;  // clear in the stealth scenarios
             var ghostScale = 1.4; // scale up ghosts to match
 
             // Title
@@ -684,13 +733,13 @@
             ctx.lineWidth = 3;
             ctx.strokeText('HOW TO PLAY', cx, y);
             ctx.fillText('HOW TO PLAY', cx, y);
-            y += 38;
+            y += 32;
 
             // === YOUR CHARACTER ===
             ctx.fillStyle = '#FFF';
             ctx.font = 'bold 15px Arial';
             ctx.fillText('YOUR CHARACTER', cx, y);
-            y += 24;
+            y += 18;
             // Draw the player sprite large and centered so the player knows what they look like
             var heroFrame = Math.floor(now / 120) % 8;
             drawHtpPlayer(spriteRun, heroFrame, 8, cx, y + heroSize/2 - 6 - 15, heroSize, false);
@@ -711,7 +760,7 @@
             ctx.font = '13px Arial';
             ctx.fillStyle = '#CCC';
             ctx.fillText('Eat all the dots to complete each level.', cx, y);
-            y += 24;
+            y += 18;
 
             // === STEALTH KILLS ===
             ctx.fillStyle = '#FF4444';
@@ -726,7 +775,7 @@
             y += 15;
             ctx.fillStyle = '#8F8';
             ctx.fillText('+800 points per kill, combos up to 5x!', cx, y);
-            y += 20;
+            y += 16;
 
             // --- SAFE scenario: player behind ghost ---
             // Layout: centered, with good spacing between elements
@@ -757,7 +806,7 @@
             ctx.fillStyle = '#8F8';
             ctx.font = 'bold 13px Arial';
             ctx.fillText('SAFE \u2014 Behind the ghost!', cx, y);
-            y += 20;
+            y += 16;
 
             // --- DANGER scenario: player in ghost's vision cone ---
             var d_ghostX = sceneCenter + 30;
@@ -785,7 +834,7 @@
             ctx.fillStyle = '#F66';
             ctx.font = 'bold 13px Arial';
             ctx.fillText('DANGER \u2014 Ghost sees you!', cx, y);
-            y += 22;
+            y += 16;
 
             // === POWER PELLETS ===
             ctx.fillStyle = '#FFB852';
@@ -797,7 +846,7 @@
             ctx.fillText('Large flashing dots make ghosts vulnerable.', cx, y);
             y += 15;
             ctx.fillText('Eat frightened ghosts for bonus points!', cx, y);
-            y += 22;
+            y += 18;
 
             // === LEVELS ===
             ctx.fillStyle = '#0AF';

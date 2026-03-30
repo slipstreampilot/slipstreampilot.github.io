@@ -965,12 +965,13 @@
                 if (heistVault.crackProgress >= heistVault.crackTime) {
                     // Vault cracked!
                     heistVault.cracked = true;
-                    gameState.money += 2000;
-                    gameState.moneyEarned += 2000;
+                    var vaultPayout = gameState.level >= 8 ? 10000 : 2000;
+                    gameState.money += vaultPayout;
+                    gameState.moneyEarned += vaultPayout;
                     saveMoney();
                     playPowerUp();
                     screenFlash('rgba(255, 215, 0, 0.6)');
-                    showFloatingText(heistVault.tileX * TILE_SIZE + TILE_SIZE / 2, heistVault.tileY * TILE_SIZE - 10, '+$2000 VAULT CRACKED!');
+                    showFloatingText(heistVault.tileX * TILE_SIZE + TILE_SIZE / 2, heistVault.tileY * TILE_SIZE - 10, '+$' + vaultPayout + ' VAULT CRACKED!');
                     // Delayed "ESCAPE!" prompt
                     setTimeout(function() {
                         showFloatingText(heistVault.tileX * TILE_SIZE + TILE_SIZE / 2, heistVault.tileY * TILE_SIZE + 20, gameState.level >= 8 ? 'ESCAPE TO THE EXIT!' : 'ESCAPE VIA WARP TUNNEL!');
@@ -1415,6 +1416,18 @@
             // Select maze for current level
             MAZE = gameState.level >= 8 ? MAZE_L8 : MAZE_DEFAULT;
             mazeState = MAZE.map(row => [...row]);
+
+            // Level 8: remove all dots (type 0), keep power pellets (type 3)
+            if (gameState.level >= 8) {
+                for (let y = 0; y < MAZE_HEIGHT; y++) {
+                    for (let x = 0; x < MAZE_WIDTH; x++) {
+                        if (mazeState[y][x] === 0) {
+                            mazeState[y][x] = 2; // Convert dots to empty tiles
+                        }
+                    }
+                }
+            }
+
             pelletsInitialCount = 0;
             for (let y = 0; y < MAZE_HEIGHT; y++) {
                 for (let x = 0; x < MAZE_WIDTH; x++) {
@@ -1437,6 +1450,8 @@
             let ghostSpeed;
             if (level === 1) {
                 ghostSpeed = 4.05; // ~54% of player's 7.5
+            } else if (level >= 8) {
+                ghostSpeed = player.speed * 0.50; // 50% of player speed (L8 difficulty reduction)
             } else if (level >= 4) {
                 ghostSpeed = player.speed * 0.90; // 90% of player speed
             } else {
@@ -2125,13 +2140,20 @@
                 ctx.fillText('Lower Floors \u2022 Lobby', cx, y); y += 16;
                 ctx.fillText('Each zone has 2 ghosts (left & right patrol).', cx, y); y += 26;
 
+                // Vault bonus
+                y = sectionHeader('THE VAULT', '#FFD700', y);
+                ctx.font = '12px Arial';
+                ctx.fillStyle = '#AAB';
+                ctx.fillText('Crack the vault at the top to earn $10,000!', cx, y); y += 16;
+                ctx.fillText('Then descend back down to the exit.', cx, y); y += 26;
+
                 // Escape mechanic
                 y = sectionHeader('ESCAPE: BOTTOM EXIT', '#0F6', y);
                 ctx.font = '12px Arial';
                 ctx.fillStyle = '#AAB';
-                ctx.fillText('After cracking the vault, descend back down.', cx, y); y += 16;
-                ctx.fillText('Escape through the glowing exit at the bottom!', cx, y); y += 16;
-                ctx.fillText('(Row 30, center \u2014 look for the green glow)', cx, y); y += 26;
+                ctx.fillText('Exit is at the very bottom (row 30).', cx, y); y += 16;
+                ctx.fillText('Look for the glowing green tiles!', cx, y); y += 16;
+                ctx.fillText('Only money sources: Vault ($10k), Ghosts, Data Packets', cx, y); y += 26;
 
                 // Strategy tips
                 y = sectionHeader('STRATEGY', '#FFD700', y);
@@ -3869,7 +3891,7 @@
             player.animState = 'idle';
             player.animFrame = 0;
             player.armed = false;
-            player.ammo = 0;
+            // NOTE: ammo is NOT reset on respawn - conserve across deaths
             laserPulses = [];
             laserGhostsHit = 0;
             snapCamera();
@@ -3880,8 +3902,17 @@
             gameState.alarmRings = [];
             var respawnPatrolPaths = gameState.level >= 8 ? PATROL_PATHS_L8 : PATROL_PATHS;
             ghosts.forEach((g, idx) => {
-                // Level 5+: ghosts respawn at patrol positions, not in cage
-                if (gameState.level >= 5) {
+                // Level 8: ghosts respawn at spawn points, Level 5-7: at patrol positions
+                if (gameState.level >= 8) {
+                    // L8: Reset to spawn points to prevent camping at player spawn
+                    g.tileX = g.startX;
+                    g.tileY = g.startY;
+                    g.patrol = respawnPatrolPaths[g.patrolIndex];
+                    g.state = 'SCATTER';
+                    g.releaseCounter = g.releaseTime;
+                    g.patrolWaypoint = 0;
+                } else if (gameState.level >= 5) {
+                    // L5-7: ghosts respawn at patrol positions, not in cage
                     let wp = 0;
                     if (idx >= 4) {
                         wp = Math.floor(respawnPatrolPaths[g.patrolIndex].length / 2);

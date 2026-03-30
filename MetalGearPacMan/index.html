@@ -150,6 +150,10 @@
                 <div id="dpad-left" class="dpad-button">◄</div>
                 <div id="dpad-right" class="dpad-button">►</div>
             </div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex-shrink:0; align-self:center;">
+                <div id="statusDisplay" style="font-size:13px; font-weight:bold; font-family:Arial,sans-serif; text-align:center; color:#fff; line-height:1.4; min-height:36px;"></div>
+                <div id="fireBtn" style="width:80px; height:80px; background:rgba(50,120,255,0.3); border:2px solid rgba(100,170,255,0.6); border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; color:#6af; user-select:none; -webkit-user-select:none; touch-action:none; -webkit-tap-highlight-color:transparent;">FIRE</div>
+            </div>
         </div>
     </div>
 
@@ -205,6 +209,12 @@
         const SPRITE_ATTACK_B64 = "iVBORw0KGgoAAAANSUhEUgAAASwAAAA8CAYAAADc3IdaAAAFjElEQVR4Xu2az2sdVRTHb0BsrKXYUBXspkVUBBE3DQimCG6KUlqrWLMRdKXFZfBvENpdS0vBupBqiFRLW1pCsYti3NidQksI4sooWloRrEkIjJyb3mHm/ZqZlztv7rnzmc3Lj/dmzvdzznzmziRjhg0CEICAEgJjSuqkTAhAAAIGYTEEEICAGgIIS02rKBQCEEBYzAAEIKCGAMJS0yoKhQAEEBYzAAEIqCGAsNS0ikIhAAGExQxAAAJqCCAsNa2iUAhAAGExAxCAgBoCCEtNqygUAhBAWMwABCCghgDCUtMqCoUABBAWMwABCKghgLDUtIpCIQABhMUMQAACagggLDWtolAIQABhMQMQgIAaAghLTasoFAIQQFjMAAQgoIYAwlLTKgqFAAQQFjMAAQioIYCw1LSKQiEAAYTFDEAAAmoIICw1raJQCEAAYTEDEICAGgIIS02rKBQCEEBYzAAEIKCGAMJS0yoKhQAEEBYzAAEIqCGAsNS0ikIhAAGExQxAAAJqCCAsNa2iUAhAoAlhJQ+wN3Hspjsu2duSu01ZZa7IO4Kzq+6Tx8kpjTL2xB7z3dlj5rUDb8vP6j7+CBD2PUTP7Mmfv8aYu01ZnZxyjZe5jrS3QeWtSxh2gKWJvTYR1uLiH+bozMfRnrz9stvuxyOtgX2OLGt64rakt0HmrUNYyaCGCoWIhVWYPSZZFfU5oqz25CVvfvnRRH99C6tvU7eu3EvTXvrysxhXWKWy//vP3zGsKtuUdaCssnMdSW+DzutdWI9uf8zsX/nPyumdtdWet4Q7L5+PSVjp85sy2Y9sEBm7ubSefm7vMw/57kOdz+5s3VWy1lnMiPadkLebtJvlEfVg48TxeLBkzhjz9cNbzFcXPjA/fv+LmZx62kxMz9pD3J2dtq/y/ScvvWpu/f6XmVv6wXcNHuOU2pXN7LYy2d1VOCus7JECl1eat0rWUiTDfVPpuY5khRV0Xl/CsiHFuG+VENa5Qy/Y8XzziwXtwpL605VSmexFwnLnbYDiSnssNVbJGq6LCiurNNcIq5Dnpt9Qi7Dmxx8x80cnbXGyyurcrs79HJWw5OSV7Zu1VXurNCj7ljdOm5tL66UaF6K0nKzKZvW8ii/FzeObcsIqmmvprfK89gLs7pRCzOtLWOlKQ07ezmHODtCd5fsxycpFy/4zrH3e4aSVzT716TU70P1uB3udaCFKy/VY6i3K6lEeTe3K9rZorl1vmyrS83GTUPP6FFbu5F298pH9fnzmtn1dOf68fZXVVSS3gp0zYgc7zf3+vP39t/t3pe+T3GVXV9mdhyitMlkjWG30nuk+vSWvZ2322J1vYSXuhHXHkofv+y6updKKZNncJavO3J2y/unZE0N3MzBhdfW4M2tst/xFvSXv0KNd+YO1CUvEdOG9V8zOp7baovZ9vmRfm/hns8pUqn8guX75fNenFo6dM6+f7f55ld0HJivbwn5ZX9x9JxctkpU0eY0xMssh9Ne3sOxAP5ha2bd9nnN/fEdukGOV1qnjJ9Ocew9+WMVLXe8NUFTZGpNsVvnFjTOz5t2XN8bp8PxvsV2YyBtIf+sQVm6wn3tyu3l8YlvuhFy4vSzf133sTQljyA8nwzyjcscKXFJdt8HyA7kgydaCi1L6D7Pkbe5OaRTSSJy0RFTZryOVll1lSk7ZsrKOVNRtytq23gaXF2ENuZQa8LG2CZq8E9tMpBejVFhy4Q1hwTESYbnnWPLsKvt1pCus9LkdeeO87WeedzT2jHIUwup6EJ95KO9/fRPGHnN/eCBvGE3xWAX9begZ9KiE5XFW2BUEINBWAgirrZ0nNwQUEkBYCptGyRBoKwGE1dbOkxsCCgkgLIVNo2QItJUAwmpr58kNAYUEEJbCplEyBNpK4H+KDqVbddNrVQAAAABJRU5ErkJgggAA";
         const SPRITE_DIE_B64 = "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";
 
+        // Assault rifle sprite sheet base64 data
+        const RIFLE_IDLE_B64 = "iVBORw0KGgoAAAANSUhEUgAAAPAAAAA8CAYAAABYfzddAAAEdElEQVR4Xu2dPWgUQRiGJ405fwgmohZWYtBCCGKRwhBbA4IgghILwVgZBC0iSOxFSKOVZSAQg4JaCdFSU4mICBIQxU5EIYr4k0vhyXzJLHfhLrdmM7Pz7T7b7N1ld++b932fb+YuWdJh2FAABdQq0KG2cgpHARQwAEwIUECxAgCs2DxKRwEAJgMooFgBAFZsHqWjAACTARRQrAAAKzaP0lEAgMkACihWAIAVm0fpKADAZAAFFCsAwIrNo3QUAGAygAKKFQBgxeZROgoAMBlAAcUKALBi8ygdBQCYDKCAYgUAWLF5lI4CAEwGUECxAgCs2DxKRwEAJgMooFgBAFZsHqWjAACTARRQrAAAKzaP0lEAgMkACihWAIAVm0fpKADAZAAFFCsAwIrNo3QUAGAygAKKFQBgxeZROgoAMBlAAcUKALBi8ygdBQCYDKCAYgXyBLhmDP/eVHF2KD0CBUIBbGFt2Dp27TW1Lx/ta6FqyFtuGlbeDvh9/1z89Q2PgGthbbUVFGIaljG5BNovo8nVo/HXJ8C1tcC1UhQQXhrWSsYLusKKzl9fALeEd8vit6SN/frxvUhLaBpWk+mvQE06Sn+9Aby1a7sZWvwjlp5eqjZd2ZxZftVXDYFWU/I2NKySwpv3hOQDnto9Y8z9TZ3m7qMR8+L5B9M/uM/0DM+IxQszw7K3zwsyA8uyioa1THDegfbUtWux+rvRAAu8dmY9VQ6AZbx2K1HDkhVHrIH2AHDUE5JXgGcrm83saL9oamfh1Vvn8Tual9BJs7KDKEnDEnjLtsKKebwbDbAY7AL9YKkqS0sHcT3AgzefaobXDaXlWAvYsBJ4S7TCamhYMU5IPgCuD7e9fvIFz8OhPfKzk1Nz7VY6cp6SL7hqdva1zcp9Fi5yw6r/iBRjoNsFa50/TzxuMyG1ury3PPsEWLpX9fFFGVRlbN4MmHfm68JPeX756g3Z354YNzt7tsnjsxfGZT86dsmcP3fFTE7d0jJL1zebwjes/1hhBQ/0OgFNc5rzOPF3YEc19zwHA9gq1DcynQh15NiIPD5hXsr+2pM3xr1Wr6YiiMvUsGSsKyukqAKdhsQMxzRMSPsXXuWeZ98AN4S6XriD19/K04m+v7JfY1kdosYMnjacmhhcxoYVQ6A3ysgW12nwN4Y8h4BDfuXwu9JtFieHkjE7gAf7DmtaKqfJR1OTy9CwYgh0GoMyHiN5dn/P4K6VV56DAHxgd1fyOfdzZ69x0PYeOirjLxjEpWtYMQU6I5xpTq/FlOegAM/NfzIO2vevn4lYq56HqCeNSVmOicrgLANJeW5pxxtDnkMAkxhsB+y6l33svgRZCUqIWlJmMtNhDeMtU8OKIdCZnEt3clR5DgFNsqS0d6a4z8MFuktlte3txuvuJQ2hfbpIZjuK8Va6c7s1NlSI6kNbtAA3iz/jLcZdZq1aWzT+hgI4W4/nbBRAgaYKADDBQAHFCgCwYvMoHQUAmAyggGIFAFixeZSOAgBMBlBAsQIArNg8SkeBf0WvS1vgZC7HAAAAAElFTkSuQmCC";
+        const RIFLE_RUN_B64 = "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";
+        const RIFLE_SHOOT_B64 = "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";
+        const RIFLE_DIE_B64 = "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";
+
         let gameState = {
             score: 0,
             highScore: localStorage.getItem('pacmanHighScore') || 0,
@@ -249,7 +259,10 @@
             animState: 'idle', // 'idle' | 'run' | 'attack' | 'die'
             animTimer: 0,      // timer for attack/die animations
             animFrame: 0,      // current frame within the active animation
-            animSpeed: 0.1     // seconds per frame
+            animSpeed: 0.1,    // seconds per frame
+            // Assault rifle state (level 6)
+            armed: false,
+            ammo: 0
         };
 
         // Patrol paths: simple quadrant loops with stop points for look-around behavior
@@ -299,6 +312,11 @@
         let spriteRun = new Image();
         let spriteAttack = new Image();
         let spriteDie = new Image();
+        // Assault rifle sprite sheets
+        let rifleIdle = new Image();
+        let rifleRun = new Image();
+        let rifleShoot = new Image();
+        let rifleDie = new Image();
         let titleScreenImg = new Image();
         let audioCtx = null;
         let lastFrameTime = Date.now();
@@ -324,6 +342,10 @@
             spriteRun.src = 'data:image/png;base64,' + SPRITE_RUN_B64;
             spriteAttack.src = 'data:image/png;base64,' + SPRITE_ATTACK_B64;
             spriteDie.src = 'data:image/png;base64,' + SPRITE_DIE_B64;
+            rifleIdle.src = 'data:image/png;base64,' + RIFLE_IDLE_B64;
+            rifleRun.src = 'data:image/png;base64,' + RIFLE_RUN_B64;
+            rifleShoot.src = 'data:image/png;base64,' + RIFLE_SHOOT_B64;
+            rifleDie.src = 'data:image/png;base64,' + RIFLE_DIE_B64;
             titleScreenImg.src = 'data:image/jpeg;base64,' + TITLE_IMG_B64;
 
             document.addEventListener('click', initAudio, { once: true });
@@ -784,9 +806,13 @@
             y += 18;
             ctx.font = '12px Arial';
             ctx.fillStyle = '#CCC';
-            ctx.fillText('L1: Normal speed ghosts', cx, y); y += 15;
-            ctx.fillText('L2: Ghosts get faster!', cx, y); y += 15;
-            ctx.fillText('L3+: EIGHT ghosts!', cx, y); y += 28;
+            ctx.fillText('L1: Normal speed ghosts', cx, y); y += 14;
+            ctx.fillText('L2: Ghosts get faster!', cx, y); y += 14;
+            ctx.fillText('L3: EIGHT ghosts!', cx, y); y += 14;
+            ctx.fillText('L4: Ghosts communicate!', cx, y); y += 14;
+            ctx.fillText('L5: All ghosts patrol from start', cx, y); y += 14;
+            ctx.fillStyle = '#6AF';
+            ctx.fillText('L6: Assault rifles replace power pellets!', cx, y); y += 22;
 
             // Back button
             var pulse = 0.6 + Math.sin(now / 400) * 0.3;
@@ -824,13 +850,13 @@
 
             drawLevelSelect._buttons = [];
 
-            // 2 columns, 3 rows layout (5 buttons, last one centered)
+            // 2 columns, 3 rows layout (6 buttons)
             var gridStartX = cx - 90;  // two columns with spacing
             var gridStartY = y;
             var colSpacing = 110;
-            var rowSpacing = 90;
+            var rowSpacing = 82;
             var btnWidth = 70;
-            var btnHeight = 70;
+            var btnHeight = 62;
             var btnRadius = 8;
 
             for (var i = 0; i < levels.length; i++) {
@@ -838,11 +864,6 @@
                 var row = Math.floor(i / 2);
                 var btnX = gridStartX + col * colSpacing;
                 var btnY = gridStartY + row * rowSpacing;
-
-                // Center last button if it's in the 3rd row
-                if (i === 4) {
-                    btnX = cx - btnWidth / 2;
-                }
 
                 // Draw rounded rectangle button
                 ctx.fillStyle = '#444';
@@ -907,6 +928,10 @@
             player.animState = 'idle';
             player.animFrame = 0;
             player.animTimer = 0;
+            player.armed = false;
+            player.ammo = 0;
+            laserPulses = [];
+            laserGhostsHit = 0;
             gameState.levelAnnounce = 2.5; // show level announcement for 2.5s
             gameState.readyCounter = 1.5;  // then READY for 1.5s
             gameState.powerUpActive = false;
@@ -993,6 +1018,7 @@
             }
             runDiagnostics(deltaTime);
             updateFloatingTexts(deltaTime);
+            updateLaserPulses(deltaTime);
 
             // Decay sneak combo timer
             if (gameState.sneakComboTimer > 0) {
@@ -1326,18 +1352,28 @@
                 playWaka();
                 mazeState[ty][tx] = 2;
             } else if (mazeState[ty][tx] === 3) {
-                gameState.score += 50;
-                gameState.pelletsEaten++;
-                playPowerUp();
-                gameState.powerUpActive = true;
-                gameState.powerUpTimer = 8;
-                ghosts.forEach(g => {
-                    if (g.state !== 'EATEN') {
-                        g.frightened = true;
-                        g.canReverse = true;
-                    }
-                });
-                mazeState[ty][tx] = 2;
+                if (gameState.level >= 6) {
+                    // Assault rifle pickup — arms player, no power-up
+                    gameState.score += 50;
+                    gameState.pelletsEaten++;
+                    player.armed = true;
+                    player.ammo += 3;
+                    playPowerUp(); // satisfying pickup sound
+                    mazeState[ty][tx] = 2;
+                } else {
+                    gameState.score += 50;
+                    gameState.pelletsEaten++;
+                    playPowerUp();
+                    gameState.powerUpActive = true;
+                    gameState.powerUpTimer = 8;
+                    ghosts.forEach(g => {
+                        if (g.state !== 'EATEN') {
+                            g.frightened = true;
+                            g.canReverse = true;
+                        }
+                    });
+                    mazeState[ty][tx] = 2;
+                }
             }
         }
 
@@ -2040,6 +2076,167 @@
             });
         }
 
+        // ============= LASER PULSE SYSTEM (Level 6) =============
+        let laserPulses = [];
+        let laserGhostsHit = 0; // escalating score counter per life
+
+        function fireRifle() {
+            if (!player.armed || player.ammo <= 0) return;
+            if (gameState.deathPauseTimer > 0 || gameState.readyCounter > 0) return;
+            if (gameState.levelAnnounce > 0) return;
+            player.ammo--;
+            // Shoot animation
+            player.animState = 'attack';
+            player.animFrame = 0;
+            player.animTimer = 0;
+            playRifleShot();
+            // Spawn laser pulse from player position in facing direction
+            const dir = player.direction !== 'NONE' ? player.direction : player.lastFacing;
+            const delta = dirToDelta(player.direction);
+            const progress = player.stopped ? 0 : player.pixelProgress;
+            const px = (player.tileX + delta.dx * progress) * TILE_SIZE + TILE_SIZE / 2;
+            const py = (player.tileY + delta.dy * progress) * TILE_SIZE + TILE_SIZE / 2;
+            const ld = dirToDelta(dir);
+            laserPulses.push({
+                x: px, y: py,
+                dx: ld.dx, dy: ld.dy,
+                speed: player.speed * 3 * TILE_SIZE, // 3x player speed in pixels/sec
+                life: 3.0, // max lifetime seconds (safety)
+                sparkTimer: 0
+            });
+        }
+
+        function updateLaserPulses(deltaTime) {
+            for (let i = laserPulses.length - 1; i >= 0; i--) {
+                const lp = laserPulses[i];
+                lp.x += lp.dx * lp.speed * deltaTime;
+                lp.y += lp.dy * lp.speed * deltaTime;
+                lp.life -= deltaTime;
+                lp.sparkTimer += deltaTime;
+
+                // Check wall collision (tile the laser center is in)
+                const tileX = Math.floor(lp.x / TILE_SIZE);
+                const tileY = Math.floor(lp.y / TILE_SIZE);
+                // Out of bounds or hit wall = remove
+                if (tileX < 0 || tileX >= MAZE_WIDTH || tileY < 0 || tileY >= MAZE_HEIGHT ||
+                    MAZE[tileY][tileX] === 1 || lp.life <= 0) {
+                    laserPulses.splice(i, 1);
+                    continue;
+                }
+
+                // Check ghost collisions (laser passes through, hitting all in path)
+                for (let g = 0; g < ghosts.length; g++) {
+                    const ghost = ghosts[g];
+                    if (ghost.state === 'CAGE' || ghost.state === 'EXITING' || ghost.state === 'EATEN') continue;
+                    const gd = dirToDelta(ghost.direction);
+                    const gp = ghost.pixelProgress || 0;
+                    const gx = (ghost.tileX + gd.dx * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    const gy = (ghost.tileY + gd.dy * gp) * TILE_SIZE + TILE_SIZE / 2;
+                    const dist = Math.hypot(lp.x - gx, lp.y - gy);
+                    if (dist < TILE_SIZE * 0.7) {
+                        // Ghost hit!
+                        const scoreTable = [200, 400, 800, 1600];
+                        const hitScore = scoreTable[Math.min(laserGhostsHit, 3)];
+                        laserGhostsHit++;
+                        gameState.score += hitScore;
+                        playGhostEaten();
+                        ghost.state = 'EATEN';
+                        ghost.frightened = false;
+                        showFloatingText(gx, gy - TILE_SIZE, '+' + hitScore + ' SHOT!');
+                        // Laser passes through — don't remove or break
+                    }
+                }
+            }
+        }
+
+        function renderLaserPulses() {
+            if (laserPulses.length === 0) return;
+            ctx.save();
+            laserPulses.forEach(lp => {
+                const glow = 0.7 + Math.sin(Date.now() / 50) * 0.3;
+                const beamLen = TILE_SIZE * 2.5; // long laser beam
+                // Tail position (behind the head)
+                const tailX = lp.x - lp.dx * beamLen;
+                const tailY = lp.y - lp.dy * beamLen;
+                // Outer glow beam (wide, faint)
+                ctx.strokeStyle = 'rgba(50, 150, 255, ' + (glow * 0.3).toFixed(2) + ')';
+                ctx.lineWidth = 8;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(lp.x, lp.y);
+                ctx.stroke();
+                // Core beam (bright blue)
+                ctx.strokeStyle = 'rgba(80, 200, 255, ' + glow.toFixed(2) + ')';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(lp.x, lp.y);
+                ctx.stroke();
+                // Hot white center line
+                ctx.strokeStyle = 'rgba(220, 245, 255, 0.9)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(lp.x, lp.y);
+                ctx.stroke();
+                // Bright tip
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                ctx.beginPath();
+                ctx.arc(lp.x, lp.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                // Sparkles along beam
+                ctx.fillStyle = 'rgba(180, 230, 255, ' + (glow * 0.7).toFixed(2) + ')';
+                for (let s = 0; s < 5; s++) {
+                    const t = (s + (Date.now() % 200) / 200) / 5;
+                    const sx = lp.x - lp.dx * beamLen * t;
+                    const sy = lp.y - lp.dy * beamLen * t;
+                    const sparkOff = Math.sin(Date.now() / 30 + s * 2) * 3;
+                    ctx.beginPath();
+                    ctx.arc(sx + lp.dy * sparkOff, sy - lp.dx * sparkOff, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            ctx.restore();
+        }
+
+        function playRifleShot() {
+            if (!gameState.soundEnabled || !audioCtx) return;
+            const now = audioCtx.currentTime;
+            // Sharp attack noise burst
+            const bufSize = audioCtx.sampleRate * 0.08;
+            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.15));
+            }
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 2000;
+            filter.Q.value = 1.5;
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            noise.start(now);
+            noise.stop(now + 0.08);
+            // Laser "pew" tone
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            osc.connect(oscGain);
+            oscGain.connect(audioCtx.destination);
+            osc.frequency.setValueAtTime(1200, now);
+            osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+            oscGain.gain.setValueAtTime(0.15, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        }
+
         function screenFlash() {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -2077,6 +2274,10 @@
                     player.stopped = true;
                     player.animState = 'idle';
                     player.animFrame = 0;
+                    player.armed = false;
+                    player.ammo = 0;
+                    laserPulses = [];
+                    laserGhostsHit = 0;
                     gameState.readyCounter = 2;
                     gameState.alarmActive = false;
                     gameState.alarmTimer = 0;
@@ -2282,6 +2483,26 @@
             });
         }
 
+        function updateStatusDisplay() {
+            const el = document.getElementById('statusDisplay');
+            if (!el) return;
+            if (gameState.isTitle || gameState.gameOver) {
+                el.innerHTML = '';
+                return;
+            }
+            // Lives as hearts
+            let livesStr = '<span style="color:#F44;">&#9829;</span> '.repeat(gameState.lives).trim();
+            let ammoStr = '';
+            if (player.armed && gameState.level >= 6) {
+                if (player.ammo > 0) {
+                    ammoStr = '<br><span style="color:#6AF;">AMMO: ' + player.ammo + '</span>';
+                } else {
+                    ammoStr = '<br><span style="color:#F66;">NO AMMO</span>';
+                }
+            }
+            el.innerHTML = livesStr + ammoStr;
+        }
+
         function render() {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -2290,6 +2511,7 @@
             renderGhosts();
             renderPlayer();
             renderAlarmRings();
+            renderLaserPulses();
             renderFloatingTexts();
             renderHUD();
 
@@ -2311,7 +2533,8 @@
                     2: 'Ghosts get faster!',
                     3: 'Double the ghosts!',
                     4: 'They communicate!',
-                    5: 'No place to hide!'
+                    5: 'No place to hide!',
+                    6: 'Locked and loaded!'
                 };
                 const sub = subtitles[gameState.level] || 'Survive!';
                 ctx.fillStyle = '#FFF';
@@ -2338,6 +2561,7 @@
             }
 
             renderDiagOverlay();
+            updateStatusDisplay();
         }
 
         function renderMaze() {
@@ -2362,14 +2586,43 @@
                         ctx.arc(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 2, 0, Math.PI * 2);
                         ctx.fill();
                     } else if (mazeState[y][x] === 3) {
-                        // Power pellets - big and flashing
-                        const flash = Math.floor(Date.now() / 200) % 2 === 0;
-                        if (flash) {
-                            ctx.fillStyle = '#FFD700';
+                        if (gameState.level >= 6) {
+                            // Assault rifle pickup - small pixel rifle icon
+                            const rx = x * TILE_SIZE + TILE_SIZE / 2;
+                            const ry = y * TILE_SIZE + TILE_SIZE / 2;
+                            ctx.save();
+                            // Pulsing yellow glow behind the rifle
+                            const glow = 0.3 + Math.sin(Date.now() / 200) * 0.3;
+                            ctx.fillStyle = 'rgba(255, 215, 0, ' + glow.toFixed(2) + ')';
                             ctx.beginPath();
-                            ctx.arc(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 6, 0, Math.PI * 2);
+                            ctx.arc(rx, ry, 8, 0, Math.PI * 2);
                             ctx.fill();
-                            ctx.fillStyle = '#FFA500';
+                            // Rifle body (dark gray)
+                            ctx.fillStyle = '#888';
+                            ctx.fillRect(rx - 7, ry - 1, 14, 3);
+                            // Stock (brown)
+                            ctx.fillStyle = '#8B4513';
+                            ctx.fillRect(rx - 7, ry - 1, 4, 3);
+                            // Barrel tip (light gray)
+                            ctx.fillStyle = '#CCC';
+                            ctx.fillRect(rx + 5, ry - 1, 3, 2);
+                            // Trigger guard
+                            ctx.fillStyle = '#666';
+                            ctx.fillRect(rx - 1, ry + 2, 3, 2);
+                            // Scope dot (red)
+                            ctx.fillStyle = '#F00';
+                            ctx.fillRect(rx + 1, ry - 3, 2, 2);
+                            ctx.restore();
+                        } else {
+                            // Power pellets - big and flashing
+                            const flash = Math.floor(Date.now() / 200) % 2 === 0;
+                            if (flash) {
+                                ctx.fillStyle = '#FFD700';
+                                ctx.beginPath();
+                                ctx.arc(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, 6, 0, Math.PI * 2);
+                                ctx.fill();
+                                ctx.fillStyle = '#FFA500';
+                            }
                         }
                     }
                 }
@@ -2609,21 +2862,38 @@
             // Pick the right sprite sheet and frame
             const renderDir = player.direction !== 'NONE' ? player.direction : player.lastFacing;
             let sheet, frameCount, frame;
+            const useRifle = player.armed && player.ammo > 0;
             switch (player.animState) {
                 case 'attack':
-                    sheet = spriteAttack; frameCount = 5;
+                    if (useRifle) {
+                        sheet = rifleShoot; frameCount = 6;
+                    } else {
+                        sheet = spriteAttack; frameCount = 5;
+                    }
                     frame = player.animFrame;
                     break;
                 case 'die':
-                    sheet = spriteDie; frameCount = 9;
+                    if (useRifle) {
+                        sheet = rifleDie; frameCount = 9;
+                    } else {
+                        sheet = spriteDie; frameCount = 9;
+                    }
                     frame = player.animFrame;
                     break;
                 case 'run':
-                    sheet = spriteRun; frameCount = 8;
+                    if (useRifle) {
+                        sheet = rifleRun; frameCount = 8;
+                    } else {
+                        sheet = spriteRun; frameCount = 8;
+                    }
                     frame = player.animFrame % frameCount;
                     break;
                 default: // idle
-                    sheet = spriteIdle; frameCount = 4;
+                    if (useRifle) {
+                        sheet = rifleIdle; frameCount = 4;
+                    } else {
+                        sheet = spriteIdle; frameCount = 4;
+                    }
                     frame = player.animFrame % frameCount;
                     break;
             }
@@ -2726,6 +2996,29 @@
                 ctx.font = 'bold 13px Impact, Arial Black, sans-serif';
                 const comboText = 'STEALTH x' + gameState.sneakCombo;
                 ctx.fillText(comboText, CANVAS_WIDTH - 5, CANVAS_HEIGHT - 8);
+            }
+
+            // Ammo indicator (level 6)
+            if (gameState.level >= 6 && player.armed) {
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 13px Impact, Arial Black, sans-serif';
+                if (player.ammo > 0) {
+                    ctx.fillStyle = '#6AF';
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    const ammoText = 'AMMO: ' + player.ammo;
+                    ctx.strokeText(ammoText, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 8);
+                    ctx.fillText(ammoText, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 8);
+                } else {
+                    const blink = Math.floor(Date.now() / 300) % 2 === 0;
+                    if (blink) {
+                        ctx.fillStyle = '#F66';
+                        ctx.strokeStyle = '#000';
+                        ctx.lineWidth = 2;
+                        ctx.strokeText('NO AMMO', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 8);
+                        ctx.fillText('NO AMMO', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 8);
+                    }
+                }
             }
         }
 
@@ -2897,7 +3190,14 @@
                     e.preventDefault();
                     return;
                 }
-                if (e.key === 'Enter' || e.key === ' ') startFromTitle();
+                if (e.key === 'Enter') startFromTitle();
+                if (e.key === ' ') {
+                    if (!gameState.isTitle && player.armed && player.ammo > 0) {
+                        fireRifle();
+                    } else {
+                        startFromTitle();
+                    }
+                }
                 if (e.key === 'Escape') returnToTitle();
                 if (e.key === 'm' || e.key === 'M') {
                     gameState.soundEnabled = !gameState.soundEnabled;
@@ -3128,6 +3428,19 @@
             }
             document.addEventListener('touchend', globalTouchCleanup, { passive: true });
             document.addEventListener('touchcancel', globalTouchCleanup, { passive: true });
+
+            // Fire button
+            var fireBtnEl = document.getElementById('fireBtn');
+            function doFire(e) {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.type === 'touchstart') lastTouchTime = Date.now();
+                else if (e && e.type === 'click' && Date.now() - lastTouchTime < 500) return;
+                if (!gameState.isTitle && player.armed && player.ammo > 0) {
+                    fireRifle();
+                }
+            }
+            fireBtnEl.addEventListener('click', doFire);
+            fireBtnEl.addEventListener('touchstart', doFire, { passive: false });
         }
 
         // Start the game

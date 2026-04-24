@@ -800,6 +800,88 @@
       to   { left: calc(100% + 0.5em); }
     }
 
+    /* ─── TIMES TABLE PICKER (inside Karate Math) ──────────────────── */
+    .tt-wrap {
+      width: 100%; max-width: 460px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .tt-legend {
+      font-size: 11px; color: #999; letter-spacing: 0.08em;
+      text-transform: uppercase; margin-bottom: 14px; text-align: center;
+    }
+    .tt-all-tile {
+      width: 100%; max-width: 460px;
+      background: #fff; border: 1.5px solid #000; cursor: pointer;
+      font-family: Georgia, 'Times New Roman', serif;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 14px 12px; margin-bottom: 10px;
+      -webkit-appearance: none; border-radius: 0;
+      touch-action: manipulation; transition: background 0.1s;
+    }
+    .tt-all-tile:hover  { background: #f5f5f5; }
+    .tt-all-tile:active { background: #e8e8e8; }
+    .tt-all-num {
+      font-size: clamp(20px, 5vw, 26px); line-height: 1; margin-bottom: 3px;
+    }
+    .tt-all-best {
+      font-size: 10.5px; letter-spacing: 0.05em;
+      color: #888; font-family: Arial, Helvetica, sans-serif;
+    }
+    .tt-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+      grid-gap: 8px; gap: 8px; width: 100%;
+      padding: 4px 2px 20px;
+    }
+    @media (max-width: 400px) {
+      .tt-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .tt-tile {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      background: #fff; border: 1.5px solid #000; cursor: pointer;
+      font-family: Georgia, 'Times New Roman', serif;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 2px; -webkit-appearance: none; border-radius: 0;
+      touch-action: manipulation; transition: background 0.1s;
+    }
+    @supports not (aspect-ratio: 1 / 1) {
+      .tt-tile { aspect-ratio: auto; }
+      .tt-tile::before { content: ''; display: block; padding-top: 100%; }
+      .tt-tile > .tt-num,
+      .tt-tile > .tt-best { position: absolute; left: 0; right: 0; text-align: center; }
+      .tt-tile > .tt-num  { top: 28%; }
+      .tt-tile > .tt-best { bottom: 14%; }
+    }
+    .tt-tile:hover  { background: #f5f5f5; }
+    .tt-tile:active { background: #e8e8e8; }
+    .tt-tile .tt-num {
+      font-size: clamp(18px, 4.8vw, 26px); line-height: 1; margin-bottom: 3px;
+    }
+    .tt-tile .tt-num-label {
+      font-size: 9px; color: #aaa; letter-spacing: 0.08em;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .tt-tile .tt-best {
+      font-size: 9.5px; letter-spacing: 0.04em; color: #888;
+      font-family: Arial, Helvetica, sans-serif; line-height: 1.1; text-align: center;
+    }
+    .tt-tile.tt-has-score { background: #f4faf4; border-color: #2E7D32; }
+    .tt-tile.tt-has-score .tt-best { color: #2E7D32; }
+
+    /* Times Table scores table (same look as other leaderboards) */
+    #screen-gm-tt-scores .scores-table { width: 100%; max-width: 520px; }
+    .tt-scores-heading {
+      font-size: clamp(15px, 3.5vw, 19px); color: #333;
+      margin-bottom: 16px; letter-spacing: 0.04em;
+    }
+    .tt-scores-heading .tt-scores-table-name { font-weight: bold; }
+    .tt-legacy-row td { color: #999; font-style: italic; }
+    .tt-legacy-row .tt-legacy-tag {
+      font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: #bbb; margin-left: 6px; font-style: normal;
+    }
+
     /* ─── VOCAB FLASHCARDS ─────────────────────────────────────────── */
     .vf-title-subtitle {
       font-size: clamp(11px, 2.8vw, 14px); color: #666;
@@ -1544,6 +1626,7 @@
   <button class="btn" onclick="GMUI.startGame()">Play Game</button>
   <button class="btn" onclick="GMUI.startDuel()">&#x2694;&#xFE0F; Duel Mode</button>
   <button class="btn" onclick="GMUI.goHighScores()">View High Scores</button>
+  <button class="btn" onclick="GMUI.goTTScoresPicker()">Times Table Scores</button>
 </div>
 
 <!-- GM Difficulty Select (content populated dynamically by GMUI) -->
@@ -1665,7 +1748,7 @@
     <p>You made the top 100! Enter your name:</p>
     <input class="name-input" id="gm-finish-name-input" type="text" maxlength="12"
            autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
-    <button class="btn" onclick="GMScores.save()">Save Score</button>
+    <button class="btn" onclick="GMFinishSave.save()">Save Score</button>
   </div>
   <button class="btn" onclick="GMUI.goTitle()">Return to Title Screen</button>
 </div>
@@ -1804,6 +1887,58 @@
     <div class="vf-levels-legend" id="vf-hs-summary">&mdash;</div>
     <div class="vf-levels-grid" id="vf-hs-grid"></div>
   </div>
+</div>
+
+<!-- ══════════════════════════ TIMES TABLE PICKER (Karate Math) -->
+
+<!-- Picker to start a duel -->
+<div id="screen-gm-tt-picker" class="screen">
+  <button class="btn btn-back" onclick="showScreen('gm-title')">&#8592; Back</button>
+  <h2 class="screen-heading">Times Tables &mdash; Pick a Table</h2>
+  <div class="tt-wrap">
+    <div class="tt-legend">Tap to duel &middot; 26 questions</div>
+    <button class="tt-all-tile" id="tt-picker-all" onclick="GMUI.chooseTTTable('all')">
+      <span class="tt-all-num">All Numbers</span>
+      <span class="tt-all-best" id="tt-picker-all-best">&mdash;</span>
+    </button>
+    <div class="tt-grid" id="tt-picker-grid"></div>
+  </div>
+</div>
+
+<!-- Picker to view scores (same look) -->
+<div id="screen-gm-tt-scores-picker" class="screen">
+  <button class="btn btn-back" onclick="showScreen('gm-title')">&#8592; Back</button>
+  <h2 class="screen-heading">Times Table Scores</h2>
+  <div class="tt-wrap">
+    <div class="tt-legend">Tap a table to see its top 100</div>
+    <button class="tt-all-tile" onclick="GMUI.viewTTScores('all')">
+      <span class="tt-all-num">All Numbers</span>
+      <span class="tt-all-best" id="tt-scores-all-best">&mdash;</span>
+    </button>
+    <div class="tt-grid" id="tt-scores-picker-grid"></div>
+  </div>
+</div>
+
+<!-- Per-table scores view -->
+<div id="screen-gm-tt-scores" class="screen">
+  <button class="btn btn-back" onclick="GMUI.goTTScoresPicker()">&#8592; Back</button>
+  <h2 class="screen-heading">High Scores</h2>
+  <div class="tt-scores-heading" id="tt-scores-subtitle">&mdash;</div>
+  <div class="scores-empty" id="tt-scores-empty" style="display:none;">No scores yet &mdash; play a duel to get on the board.</div>
+  <table class="scores-table" id="tt-scores-table">
+    <thead>
+      <tr>
+        <th>#</th><th>Name</th><th>Time</th><th>Correct</th>
+      </tr>
+    </thead>
+    <tbody id="tt-scores-tbody"></tbody>
+  </table>
+  <div class="pagination">
+    <button class="pg-btn" id="tt-scores-prev" onclick="GMTTScores.changePage(-1)" disabled>&#8592;</button>
+    <span class="pg-label" id="tt-scores-page-label">Page 1 of 1</span>
+    <button class="pg-btn" id="tt-scores-next" onclick="GMTTScores.changePage(1)">&#8594;</button>
+  </div>
+  <button class="btn" onclick="showScreen('gm-title')">Return to Title Screen</button>
 </div>
 
 <script>
@@ -3601,6 +3736,40 @@ const KarateFight = (function(){
 /* ── Problem generation ── */
 // Game:     easy=10+10, medium=7+7+6, hard=5+5+5+5
 // Practice: add/sub/mul/div = 10 of one op; all = 3+3+2+2
+/* Generate 26 multiplication problems for Times Table Duel.
+   table === 'all' -> 26 random (a,b) pairs, a,b in [0,12], random side each.
+   table === N (0..12) -> 13 pairs (N,0)..(N,12), duplicated to 26, random side each. */
+function gm_generateTimesTableProblems(table) {
+  const pairs = [];
+  if (table === 'all') {
+    for (let i = 0; i < 26; i++) {
+      const a = Math.floor(Math.random() * 13);
+      const b = Math.floor(Math.random() * 13);
+      pairs.push([a, b]);
+    }
+  } else {
+    const N = table | 0;
+    for (let copy = 0; copy < 2; copy++) {
+      for (let m = 0; m <= 12; m++) {
+        pairs.push([N, m]);
+      }
+    }
+  }
+  const pool = pairs.map(([a, b]) => {
+    // Random side per question
+    const swap = Math.random() < 0.5;
+    const left = swap ? b : a;
+    const right = swap ? a : b;
+    return { eq: `${left} \u00D7 ${right} = ?`, answer: left * right, op: 'mul' };
+  });
+  // Fisher-Yates shuffle (repeats can be adjacent — expected).
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
+}
+
 function gm_generateProblems(difficulty) {
   const counts =
     difficulty === 'easy'   ? {add:5,  sub:5,  mul:0,  div:0}  :
@@ -3658,6 +3827,7 @@ const GMState = {
   pendingMode:     null,    // set before difficulty screen
   difficulty:      'hard',  // 'easy' | 'medium' | 'hard'
   duelEnemyMaxHP:  0,       // Duel Mode: enemy starting HP (80% of total possible damage)
+  ttTable:         null,    // Times Table Duel: null | 'all' | 0..12
   problems:      [],
   current:       0,
   input:         '',
@@ -3666,7 +3836,7 @@ const GMState = {
   timerInterval: null,
   wrongFlash:    false,
   retries:       0,         // total wrong submissions this session
-  problemRetries:[]         // per-problem retry count (length 10)
+  problemRetries:[]         // per-problem retry count (length 10 or 26)
 };
 
 let gm_phaseTimers = [];
@@ -3877,14 +4047,23 @@ function gm_startCountdown(callback) {
 
 function gm_startRound() {
   // Generate problems first — duel mode needs them to compute enemy HP
-  GMState.problems = gm_generateProblems(GMState.difficulty);
+  if (GMState.ttTable !== null) {
+    GMState.problems = gm_generateTimesTableProblems(GMState.ttTable);
+  } else {
+    GMState.problems = gm_generateProblems(GMState.difficulty);
+  }
 
-  // Set enemy appearance before reset so the arena resizes correctly
-  KarateFight.setVariant(GMState.difficulty);
+  // Set enemy appearance before reset so the arena resizes correctly.
+  // For Times Table duels, use 'hard' variant (toughest-looking enemy) regardless of table.
+  KarateFight.setVariant(GMState.ttTable !== null ? 'hard' : GMState.difficulty);
 
   if(GMState.mode === 'duel') {
     const totalDmg = GMState.problems.reduce((s, p) => s + p.answer, 0);
-    GMState.duelEnemyMaxHP = Math.max(60, Math.floor(totalDmg * 0.80));
+    // For the 0-times-table (totalDmg === 0), enemy falls instantly — player still plays all 26.
+    // For other tables, use 80% of total damage (so perfect play just barely wins).
+    GMState.duelEnemyMaxHP = GMState.ttTable !== null
+      ? Math.max(0, Math.floor(totalDmg * 0.80))
+      : Math.max(60, Math.floor(totalDmg * 0.80));
     KarateFight.resetDuel(GMState.duelEnemyMaxHP);
   } else {
     KarateFight.reset();
@@ -3994,6 +4173,23 @@ const GMFinish = {
       rankEl.textContent = 'Try the full game to get on the leaderboard!';
       nameSec.style.display = 'none';
       GMAudio.complete();
+    } else if(GMState.mode === 'duel' && GMState.ttTable !== null) {
+      // Times Table Duel — uses per-table leaderboards (time + accuracy).
+      const probsLen = GMState.problems.length;
+      const firstTry = GMState.problemRetries.filter(r => r === 0).length;
+      const completed = GMState.current >= probsLen; // answered all 26
+      timeEl.textContent = playerWon ? 'Victory!' : (completed ? 'Round Complete' : 'Defeated!');
+      timeEl.style.color = playerWon || completed ? '#1a7a1a' : '#bb0000';
+      const tableLabel = GMState.ttTable === 'all' ? 'All Numbers' : (GMState.ttTable + '\u00D7 table');
+      rankEl.textContent = `${tableLabel}  \u00B7  ${firstTry}/${probsLen} first try  \u00B7  ${gm_formatTime(GMState.elapsed)}`;
+      if (completed && GMTTScores.qualifies(GMState.ttTable, GMState.elapsed, firstTry)) {
+        document.getElementById('gm-finish-name-input').value = '';
+        nameSec.style.display = 'flex';
+        GMAudio.pb();
+      } else {
+        nameSec.style.display = 'none';
+        if (playerWon || completed) GMAudio.complete(); else GMAudio.wrong();
+      }
     } else if(GMState.mode === 'duel') {
       timeEl.textContent = playerWon ? 'Victory!' : 'Defeated!';
       timeEl.style.color = playerWon ? '#1a7a1a' : '#bb0000';
@@ -4116,7 +4312,7 @@ const GMScores = (() => {
 })();
 
 const GMUI = {
-  goTitle(){ gm_clearPhase(); gm_stopTimer(); GMState.mode=null; showScreen('gm-title'); },
+  goTitle(){ gm_clearPhase(); gm_stopTimer(); GMState.mode=null; GMState.ttTable=null; showScreen('gm-title'); },
   goHowToPlay(){ showScreen('gm-how-to-play'); },
   startPractice(){
     GMAudio.unlock(); Audio.unlock();
@@ -4162,8 +4358,8 @@ const GMUI = {
         <span class="hub-game-info"><span class="hub-game-name">Hard</span><span class="hub-game-desc">All four operations including division</span></span>
         <span class="hub-game-arrow">&#8594;</span>
       </button>
-      <button class="hub-game-btn" onclick="GMUI.chooseDifficulty('mul')">
-        <span class="hub-game-info"><span class="hub-game-name">Times Tables</span><span class="hub-game-desc">Multiplication only (0\u201312 \u00D7 0\u201312)</span></span>
+      <button class="hub-game-btn" onclick="GMUI.goTTPicker()">
+        <span class="hub-game-info"><span class="hub-game-name">Times Tables</span><span class="hub-game-desc">Pick a table (0\u201312) or All Numbers &middot; 26 questions</span></span>
         <span class="hub-game-arrow">&#8594;</span>
       </button>`;
     showScreen('gm-difficulty');
@@ -4190,10 +4386,258 @@ const GMUI = {
   chooseDifficulty(diff){
     GMState.difficulty = diff;
     GMState.mode = GMState.pendingMode;
+    GMState.ttTable = null;
     gm_startCountdown(gm_startRound);
   },
-  goHighScores(){ GMScores.show(); }
+  goHighScores(){ GMScores.show(); },
+
+  /* ── Times Table Picker (duel launcher) ── */
+  goTTPicker(){
+    GMAudio.unlock(); Audio.unlock();
+    // Populate best-score labels
+    const allBest = GMTTScores.bestLabelFor('all');
+    document.getElementById('tt-picker-all-best').textContent = allBest || '—';
+    gm_tt_renderGrid('tt-picker-grid', (n) => GMUI.chooseTTTable(n));
+    showScreen('gm-tt-picker');
+  },
+  chooseTTTable(table){
+    // table: 'all' or 0..12
+    GMState.difficulty = 'mul';
+    GMState.mode = 'duel';
+    GMState.ttTable = (table === 'all') ? 'all' : (table | 0);
+    gm_startCountdown(gm_startRound);
+  },
+  /* ── Times Table Scores Picker (viewer) ── */
+  goTTScoresPicker(){
+    const allBest = GMTTScores.bestLabelFor('all');
+    document.getElementById('tt-scores-all-best').textContent = allBest || '—';
+    gm_tt_renderGrid('tt-scores-picker-grid', (n) => GMUI.viewTTScores(n));
+    showScreen('gm-tt-scores-picker');
+  },
+  viewTTScores(table){
+    GMTTScores.show(table === 'all' ? 'all' : (table | 0));
+  }
 };
+
+/* ════════════════════════════════════════════════════════════════════
+   ██  TIMES TABLE DUEL — per-table leaderboards & picker
+════════════════════════════════════════════════════════════════════ */
+
+const GM_TT_KEY = 'karateTimesTableScoresV1';
+const GM_TT_MIGRATION_FLAG = 'karateTimesTableMigV1';
+
+/* Scores store: an object keyed by 'all' or '0'..'12'; each value is an array sorted by time asc. */
+const GMTTScores = (() => {
+  let currentTable = 'all';
+  let page = 0;
+
+  function loadAll() {
+    try {
+      const raw = localStorage.getItem(GM_TT_KEY);
+      if (!raw) return {};
+      const o = JSON.parse(raw);
+      return (o && typeof o === 'object') ? o : {};
+    } catch(e) { return {}; }
+  }
+  function persistAll(obj) {
+    try { localStorage.setItem(GM_TT_KEY, JSON.stringify(obj)); } catch(e) {}
+  }
+  function loadTable(table) {
+    const obj = loadAll();
+    const arr = obj[String(table)];
+    return Array.isArray(arr) ? arr : [];
+  }
+  function saveTable(table, arr) {
+    const obj = loadAll();
+    obj[String(table)] = arr;
+    persistAll(obj);
+  }
+
+  // Compare two entries — legacy entries sort after non-legacy.
+  // Among non-legacy: more first-try-correct is better; tiebreak by faster time.
+  // Among legacy: higher original score is better.
+  function entryScoreVal(e) {
+    // Higher = better. accuracy*1000000 + (TIME_CAP - time_ms)/1000
+    const TIME_CAP = 600000; // 10 minutes cap, so fast scores get high values
+    const t = (typeof e.time === 'number' && e.time >= 0) ? Math.min(e.time, TIME_CAP) : TIME_CAP;
+    const acc = (typeof e.accuracy === 'number') ? e.accuracy : 0;
+    return acc * 1000000 + (TIME_CAP - t);
+  }
+  function sortEntries(a) {
+    a.sort((x, y) => {
+      const xL = !!x.legacy, yL = !!y.legacy;
+      if (xL !== yL) return xL ? 1 : -1; // legacy goes to bottom
+      if (xL && yL) return (y.score || 0) - (x.score || 0);
+      return entryScoreVal(y) - entryScoreVal(x);
+    });
+  }
+  function qualifies(table, timeMs, accuracy) {
+    const a = loadTable(table);
+    const nonLegacy = a.filter(e => !e.legacy);
+    if (nonLegacy.length < 100) return true;
+    const worst = nonLegacy[nonLegacy.length - 1];
+    const candidate = { time: timeMs, accuracy: accuracy };
+    return entryScoreVal(candidate) > entryScoreVal(worst);
+  }
+  function isTopScore(table, timeMs, accuracy) {
+    const a = loadTable(table).filter(e => !e.legacy);
+    if (a.length === 0) return true;
+    const candidate = { time: timeMs, accuracy: accuracy };
+    return entryScoreVal(candidate) > entryScoreVal(a[0]);
+  }
+  function save(table, name, timeMs, accuracy) {
+    const a = loadTable(table);
+    const date = new Date().toISOString().slice(0, 10);
+    a.push({ name, time: timeMs, accuracy: accuracy, date });
+    sortEntries(a);
+    // Cap the non-legacy portion at 100; keep all legacy entries (they're few).
+    const nonLegacy = a.filter(e => !e.legacy);
+    const legacy = a.filter(e => e.legacy);
+    if (nonLegacy.length > 100) nonLegacy.splice(100);
+    const combined = [...nonLegacy, ...legacy];
+    saveTable(table, combined);
+  }
+  function bestLabelFor(table) {
+    const a = loadTable(table);
+    const nonLegacy = a.filter(e => !e.legacy);
+    if (nonLegacy.length > 0) {
+      const best = nonLegacy[0];
+      return `${gm_formatTime(best.time)} \u00B7 ${best.accuracy}/26`;
+    }
+    if (a.length > 0) {
+      // Only legacy entries — show top score
+      return `${a[0].score || 0} pts (legacy)`;
+    }
+    return null;
+  }
+
+  /* Migration: copy mathGameScoresV2 entries with diff==='mul' into the 'all' table as legacy. */
+  function migrateIfNeeded() {
+    try {
+      if (localStorage.getItem(GM_TT_MIGRATION_FLAG)) return;
+      const rawOld = localStorage.getItem('mathGameScoresV2');
+      if (rawOld) {
+        const oldArr = JSON.parse(rawOld);
+        if (Array.isArray(oldArr)) {
+          const mulEntries = oldArr.filter(e => e && e.diff === 'mul');
+          if (mulEntries.length > 0) {
+            const existing = loadTable('all');
+            mulEntries.forEach(e => {
+              existing.push({
+                name: e.name || 'Player',
+                score: e.score || 0,
+                date: e.date || '',
+                legacy: true
+              });
+            });
+            sortEntries(existing);
+            saveTable('all', existing);
+          }
+        }
+      }
+      localStorage.setItem(GM_TT_MIGRATION_FLAG, '1');
+    } catch(e) { /* ignore */ }
+  }
+
+  /* Scores view render */
+  function show(table) {
+    currentTable = table;
+    page = 0;
+    render();
+    showScreen('gm-tt-scores');
+  }
+  function render() {
+    const a = loadTable(currentTable);
+    const subtitle = document.getElementById('tt-scores-subtitle');
+    const empty = document.getElementById('tt-scores-empty');
+    const table = document.getElementById('tt-scores-table');
+    const tbody = document.getElementById('tt-scores-tbody');
+    const pgDiv = document.querySelector('#screen-gm-tt-scores .pagination');
+    const pgLabel = document.getElementById('tt-scores-page-label');
+    const tableName = currentTable === 'all' ? 'All Numbers' : (currentTable + '\u00D7 table');
+    subtitle.innerHTML = `<span class="tt-scores-table-name">${tableName}</span>  \u00B7  26 questions`;
+    tbody.innerHTML = '';
+    if (a.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = 'block';
+      pgDiv.style.display = 'none';
+      return;
+    }
+    table.style.display = '';
+    empty.style.display = 'none';
+    pgDiv.style.display = 'flex';
+    const start = page * 10;
+    const end = Math.min(start + 10, a.length);
+    for (let i = start; i < end; i++) {
+      const e = a[i];
+      const tr = document.createElement('tr');
+      if (e.legacy) {
+        tr.className = 'tt-legacy-row';
+        tr.innerHTML =
+          `<td>${i + 1}</td>` +
+          `<td>${escHtml(e.name || '')}<span class="tt-legacy-tag">legacy</span></td>` +
+          `<td>${e.score || 0} pts</td>` +
+          `<td>&mdash;</td>`;
+      } else {
+        tr.innerHTML =
+          `<td>${i + 1}</td>` +
+          `<td>${escHtml(e.name || '')}</td>` +
+          `<td>${gm_formatTime(e.time || 0)}</td>` +
+          `<td>${e.accuracy || 0} / 26</td>`;
+      }
+      tbody.appendChild(tr);
+    }
+    const tp = Math.ceil(a.length / 10);
+    pgLabel.textContent = `Page ${page + 1} of ${tp}`;
+    document.getElementById('tt-scores-prev').disabled = (page === 0);
+    document.getElementById('tt-scores-next').disabled = (page >= tp - 1);
+  }
+  function changePage(d) { page += d; render(); }
+
+  return { loadAll, loadTable, qualifies, isTopScore, save, bestLabelFor, show, render, changePage, migrateIfNeeded };
+})();
+
+// Run migration at startup (safe: no-op after first run).
+GMTTScores.migrateIfNeeded();
+
+/* Dispatcher so the finish-screen "Save Score" button saves to the right leaderboard. */
+const GMFinishSave = {
+  save() {
+    const nameEl = document.getElementById('gm-finish-name-input');
+    const name = (nameEl.value || '').trim().slice(0, 12);
+    if (!name) { nameEl.focus(); return; }
+    if (GMState.mode === 'duel' && GMState.ttTable !== null) {
+      const firstTry = GMState.problemRetries.filter(r => r === 0).length;
+      GMTTScores.save(GMState.ttTable, name, GMState.elapsed, firstTry);
+      document.getElementById('gm-finish-name-section').style.display = 'none';
+    } else {
+      GMScores.save();
+    }
+  }
+};
+
+/* Render the 13-tile grid (0..12) into a container, each tile calling onClick(table). */
+function gm_tt_renderGrid(containerId, onClick) {
+  const grid = document.getElementById(containerId);
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (let n = 0; n <= 12; n++) {
+    const btn = document.createElement('button');
+    btn.className = 'tt-tile';
+    const best = GMTTScores.bestLabelFor(n);
+    if (best) btn.classList.add('tt-has-score');
+    const numDiv = document.createElement('div');
+    numDiv.className = 'tt-num';
+    numDiv.textContent = n + '\u00D7';
+    const bestDiv = document.createElement('div');
+    bestDiv.className = 'tt-best';
+    bestDiv.textContent = best || '—';
+    btn.appendChild(numDiv);
+    btn.appendChild(bestDiv);
+    btn.addEventListener('click', () => onClick(n));
+    grid.appendChild(btn);
+  }
+}
 
 /* ════════════════════════════════════════════════════════════════════
    HUB

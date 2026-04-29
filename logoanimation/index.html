@@ -4,20 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Decision Tree Research</title>
-<!-- League Spartan = open-source geometric sans, close to Futura. macOS/iOS use real Futura; everywhere else falls back to League Spartan. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0c2520;
+    /* Background measured from the reference logo PNG */
+    --bg: #072420;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     background: var(--bg);
     min-height: 100vh;
-    font-family: 'Inter', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+    font-family: 'Futura', 'Futura PT', 'League Spartan', sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .wrap {
@@ -28,8 +28,8 @@
     padding: 40px 20px;
   }
   .stage {
-    width: min(92vw, 560px);
-    aspect-ratio: 1;
+    width: min(95vw, 900px);
+    aspect-ratio: 800 / 450;
   }
   svg { width: 100%; height: 100%; display: block; }
 </style>
@@ -37,7 +37,7 @@
 <body>
 <div class="wrap">
   <div class="stage">
-    <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur stdDeviation="3" result="blur"/>
@@ -48,68 +48,75 @@
         </filter>
       </defs>
 
-      <!-- ── Geometry ────────────────────────────────────────────
-           Icon scaled to fit upper portion of the frame, leaving room for text below.
-           Stroke 4, all circles r=20.  SQUARE linecap so elbow corners seal cleanly.
-             Root  cy=72   outer bottom = 94
-             Crossbar y=139  (trunk length 45)
-             Drops y2 = 184  (drop length 45)
-             Children cy=206, outer bottom = 228
-           Children at x = 130, 200, 270 (spread 140).
-           Composition centered: icon y=50–228, text y=255–340, top/bottom margins ≈50. -->
+      <!-- ═══════════════════════════════════════════════════════════
+           Geometry derived from reference logo PNG (4409×2484), scaled 0.181:
+             stroke = 5      (ref 27 × 0.181)
+             r = 14          (conceptual radius; ref visible diameter 180 ÷ scaled)
+             visible diameter = 33 (= 2r + stroke)
+             visible trunk/drop = 33 (matching reference where trunk=diameter)
+             crossbar_full = 165 (ref 911 × 0.181)
+             crossbar_half = 82.5
+           Vertical layout:
+             icon_outer_top = 78 (ref 431 × 0.181)
+             root_cy = 94.5 (= 78 + r + half_stroke)
+             crossbar_y = 146 (centerline)
+             child_cy = 198.5
+             icon_outer_bottom = 215
+           Children at x = 400 ± 82.5 = 317.5, 400, 482.5
+           ═══════════════════════════════════════════════════════════ -->
 
-      <!-- Cream lines (base layer) -->
-      <line id="trunk"  x1="200" y1="94"  x2="200" y2="139"
+      <!-- Cream lines (base layer). All stroke 5, square linecap so elbow corners seal cleanly. -->
+      <line id="trunk"  x1="400" y1="111"   x2="400" y2="146.5"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
-      <line id="crossL" x1="200" y1="139" x2="130" y2="139"
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
+      <line id="crossL" x1="400" y1="146.5" x2="317.5" y2="146.5"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
-      <line id="crossR" x1="200" y1="139" x2="270" y2="139"
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
+      <line id="crossR" x1="400" y1="146.5" x2="482.5" y2="146.5"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
-      <line id="dropL"  x1="130" y1="139" x2="130" y2="184"
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
+      <line id="dropL"  x1="317.5" y1="146.5" x2="317.5" y2="182"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
-      <line id="dropM"  x1="200" y1="139" x2="200" y2="184"
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
+      <line id="dropM"  x1="400" y1="146.5" x2="400" y2="182"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
-      <line id="dropR"  x1="270" y1="139" x2="270" y2="184"
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
+      <line id="dropR"  x1="482.5" y1="146.5" x2="482.5" y2="182"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#d4c4a0" stroke-width="4" stroke-linecap="square"/>
+            stroke="#DDCAAB" stroke-width="5" stroke-linecap="square"/>
 
       <!-- Node strokes -->
-      <circle id="root"  cx="200" cy="72"  r="0" fill="none" stroke="#d4c4a0" stroke-width="4"/>
-      <circle id="nodeL" cx="130" cy="206" r="0" fill="none" stroke="#d4c4a0" stroke-width="4"/>
-      <circle id="nodeM" cx="200" cy="206" r="0" fill="none" stroke="#d4c4a0" stroke-width="4"/>
-      <circle id="nodeR" cx="270" cy="206" r="0" fill="none" stroke="#d4c4a0" stroke-width="4"/>
+      <circle id="root"  cx="400"   cy="94.5"  r="0" fill="none" stroke="#DDCAAB" stroke-width="5"/>
+      <circle id="nodeL" cx="317.5" cy="198.5" r="0" fill="none" stroke="#DDCAAB" stroke-width="5"/>
+      <circle id="nodeM" cx="400"   cy="198.5" r="0" fill="none" stroke="#DDCAAB" stroke-width="5"/>
+      <circle id="nodeR" cx="482.5" cy="198.5" r="0" fill="none" stroke="#DDCAAB" stroke-width="5"/>
 
-      <!-- Right child inner fill: green disc that grows from center -->
-      <circle id="rightFill" cx="270" cy="206" r="0" fill="#6edc82"/>
+      <!-- Right child inner fill: tiny green disc that grows from center -->
+      <circle id="rightFill" cx="482.5" cy="198.5" r="0" fill="#67C070"/>
 
       <!-- Green overlay lines (drawn progressively as the wave passes) -->
-      <line id="trunkGreen"  x1="200" y1="94"  x2="200" y2="139"
+      <line id="trunkGreen"  x1="400" y1="111"   x2="400" y2="146.5"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#6edc82" stroke-width="4" stroke-linecap="square"/>
-      <line id="crossRGreen" x1="200" y1="139" x2="270" y2="139"
+            stroke="#67C070" stroke-width="5" stroke-linecap="square"/>
+      <line id="crossRGreen" x1="400" y1="146.5" x2="482.5" y2="146.5"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#6edc82" stroke-width="4" stroke-linecap="square"/>
-      <line id="dropRGreen"  x1="270" y1="139" x2="270" y2="184"
+            stroke="#67C070" stroke-width="5" stroke-linecap="square"/>
+      <line id="dropRGreen"  x1="482.5" y1="146.5" x2="482.5" y2="182"
             pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
-            stroke="#6edc82" stroke-width="4" stroke-linecap="square"/>
+            stroke="#67C070" stroke-width="5" stroke-linecap="square"/>
 
       <!-- Signal dot (subtle wave of light) -->
-      <circle id="signal" cx="200" cy="72" r="0" fill="#c8ffd6" opacity="0" filter="url(#softGlow)"/>
+      <circle id="signal" cx="400" cy="94.5" r="0" fill="#a8f0bd" opacity="0" filter="url(#softGlow)"/>
 
-      <!-- Brand text — fades in at the end of the animation -->
-      <text id="title" x="200" y="290" text-anchor="middle"
+      <!-- Brand text — fades in at the end -->
+      <text id="title" x="400" y="309" text-anchor="middle"
             font-family="Futura, 'Futura PT', 'League Spartan', sans-serif"
-            font-size="40" font-weight="700" letter-spacing="1"
-            fill="#d4c4a0" opacity="0">DECISION TREE</text>
-      <text id="subtitle" x="200" y="328" text-anchor="middle"
+            font-size="74" font-weight="700" letter-spacing="2"
+            fill="#DDCAAB" opacity="0">DECISION TREE</text>
+      <text id="subtitle" x="400" y="360" text-anchor="middle"
             font-family="Futura, 'Futura PT', 'League Spartan', sans-serif"
-            font-size="20" font-weight="700" letter-spacing="6"
-            fill="#6edc82" opacity="0">RESEARCH</text>
+            font-size="46" font-weight="700" letter-spacing="13"
+            fill="#67C070" opacity="0">RESEARCH</text>
     </svg>
   </div>
 </div>
@@ -118,11 +125,21 @@
 (() => {
   // One-shot logo intro: plays from frame 0 to FRAMES, then stops at the final state.
   const FRAMES = 180;
-  const DURATION = 6000; // 6 seconds at 30fps
+  const DURATION = 6000;
 
-  const NEUTRAL = [212, 196, 160];
-  const GREEN = [110, 220, 130];
-  const NODE_R = 20;
+  const NEUTRAL = [221, 202, 171];  // #DDCAAB
+  const GREEN = [103, 192, 112];    // #67C070
+  const NODE_R = 14;
+
+  // Allow ?frame=N to jump straight to a specific frame (used by the test renderer)
+  const urlParams = new URLSearchParams(window.location.search);
+  const STATIC_FRAME = urlParams.has('frame') ? parseFloat(urlParams.get('frame')) : null;
+
+  // Geometry constants
+  const ROOT_CX = 400, ROOT_CY = 94.5;
+  const CROSSBAR_Y = 146.5;
+  const CHILD_CY = 198.5;
+  const RIGHT_X = 482.5;
 
   // ─── Helpers ───────────────────────────────────────────────────
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -141,7 +158,6 @@
     return `rgb(${r},${g},${b})`;
   };
 
-  // ─── DOM refs ──────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
   const trunk = $('trunk'),  crossL = $('crossL'), crossR = $('crossR');
   const dropL = $('dropL'),  dropM = $('dropM'),   dropR = $('dropR');
@@ -151,62 +167,48 @@
   const signal = $('signal');
   const title = $('title'),  subtitle = $('subtitle');
 
-  // ─── Wave path: (root center) → (crossbar joint) → (cross-R end) → (right child center)
-  // 67 + 70 + 67 = 204 total units along the path.
+  // Wave path: root center → crossbar joint → cross-R end → right child center
+  // Distances: trunk segment + cross-right segment + drop-right-into-child
+  const SEG1 = CROSSBAR_Y - ROOT_CY;     // 51.5
+  const SEG2 = RIGHT_X - ROOT_CX;        // 82.5
+  const SEG3 = CHILD_CY - CROSSBAR_Y;    // 52.5
+  const TOTAL_PATH = SEG1 + SEG2 + SEG3; // 186.5
+
   function pointOnDecisionPath(p) {
-    const s1 = 67, s2 = 70, s3 = 67;
-    const total = s1 + s2 + s3;
-    const d = p * total;
-    if (d <= s1) return [200, 72 + d];
-    if (d <= s1 + s2) return [200 + (d - s1), 139];
-    return [270, 139 + (d - s1 - s2)];
+    const d = p * TOTAL_PATH;
+    if (d <= SEG1) return [ROOT_CX, ROOT_CY + d];
+    if (d <= SEG1 + SEG2) return [ROOT_CX + (d - SEG1), CROSSBAR_Y];
+    return [RIGHT_X, CROSSBAR_Y + (d - SEG1 - SEG2)];
   }
 
-  // ─── Per-frame update ──────────────────────────────────────────
   function update(frame) {
-    // PHASES (one-shot, no loop)
-    //   0 –  56  BUILD (cascade out from root)
-    //  56–  88  HOLD neutral
-    //  88– 130  SIGNAL WAVE — dot travels root → right child, painting green behind it
-    // 130– 150  Inner green disc grows from r=0 to r=20
-    // 150– 180  Brand text "DECISION TREE / RESEARCH" fades in below the icon
-    // 180+      Animation stops; full logo holds forever
+    // 0–56  BUILD  · 56–88  HOLD  · 88–130  WAVE  · 130–150  DISC  · 150–180  TEXT  · 180+ HOLD
 
-    // ── BUILD ──
     const rootBuild  = snap(frame, 0,  8);
     const trunkBuild = snap(frame, 8,  20);
     const crossBuild = snap(frame, 22, 32);
     const dropBuild  = snap(frame, 34, 44);
     const childBuild = snap(frame, 46, 56);
 
-    // ── SIGNAL WAVE ──
     const wave = linstep(frame, 88, 130);
-    const wavePathDist = wave * 204;
+    const wavePathDist = wave * TOTAL_PATH;
 
-    // Per-segment paint progress (0 = no green, 1 = fully green over that segment)
-    const trunkPaintP  = clamp(wavePathDist / 67, 0, 1);
-    const crossRPaintP = clamp((wavePathDist - 67) / 70, 0, 1);
-    const dropRPaintP  = clamp((wavePathDist - 137) / 67, 0, 1);
+    // The trunk and root stay CREAM in the logo. The wave's signal dot travels
+    // through the trunk (visually) but does NOT paint it green. Green coloring
+    // only applies to the chosen branch (cross-right, drop-right, right child).
+    const crossRPaintP = clamp((wavePathDist - SEG1) / SEG2, 0, 1);
+    const dropRPaintP  = clamp((wavePathDist - SEG1 - SEG2) / SEG3, 0, 1);
+    const rightStrokeT = clamp((wavePathDist - (TOTAL_PATH - 22)) / 22, 0, 1);
 
-    // Root stroke turns green during the wave's first ~22 path units (while it's "in" the root)
-    const rootGreenT  = clamp(wavePathDist / 22, 0, 1);
-    // Right child stroke turns green when wave reaches its outer top edge (path 182) → center (204)
-    const rightStrokeT = clamp((wavePathDist - 182) / 22, 0, 1);
-
-    // Inner green disc grows over frames 130–150
     const innerFillT = snap(frame, 130, 150);
+    const textOp     = snap(frame, 150, 180);
 
-    // Brand text fades in over frames 150–180
-    const textOp = snap(frame, 150, 180);
-
-    // ── NODE RADII ──
     root.setAttribute('r',  String(NODE_R * rootBuild));
     nodeL.setAttribute('r', String(NODE_R * childBuild));
     nodeM.setAttribute('r', String(NODE_R * childBuild));
     nodeR.setAttribute('r', String(NODE_R * childBuild));
     rightFill.setAttribute('r', String(NODE_R * innerFillT));
 
-    // ── CREAM LINE DASHOFFSETS (build only, no retract) ──
     trunk.setAttribute('stroke-dashoffset',  String((1 - trunkBuild) * 100));
     crossL.setAttribute('stroke-dashoffset', String((1 - crossBuild) * 100));
     crossR.setAttribute('stroke-dashoffset', String((1 - crossBuild) * 100));
@@ -214,44 +216,41 @@
     dropM.setAttribute('stroke-dashoffset',  String((1 - dropBuild)  * 100));
     dropR.setAttribute('stroke-dashoffset',  String((1 - dropBuild)  * 100));
 
-    // ── GREEN OVERLAY DASHOFFSETS (painted in by the wave) ──
-    trunkGreen.setAttribute('stroke-dashoffset',  String((1 - trunkPaintP)  * 100));
+    // Trunk green overlay never paints — kept invisible always.
     crossRGreen.setAttribute('stroke-dashoffset', String((1 - crossRPaintP) * 100));
     dropRGreen.setAttribute('stroke-dashoffset',  String((1 - dropRPaintP)  * 100));
 
-    // ── NODE STROKE COLORS ──
-    root.setAttribute('stroke',  lerpColor(NEUTRAL, GREEN, rootGreenT));
+    // Root stroke stays cream throughout (matches the logo).
     nodeR.setAttribute('stroke', lerpColor(NEUTRAL, GREEN, rightStrokeT));
 
-    // ── SIGNAL DOT ──
     if (wave > 0 && wave < 1) {
       const [sx, sy] = pointOnDecisionPath(wave);
       signal.setAttribute('cx', String(sx));
       signal.setAttribute('cy', String(sy));
-      signal.setAttribute('r', '5');
+      signal.setAttribute('r', '4');
       signal.setAttribute('opacity', String(Math.sin(wave * Math.PI) * 0.85));
     } else {
       signal.setAttribute('opacity', '0');
     }
 
-    // ── BRAND TEXT ──
     title.setAttribute('opacity', String(textOp));
     subtitle.setAttribute('opacity', String(textOp));
   }
 
-  // ─── Drive the animation once and stop ─────────────────────────
-  let startTime = null;
-  function tick(now) {
-    if (startTime === null) startTime = now;
-    const elapsed = now - startTime;
-    const frame = Math.min((elapsed / DURATION) * FRAMES, FRAMES);
-    update(frame);
-    if (frame < FRAMES) {
-      requestAnimationFrame(tick);
+  if (STATIC_FRAME !== null) {
+    // Test mode: render exactly that frame and stop.
+    update(STATIC_FRAME);
+  } else {
+    let startTime = null;
+    function tick(now) {
+      if (startTime === null) startTime = now;
+      const elapsed = now - startTime;
+      const frame = Math.min((elapsed / DURATION) * FRAMES, FRAMES);
+      update(frame);
+      if (frame < FRAMES) requestAnimationFrame(tick);
     }
-    // When frame === FRAMES, we stop — the SVG retains its final state forever.
+    requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
 })();
 </script>
 </body>

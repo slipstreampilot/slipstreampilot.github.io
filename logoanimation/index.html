@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Decision Tree — Resolution Loop</title>
+<style>
+  :root {
+    --bg: #0c2520;
+    --stroke: #d4c4a0;
+    --green: #6edc82;
+    --label: #5a8470;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    min-height: 100vh;
+    font-family: 'Inter', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+    color: var(--stroke);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 24px;
+    letter-spacing: 0.2em;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    color: var(--stroke);
+    opacity: 0.85;
+  }
+  .header .accent { color: var(--green); }
+  .stage {
+    width: min(92vw, 560px);
+    aspect-ratio: 1;
+  }
+  svg { width: 100%; height: 100%; display: block; }
+  .footer {
+    margin-top: 28px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--label);
+  }
+  .footer .frame {
+    color: var(--stroke);
+    margin-left: 14px;
+    opacity: 0.6;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    Decision Tree Research <span class="accent">— Resolution Loop</span>
+  </div>
+
+  <div class="stage">
+    <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Soft glow for the signal dot (subtle wave of light) -->
+        <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="4" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <!-- ── Cream lines (base layer) ────────────────────────────
+           Stroke 6, BUTT linecap so lines stop AT circle edges.
+           Root cy=100, children cy=300, all r=28.
+           Trunk y1=131 (root outer bottom), drops y2=269 (child outer top). -->
+      <line id="trunk"  x1="200" y1="131" x2="200" y2="200"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+      <line id="crossL" x1="200" y1="200" x2="100" y2="200"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+      <line id="crossR" x1="200" y1="200" x2="300" y2="200"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+      <line id="dropL"  x1="100" y1="200" x2="100" y2="269"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+      <line id="dropM"  x1="200" y1="200" x2="200" y2="269"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+      <line id="dropR"  x1="300" y1="200" x2="300" y2="269"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#d4c4a0" stroke-width="6" stroke-linecap="square"/>
+
+      <!-- ── Node strokes (start at r=0, pop in during build) ── -->
+      <circle id="root"  cx="200" cy="100" r="0" fill="none" stroke="#d4c4a0" stroke-width="6"/>
+      <circle id="nodeL" cx="100" cy="300" r="0" fill="none" stroke="#d4c4a0" stroke-width="6"/>
+      <circle id="nodeM" cx="200" cy="300" r="0" fill="none" stroke="#d4c4a0" stroke-width="6"/>
+      <circle id="nodeR" cx="300" cy="300" r="0" fill="none" stroke="#d4c4a0" stroke-width="6"/>
+
+      <!-- ── Right child inner fill: tiny green disc that grows from center ── -->
+      <circle id="rightFill" cx="300" cy="300" r="0" fill="#6edc82"/>
+
+      <!-- ── Green overlay lines: drawn progressively as the signal wave passes ──
+           Identical geometry to the cream lines; sit above them.
+           Stroke-dashoffset is animated so the green "paints" along the path
+           in sync with the signal dot's position. -->
+      <line id="trunkGreen"  x1="200" y1="131" x2="200" y2="200"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#6edc82" stroke-width="6" stroke-linecap="square"/>
+      <line id="crossRGreen" x1="200" y1="200" x2="300" y2="200"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#6edc82" stroke-width="6" stroke-linecap="square"/>
+      <line id="dropRGreen"  x1="300" y1="200" x2="300" y2="269"
+            pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"
+            stroke="#6edc82" stroke-width="6" stroke-linecap="square"/>
+
+      <!-- ── Signal dot: subtle wave of light traveling root → right child ── -->
+      <circle id="signal" cx="200" cy="100" r="0" fill="#c8ffd6" opacity="0" filter="url(#softGlow)"/>
+    </svg>
+  </div>
+
+  <div class="footer">
+    8s · 30fps · 240 frames<span class="frame" id="frameCounter">frame 000</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const FRAMES = 240;
+  const DURATION = 8000;
+
+  const NEUTRAL = [212, 196, 160];
+  const GREEN = [110, 220, 130];
+  const NODE_R = 28;
+
+  // ─── Helpers ───────────────────────────────────────────────────
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+  const snap = (frame, a, b) => {
+    if (frame <= a) return 0;
+    if (frame >= b) return 1;
+    return easeOutQuart((frame - a) / (b - a));
+  };
+  // Linear ramp (used for the signal wave so it travels at constant velocity)
+  const linstep = (frame, a, b) => clamp((frame - a) / (b - a), 0, 1);
+  const lerpColor = (c1, c2, t) => {
+    const r = Math.round(lerp(c1[0], c2[0], t));
+    const g = Math.round(lerp(c1[1], c2[1], t));
+    const b = Math.round(lerp(c1[2], c2[2], t));
+    return `rgb(${r},${g},${b})`;
+  };
+
+  // ─── DOM refs ──────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const trunk = $('trunk'),  crossL = $('crossL'), crossR = $('crossR');
+  const dropL = $('dropL'),  dropM = $('dropM'),   dropR = $('dropR');
+  const root = $('root'),    nodeL = $('nodeL'),   nodeM = $('nodeM'),  nodeR = $('nodeR');
+  const trunkGreen = $('trunkGreen'), crossRGreen = $('crossRGreen'), dropRGreen = $('dropRGreen');
+  const rightFill = $('rightFill');
+  const signal = $('signal');
+  const frameCounter = $('frameCounter');
+
+  // ─── Wave path: (root center) → (crossbar joint) → (cross-R end) → (right child center)
+  // Total 300 units, three equal 100-unit segments.
+  function pointOnDecisionPath(p) {
+    const d = p * 300;
+    if (d <= 100) return [200, 100 + d];          // trunk segment: (200,100) → (200,200)
+    if (d <= 200) return [200 + (d - 100), 200];  // cross-right:   (200,200) → (300,200)
+    return [300, 200 + (d - 200)];                // drop-right:    (300,200) → (300,300)
+  }
+
+  // ─── Per-frame update ──────────────────────────────────────────
+  function update(frame) {
+    // PHASES
+    //   0 –  56  BUILD (cascade out from root)
+    //  56–  88  HOLD neutral (32 frames)
+    //  88– 130  SIGNAL WAVE — dot travels root → right child, painting green behind it
+    // 130– 150  Inner green disc grows from r=0 to r=28
+    // 150– 185  EXACT LOGO MATCH hold (35 frames ≈ 1.2s)
+    // 185– 240  DE-BUILD cascade ending at the right child
+
+    // ── BUILD ──
+    const rootBuild  = snap(frame, 0,  8);
+    const trunkBuild = snap(frame, 8,  20);
+    const crossBuild = snap(frame, 22, 32);
+    const dropBuild  = snap(frame, 34, 44);
+    const childBuild = snap(frame, 46, 56);
+
+    // ── DE-BUILD (mirror of build, inward toward right child) ──
+    const leftMidChildShrink = snap(frame, 185, 195);
+    const leftMidDropRetract = snap(frame, 193, 203);
+    const crossLRetract      = snap(frame, 201, 211);
+    const rootShrink         = snap(frame, 209, 217);
+    const trunkRetract       = snap(frame, 215, 225);
+    const crossRRetract      = snap(frame, 222, 230);
+    const dropRRetract       = snap(frame, 228, 235);
+    const rightChildShrink   = snap(frame, 234, 240);
+
+    // ── SIGNAL WAVE (linear progress along the 300-unit path) ──
+    const wave = linstep(frame, 88, 130);
+    const wavePathDist = wave * 300;
+
+    // Per-segment paint progress (0 = no green, 1 = fully green over that segment)
+    const trunkPaintP  = clamp(wavePathDist / 100, 0, 1);          // path 0–100
+    const crossRPaintP = clamp((wavePathDist - 100) / 100, 0, 1);  // path 100–200
+    const dropRPaintP  = clamp((wavePathDist - 200) / 100, 0, 1);  // path 200–300
+
+    // Root stroke turns green during the wave's first segment (when the wave is "in" the root)
+    const rootGreenT  = clamp(wavePathDist / 30, 0, 1);
+    // Right child stroke turns green when the wave reaches the child's outer top edge (path 269)
+    const rightStrokeT = clamp((wavePathDist - 269) / 31, 0, 1);
+
+    // Inner green disc starts growing the moment the wave fully arrives, runs 130 → 150
+    const innerFillT = snap(frame, 130, 150);
+
+    // ── NODE RADII ──
+    const rootR   = NODE_R * rootBuild  * (1 - rootShrink);
+    const leftR   = NODE_R * childBuild * (1 - leftMidChildShrink);
+    const middleR = NODE_R * childBuild * (1 - leftMidChildShrink);
+    const rightR  = NODE_R * childBuild * (1 - rightChildShrink);
+    root.setAttribute('r',  String(rootR));
+    nodeL.setAttribute('r', String(leftR));
+    nodeM.setAttribute('r', String(middleR));
+    nodeR.setAttribute('r', String(rightR));
+
+    // Inner green disc — grows to r=NODE_R, then shrinks with the right child at the very end
+    const innerR = NODE_R * innerFillT * (1 - rightChildShrink);
+    rightFill.setAttribute('r', String(innerR));
+
+    // ── CREAM LINE DASHOFFSETS ──
+    // Build raises 100 → 0; retract drops 0 → ±100 (sign chosen so each line's surviving
+    // portion sits on the side closer to the right child).
+    trunk.setAttribute('stroke-dashoffset',  String((1 - trunkBuild) * 100 - trunkRetract * 100));
+    crossL.setAttribute('stroke-dashoffset', String((1 - crossBuild) * 100 + crossLRetract * 100));
+    crossR.setAttribute('stroke-dashoffset', String((1 - crossBuild) * 100 - crossRRetract * 100));
+    dropL.setAttribute('stroke-dashoffset',  String((1 - dropBuild)  * 100 + leftMidDropRetract * 100));
+    dropM.setAttribute('stroke-dashoffset',  String((1 - dropBuild)  * 100 + leftMidDropRetract * 100));
+    dropR.setAttribute('stroke-dashoffset',  String((1 - dropBuild)  * 100 - dropRRetract * 100));
+
+    // ── GREEN OVERLAY LINE DASHOFFSETS ──
+    // Wave paints them in (100 → 0), then de-build retracts them in same direction as cream (0 → −100).
+    trunkGreen.setAttribute('stroke-dashoffset',  String((1 - trunkPaintP)  * 100 - trunkRetract  * 100));
+    crossRGreen.setAttribute('stroke-dashoffset', String((1 - crossRPaintP) * 100 - crossRRetract * 100));
+    dropRGreen.setAttribute('stroke-dashoffset',  String((1 - dropRPaintP)  * 100 - dropRRetract  * 100));
+
+    // ── NODE STROKE COLORS ──
+    // Root and right child strokes transition cream → green as the wave passes through them.
+    // Left/middle children stay cream throughout (already set in markup).
+    root.setAttribute('stroke',  lerpColor(NEUTRAL, GREEN, rootGreenT));
+    nodeR.setAttribute('stroke', lerpColor(NEUTRAL, GREEN, rightStrokeT));
+
+    // ── SIGNAL DOT (subtle wave of light) ──
+    // Travels along the path during 88 → 130, fades in at start and out at arrival.
+    if (wave > 0 && wave < 1) {
+      const [sx, sy] = pointOnDecisionPath(wave);
+      signal.setAttribute('cx', String(sx));
+      signal.setAttribute('cy', String(sy));
+      signal.setAttribute('r', '6');
+      signal.setAttribute('opacity', String(Math.sin(wave * Math.PI) * 0.85));
+    } else {
+      signal.setAttribute('opacity', '0');
+    }
+
+    frameCounter.textContent = `frame ${Math.floor(frame).toString().padStart(3, '0')}`;
+  }
+
+  // ─── Loop driver ───────────────────────────────────────────────
+  let startTime = null;
+  function tick(now) {
+    if (startTime === null) startTime = now;
+    const elapsed = (now - startTime) % DURATION;
+    const frame = (elapsed / DURATION) * FRAMES;
+    update(frame);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

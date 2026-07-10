@@ -398,16 +398,15 @@
     id:'cardpairs', name:'Card Pairs', category:'memorise', plus:26, minus:18,
     instructions:'MEMORISE the cards and SELECT MATCHING PAIRS. TAP anywhere to flip them over early. Ready?',
     start(field, ctx){
-      // card-shaped non-overlap placement (cards are 110×150 + border)
+      // guaranteed non-overlapping placement: cards go on a 4×3 slot grid
+      // (pitch > card size) with small jitter, so overlap is impossible
       const scatterCards = n=>{
-        const pts=[]; let guard=0;
-        while(pts.length<n && guard<6000){
-          guard++;
-          const p={x:rnd(60,540), y:rnd(160,530)};
-          if(pts.every(q=>Math.abs(q.x-p.x)>=128 || Math.abs(q.y-p.y)>=168)) pts.push(p);
-        }
-        while(pts.length<n) pts.push({x:rnd(60,540), y:rnd(160,530)});
-        return pts;
+        const slots=[];
+        for(let r=0;r<3;r++)for(let c=0;c<4;c++)
+          slots.push({x:52+c*140, y:150+r*182});
+        return shuffle(slots).slice(0,n).map(s=>({
+          x:s.x+rnd(-5,5), y:s.y+rnd(-6,6)
+        }));
       };
       const newProblem = ()=>{
         field.innerHTML='';

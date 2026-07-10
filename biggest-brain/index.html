@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Who Has The Biggest Brain? — Fan Recreation</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="rotate-hint">
+  <svg width="22" height="22" viewBox="0 0 100 100"><rect x="30" y="10" width="40" height="72" rx="8" fill="none" stroke="#111" stroke-width="8"/><path d="M14 92 q20 -14 40 -6 l-4 -12 m4 12 l-13 3" stroke="#d2337f" stroke-width="8" fill="none" stroke-linecap="round"/></svg>
+  Rotate for a bigger stage &mdash; tap to dismiss
+</div>
+<div id="stage-outer">
+  <div id="stage">
+    <!-- persistent stage scenery -->
+    <div id="scenery"></div>
+    <!-- screen container: menus / game render here -->
+    <div id="screen"></div>
+    <!-- host layer (speech bubble + character), above screen -->
+    <div id="host-layer"></div>
+    <!-- top chrome (lang / eye / sound), overlays -->
+    <div id="chrome-layer"></div>
+    <!-- transient overlays: countdown, feedback flashes -->
+    <div id="overlay-layer"></div>
+  </div>
+</div>
+<script src="js/audio.js"></script>
+<script src="js/art.js"></script>
+<script src="js/games.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

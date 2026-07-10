@@ -396,15 +396,26 @@
   const CARD_SYMBOLS = [['drop','#dce9f6'],['clover','#e4e9b2'],['star','#fdf2cd'],['heart','#f6dce2'],['moon','#f2efd0'],['bolt','#fbe9d4']];
   const cardpairs = {
     id:'cardpairs', name:'Card Pairs', category:'memorise', plus:26, minus:18,
-    instructions:'MEMORISE the cards and SELECT MATCHING PAIRS. TAP a pair of cards to answer. Ready?',
+    instructions:'MEMORISE the cards and SELECT MATCHING PAIRS. TAP anywhere to flip them over early. Ready?',
     start(field, ctx){
+      // card-shaped non-overlap placement (cards are 110×150 + border)
+      const scatterCards = n=>{
+        const pts=[]; let guard=0;
+        while(pts.length<n && guard<6000){
+          guard++;
+          const p={x:rnd(60,540), y:rnd(160,530)};
+          if(pts.every(q=>Math.abs(q.x-p.x)>=128 || Math.abs(q.y-p.y)>=168)) pts.push(p);
+        }
+        while(pts.length<n) pts.push({x:rnd(60,540), y:rnd(160,530)});
+        return pts;
+      };
       const newProblem = ()=>{
         field.innerHTML='';
         const L = ctx.level;
         const nPairs = L<2?2:(L<5?3:4);
         const syms = shuffle(CARD_SYMBOLS).slice(0,nPairs);
         const deck = shuffle(syms.flatMap(s=>[s,s]));
-        const pts = scatter(deck.length, 80, 170, 560, 540, 165);
+        const pts = scatterCards(deck.length);
         let revealed=[], matched=0, phase='memo';
         const cards = deck.map((sym,i)=>{
           const c = el(field,'div','pcard up',{left:pts[i].x+'px',top:pts[i].y+'px'});
@@ -432,12 +443,17 @@
           });
           return c;
         });
-        const memoMs = ctx.preview? 999999 : (1300 + nPairs*700);
-        ctx.after(memoMs, ()=>{
+        const flipDown = ()=>{
+          if(phase!=='memo') return;
+          phase='flipping';
           cards.forEach(c=>c.classList.remove('up'));
           SFX.whoosh();
           ctx.after(350,()=>{ phase='play'; });
-        });
+        };
+        const memoMs = ctx.preview? 999999 : (1300 + nPairs*700);
+        ctx.after(memoMs, flipDown);
+        // tap anywhere during memorisation to flip early (speed play)
+        field.addEventListener('click', flipDown);
       };
       newProblem();
     }
@@ -608,11 +624,34 @@
         });
       };
       ctx.raf(()=>{
-        objs.forEach(o=>{
-          if(o.popped) return;
+        const live = objs.filter(o=>!o.popped);
+        live.forEach(o=>{
           o.x+=o.vx; o.y+=o.vy; o.rot+=o.vr;
           if(o.x<20||o.x>860-o.size) o.vx*=-1;
           if(o.y<120||o.y>640-o.size) o.vy*=-1;
+        });
+        // asteroid-vs-asteroid elastic collisions (mass ~ size²)
+        for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
+          const a=live[i], b=live[j];
+          const ax=a.x+a.size/2, ay=a.y+a.size/2;
+          const bx=b.x+b.size/2, by=b.y+b.size/2;
+          const dx=bx-ax, dy=by-ay;
+          const d=Math.hypot(dx,dy), minD=(a.size+b.size)/2;
+          if(d>0 && d<minD){
+            const nx=dx/d, ny=dy/d, push=(minD-d)/2;
+            a.x-=nx*push; a.y-=ny*push;
+            b.x+=nx*push; b.y+=ny*push;
+            const m1=a.size*a.size, m2=b.size*b.size;
+            const v1n=a.vx*nx+a.vy*ny, v2n=b.vx*nx+b.vy*ny;
+            if(v1n-v2n>0){ // only if approaching
+              const nv1=(v1n*(m1-m2)+2*m2*v2n)/(m1+m2);
+              const nv2=(v2n*(m2-m1)+2*m1*v1n)/(m1+m2);
+              a.vx+=(nv1-v1n)*nx; a.vy+=(nv1-v1n)*ny;
+              b.vx+=(nv2-v2n)*nx; b.vy+=(nv2-v2n)*ny;
+            }
+          }
+        }
+        live.forEach(o=>{
           o.el.style.left=o.x+'px'; o.el.style.top=o.y+'px';
           const svg = o.el.firstChild;
           if(svg) svg.style.transform='rotate('+o.rot+'deg)';

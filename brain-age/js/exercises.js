@@ -158,9 +158,10 @@
         ctx.progress(trial,TRIALS);
         ctx.setStatus('Boxes this round: <b>'+level+'</b>');
         area.innerHTML=''; right.innerHTML='';
-        // circled trial number on both pages
-        [area,right].forEach(p=>{
-          el(p,'div',null,{position:'absolute',left:'50%',top:'38%',transform:'translate(-50%,-50%)',
+        // circled trial number, at the same absolute height on both pages
+        // (area sits 152px down inside the left panel, so subtract that)
+        [[area,148],[right,300]].forEach(([p,top])=>{
+          el(p,'div',null,{position:'absolute',left:'50%',top:top+'px',transform:'translate(-50%,-50%)',
             width:'110px',height:'110px',border:'7px solid #22221f',borderRadius:'50%',
             display:'flex',alignItems:'center',justifyContent:'center',
             fontFamily:'var(--serif)',fontWeight:'bold',fontSize:'62px'},String(trial+1));
@@ -175,9 +176,10 @@
           const sorted=values.slice().sort((a,b)=>a-b);
           // LEFT page: instruction strip + countdown + boxes with numbers
           const head=el(area,'div',null,{margin:'0 22px 8px',border:'2px solid #b5b2a8',background:'#eceade',
-            padding:'5px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:'46px'});
+            padding:'0 12px',display:'flex',justifyContent:'space-between',alignItems:'center',
+            height:'50px',overflow:'hidden'});   // fixed height: grid never shifts between phases
           const headTxt=el(head,'div',null,{fontSize:'17px',fontWeight:'bold'},'Memorise the numbers.');
-          const cd=el(head,'div','serif-num',{fontSize:'36px',lineHeight:'1'},'');
+          const cd=el(head,'div','serif-num',{fontSize:'36px',lineHeight:'50px',height:'50px'},'');
           const gridL=el(area,'div',null,{position:'relative',height:'420px'});
           const boxesL=pts.map((p,i)=>{
             return el(gridL,'div','num-box',{left:p.x+'px',top:p.y+'px',width:'82px',height:'82px',
@@ -194,10 +196,13 @@
           function startAnswer(){
             headTxt.textContent='Touch #s from low to high.';
             boxesL.forEach(b=>{ b.textContent=''; });   // anchors stay, numbers vanish
-            const gridR=el(right,'div',null,{position:'relative',height:'520px',marginTop:'56px'});
+            // mirror the left grid's exact panel-relative position so both
+            // pages show the boxes at identical heights and columns
+            const gridTop=152+gridL.offsetTop;
+            const gridR=el(right,'div',null,{position:'absolute',left:'0',right:'0',top:gridTop+'px',height:'420px'});
             let idx=0, dead=false;
             const boxesR=pts.map((p,i)=>{
-              const b=el(gridR,'button','num-box',{left:(p.x+14)+'px',top:p.y+'px',width:'82px',height:'82px',fontSize:'38px'});
+              const b=el(gridR,'button','num-box',{left:p.x+'px',top:p.y+'px',width:'82px',height:'82px',fontSize:'38px'});
               b.addEventListener('click',()=>{
                 if(dead||b.classList.contains('cleared'))return;
                 if(values[i]===sorted[idx]){

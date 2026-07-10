@@ -130,7 +130,26 @@
       const area=ctx.leftArea;
       const TRIALS=8;
       let trial=0, level=4, maxLevel=0, corrects=0;
-      const cellXY=i=>({x:56+(i%4)*100, y:26+((i/4)|0)*100});
+      // tidy fixed arrangements per box count, matching the original's style:
+      // 2×2, quincunx X, staircase, 2-3-2, 3-2-3, 3×3 … up to the full 4×4.
+      // coordinates are [col,row] on a 4×4 grid; halves centre between cells.
+      const LAYOUTS={
+        3:[[0.5,1.5],[1.5,1.5],[2.5,1.5]],
+        4:[[1,1],[2,1],[1,2],[2,2]],
+        5:[[0.5,0.5],[2.5,0.5],[1.5,1.5],[0.5,2.5],[2.5,2.5]],
+        6:[[2.5,0.5],[1.5,1.5],[2.5,1.5],[0.5,2.5],[1.5,2.5],[2.5,2.5]],
+        7:[[1,0.5],[2,0.5],[0.5,1.5],[1.5,1.5],[2.5,1.5],[1,2.5],[2,2.5]],
+        8:[[0.5,0.5],[1.5,0.5],[2.5,0.5],[1,1.5],[2,1.5],[0.5,2.5],[1.5,2.5],[2.5,2.5]],
+        9:[[0.5,0.5],[1.5,0.5],[2.5,0.5],[0.5,1.5],[1.5,1.5],[2.5,1.5],[0.5,2.5],[1.5,2.5],[2.5,2.5]],
+        10:[[0.5,0.5],[1.5,0.5],[2.5,0.5],[0,1.5],[1,1.5],[2,1.5],[3,1.5],[0.5,2.5],[1.5,2.5],[2.5,2.5]],
+        11:[[0,0.5],[1,0.5],[2,0.5],[3,0.5],[0.5,1.5],[1.5,1.5],[2.5,1.5],[0,2.5],[1,2.5],[2,2.5],[3,2.5]],
+        12:[[0,0.5],[1,0.5],[2,0.5],[3,0.5],[0,1.5],[1,1.5],[2,1.5],[3,1.5],[0,2.5],[1,2.5],[2,2.5],[3,2.5]],
+        13:[[0,0],[1,0],[2,0],[3,0],[0,1],[1,1],[2,1],[3,1],[0,2],[1,2],[2,2],[3,2],[1.5,3]],
+        14:[[0,0],[1,0],[2,0],[3,0],[0,1],[1,1],[2,1],[3,1],[0,2],[1,2],[2,2],[3,2],[1,3],[2,3]],
+        15:[[0,0],[1,0],[2,0],[3,0],[0,1],[1,1],[2,1],[3,1],[0,2],[1,2],[2,2],[3,2],[0.5,3],[1.5,3],[2.5,3]],
+        16:[[0,0],[1,0],[2,0],[3,0],[0,1],[1,1],[2,1],[3,1],[0,2],[1,2],[2,2],[3,2],[0,3],[1,3],[2,3],[3,3]]
+      };
+      const positionsFor=n=>LAYOUTS[n].map(([c,r])=>({x:64+c*104, y:18+r*100}));
       const runTrial=()=>{
         if(trial>=TRIALS){
           ctx.finish({score:maxLevel, extra:corrects+' of '+TRIALS+' rounds correct'});
@@ -149,8 +168,8 @@
         SFX.count();
         ctx.after(850,()=>{
           area.innerHTML=''; right.innerHTML='';
-          // choose cells on the 4×4 grid and values for them
-          const cells=shuffle([...Array(16).keys()]).slice(0,level);
+          // fixed tidy layout for this count; values assigned at random
+          const pts=positionsFor(level);
           const hi=level>=10?16:9;
           const values=shuffle(Array.from({length:hi},(_,v)=>v+1)).slice(0,level);
           const sorted=values.slice().sort((a,b)=>a-b);
@@ -160,8 +179,7 @@
           const headTxt=el(head,'div',null,{fontSize:'17px',fontWeight:'bold'},'Memorise the numbers.');
           const cd=el(head,'div','serif-num',{fontSize:'36px',lineHeight:'1'},'');
           const gridL=el(area,'div',null,{position:'relative',height:'420px'});
-          const boxesL=cells.map((ci,i)=>{
-            const p=cellXY(ci);
+          const boxesL=pts.map((p,i)=>{
             return el(gridL,'div','num-box',{left:p.x+'px',top:p.y+'px',width:'82px',height:'82px',
               fontSize:'38px',cursor:'default'},String(values[i]));
           });
@@ -178,8 +196,7 @@
             boxesL.forEach(b=>{ b.textContent=''; });   // anchors stay, numbers vanish
             const gridR=el(right,'div',null,{position:'relative',height:'520px',marginTop:'56px'});
             let idx=0, dead=false;
-            const boxesR=cells.map((ci,i)=>{
-              const p=cellXY(ci);
+            const boxesR=pts.map((p,i)=>{
               const b=el(gridR,'button','num-box',{left:(p.x+14)+'px',top:p.y+'px',width:'82px',height:'82px',fontSize:'38px'});
               b.addEventListener('click',()=>{
                 if(dead||b.classList.contains('cleared'))return;

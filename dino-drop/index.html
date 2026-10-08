@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets us use the full screen around the notch; we pad with safe-area insets.
+     user-scalable/maximum-scale are honoured by Android; iOS ignores them, so CSS touch-action + JS guards handle iOS. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b5e3a">
+<meta name="description" content="Dino Drop: a falling-blocks puzzle game for kids, with dinosaurs.">
+<!-- iOS home-screen app settings -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dino Drop">
+<!-- stop iOS turning numbers into phone links -->
+<meta name="format-detection" content="telephone=no">
+<title>Dino Drop</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="portrait">
+
+  <!-- ===== Game screen ===== -->
+  <main id="game" aria-label="Dino Drop game">
+    <header id="topbar">
+      <button class="icon-btn" id="btn-pause" aria-label="Pause">
+        <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.5"/><rect x="14" y="5" width="4" height="14" rx="1.5"/></svg>
+      </button>
+      <div class="stat big"><span class="label">Score</span><span id="score">0</span></div>
+      <div class="stat"><span class="label">Best</span><span id="best">0</span></div>
+      <button class="icon-btn" id="btn-sound" aria-label="Sound effects on/off"></button>
+      <button class="icon-btn" id="btn-music" aria-label="Music on/off"></button>
+    </header>
+
+    <section id="playfield">
+      <div id="board-wrap"><canvas id="board"></canvas></div>
+      <aside id="side">
+        <div class="panel" id="next-panel">
+          <span class="label">Next</span>
+          <canvas id="next"></canvas>
+          <span id="next-name"></span>
+        </div>
+        <div class="panel small"><span class="label">Level</span><span id="level">1</span></div>
+        <div class="panel small"><span class="label">Rows</span><span id="lines">0</span></div>
+        <div class="panel small" id="mode-badge"></div>
+      </aside>
+    </section>
+
+    <nav id="controls" aria-label="Controls">
+      <button class="ctl" data-action="left" aria-label="Move left" style="--c:#29b6f6">
+        <svg viewBox="0 0 48 48"><path d="M30 8 L12 24 L30 40 Z"/></svg>
+      </button>
+      <button class="ctl" data-action="right" aria-label="Move right" style="--c:#29b6f6">
+        <svg viewBox="0 0 48 48"><path d="M18 8 L36 24 L18 40 Z"/></svg>
+      </button>
+      <button class="ctl" data-action="down" aria-label="Drop faster (hold)" style="--c:#ff9800">
+        <svg viewBox="0 0 48 48"><path d="M8 14 L24 30 L40 14 Z"/><rect x="10" y="34" width="28" height="6" rx="3"/></svg>
+      </button>
+      <button class="ctl" data-action="rotate" aria-label="Turn" style="--c:#ab47bc">
+        <svg viewBox="0 0 48 48"><path d="M24 8a16 16 0 1 1-15.2 11" fill="none" stroke-width="6" stroke-linecap="round"/><path d="M2 14 L12 26 L18 11 Z"/></svg>
+      </button>
+    </nav>
+  </main>
+
+  <!-- ===== Menu ===== -->
+  <section id="menu" class="overlay show">
+    <div class="card">
+      <canvas id="title-art" aria-hidden="true"></canvas>
+      <h1>Dino Drop</h1>
+      <p class="sub">Pick how fast the dinos fall!</p>
+      <div id="modes">
+        <button class="mode" data-mode="easy" style="--c:#4fc3f7">
+          <canvas data-dino="I"></canvas>
+          <span class="mode-name">Easy</span>
+          <span class="mode-best" data-best="easy"></span>
+        </button>
+        <button class="mode" data-mode="medium" style="--c:#b388ff">
+          <canvas data-dino="T"></canvas>
+          <span class="mode-name">Medium</span>
+          <span class="mode-best" data-best="medium"></span>
+        </button>
+        <button class="mode" data-mode="hard" style="--c:#ffa726">
+          <canvas data-dino="L"></canvas>
+          <span class="mode-name">Hard</span>
+          <span class="mode-best" data-best="hard"></span>
+        </button>
+      </div>
+      <p class="hint" id="install-hint"></p>
+      <button class="text-btn" id="btn-install" hidden>Install on this phone</button>
+      <p class="hint">No sound? Check the phone isn't on silent.</p>
+    </div>
+  </section>
+
+  <!-- ===== Pause ===== -->
+  <section id="pause" class="overlay">
+    <div class="card">
+      <h2>Paused</h2>
+      <button class="big-btn go" id="btn-resume">Keep playing</button>
+      <button class="big-btn" id="btn-quit">Main menu</button>
+    </div>
+  </section>
+
+  <!-- ===== Game over ===== -->
+  <section id="over" class="overlay">
+    <div class="card">
+      <canvas id="over-art" aria-hidden="true"></canvas>
+      <h2>Great game!</h2>
+      <p class="final">Score <strong id="final-score">0</strong></p>
+      <p class="newbest" id="newbest" hidden>New best score!</p>
+      <button class="big-btn go" id="btn-again">Play again</button>
+      <button class="big-btn" id="btn-menu">Main menu</button>
+    </div>
+  </section>
+
+  <!-- shown when a phone is turned sideways and there isn't room to play -->
+  <section id="rotate-hint" class="overlay">
+    <div class="card"><h2>Turn the phone upright</h2><p class="sub">Dino Drop plays best standing tall.</p></div>
+  </section>
+</div>
+
+<script src="dinos.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@
    The game loads instantly from the phone's copy, then quietly checks the website
    for a newer version; any update appears the next time the game is opened.
    When you change the game, bump VERSION so old copies are cleaned up. */
-const VERSION = 'dino-drop-v1';
+const VERSION = 'dino-drop-v2';
 const FILES = [
   './',
   './index.html',

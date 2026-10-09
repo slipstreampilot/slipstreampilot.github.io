@@ -663,7 +663,7 @@ function layout() {
   // centre the board when the side panel is hidden (Hard mode) or space is wide
   wrap.style.justifyContent = 'center';
   const nextSize = Math.min(80, $('next-panel').clientWidth - 8, Math.max(56, Math.floor(cell * 3)));
-  fitCanvas(nextCanvas, nextSize, nextSize);
+  fitCanvas(nextCanvas, nextSize, Math.round(nextSize * 1.25));   // dino on top, block shape below
   drawNext();
   render();
 }
@@ -828,7 +828,23 @@ function drawNext() {
   if (!nextKind) return;
   const { ctx, w, h } = fitCanvas(nextCanvas);
   ctx.clearRect(0, 0, w, h);
-  drawDino(ctx, nextKind, 2, 2, w - 4, h - 4);
+  // top: the dino picture
+  const dinoH = Math.round(h * 0.46);
+  drawDino(ctx, nextKind, 2, 0, w - 4, dinoH);
+  // bottom: the actual block shape that will fall next, with its face
+  const shape = SHAPES[nextKind];
+  let minR = 9, maxR = -1, minC = 9, maxC = -1;
+  shape.forEach((row, r) => row.forEach((v, c) => {
+    if (v) { minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c); }
+  }));
+  const rowsN = maxR - minR + 1, colsN = maxC - minC + 1;
+  const areaTop = dinoH + 4, areaH = h - areaTop - 2, areaW = w - 4;
+  const size = Math.floor(Math.min(areaW / Math.max(colsN, 3), areaH / Math.max(rowsN, 2), 26));
+  const ox = Math.round((w - colsN * size) / 2), oy = Math.round(areaTop + (areaH - rowsN * size) / 2);
+  const [fr, fc] = FACE_CELL[nextKind];
+  for (let r = minR; r <= maxR; r++)
+    for (let c = minC; c <= maxC; c++)
+      if (shape[r][c]) drawCell(ctx, nextKind, ox + (c - minC) * size, oy + (r - minR) * size, size, r === fr && c === fc, true);
   ui.nextName.textContent = DINOS[nextKind].name;
 }
 function drawArt(canvas, kind, flip) {

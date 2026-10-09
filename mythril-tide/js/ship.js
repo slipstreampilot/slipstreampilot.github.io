@@ -329,6 +329,7 @@ class Ship {
     c.px = (r.x + c.slot) * TILE + 2;
     c.py = r.y * TILE + 1;
     c.path = [];
+    c._wp = null; c._wpKey = null; c._settling = false; // drop any in-flight walk legs
   }
   slotPos(roomId, slot) {
     const r = this.rooms[roomId];
@@ -356,6 +357,75 @@ class Ship {
     if (c.dead || c.aboard === 'away') return;
     const path = this.findPath(c.roomId, roomId);
     if (path) { c.path = path; c.repProg = 0; c.patchProg = 0; }
+  }
+
+  // ---------- crew walking (Stage 1): door-routed, axis-aligned legs + an eased settle ----------
+  // Crew coords (px,py) are the top-left of a 12x14 sprite slot; tile (gx,gy) -> (gx*TILE+2, gy*TILE+1).
+  // One LEG walks from the current room A to the next room B in c.path: within A it lines up with
+  // the shared DOOR tile (row first for a side door, column first for a hatch), then steps across
+  // into B's entry tile — no more room-centre to room-centre diagonals through walls. After the
+  // last leg the sailor walks (eases) into its slot instead of teleporting there.
+  static tilePt(gx, gy) { return { x: gx * TILE + 2, y: gy * TILE + 1 }; }
+  legWaypoints(c, A, B) {
+    const cgx = U.clamp(Math.round((c.px - 2) / TILE), A.x, A.x + A.w - 1);
+    const cgy = U.clamp(Math.round((c.py - 1) / TILE), A.y, A.y + A.h - 1);
+    // pick the overlap tile nearest the drawn door (overlap midpoint); ties -> nearest the sailor
+    const pick = (lo, hi, cur) => { const mid = (lo + hi + 1) / 2; let best = lo, bd = 1e9;
+      for (let t = lo; t <= hi; t++) { const d = Math.abs(t + 0.5 - mid) * 100 + Math.abs(t - cur); if (d < bd) { bd = d; best = t; } } return best; };
+    const out = [];
+    if (A.x + A.w === B.x || B.x + B.w === A.x) {          // side by side: a door in the shared WALL
+      const gy = pick(Math.max(A.y, B.y), Math.min(A.y + A.h, B.y + B.h) - 1, cgy);
+      const ex = A.x + A.w === B.x ? A.x + A.w - 1 : A.x, nx = A.x + A.w === B.x ? B.x : B.x + B.w - 1;
+      out.push(Ship.tilePt(cgx, gy), Ship.tilePt(ex, gy), Ship.tilePt(nx, gy));
+    } else {                                                 // stacked: a hatch in the shared DECK
+      const gx = pick(Math.max(A.x, B.x), Math.min(A.x + A.w, B.x + B.w) - 1, cgx);
+      const down = A.y + A.h === B.y, ey = down ? A.y + A.h - 1 : A.y, ny = down ? B.y : B.y + B.h - 1;
+      out.push(Ship.tilePt(gx, cgy), Ship.tilePt(gx, ey), Ship.tilePt(gx, ny));
+    }
+    return out.filter((p, i) => i === out.length - 1 || Math.hypot(p.x - c.px, p.y - c.py) > 0.5);
+  }
+  crewWaypoint(c, ship) {
+    if (c.path.length > 0) {
+      const key = c.aboard + ':' + c.roomId + '>' + c.path[0];
+      if (c._wpKey !== key || !c._wp || !c._wp.length) {
+        c._wpKey = key; c._settling = false;
+        c._wp = this.legWaypoints(c, ship.rooms[c.roomId], ship.rooms[c.path[0]]);
+      }
+      return c._wp[0];
+    }
+    if (c._settling) {
+      if (c._wpKey !== c.aboard + ':settle' + c.roomId || !c._wp || !c._wp.length) { c._settling = false; c._wp = null; return null; }
+      return c._wp[0];
+    }
+    return null;
+  }
+  crewReachWaypoint(c, ship, battle) {
+    c._wp.shift();
+    if (c._wp.length) return;
+    if (c._settling) { c._settling = false; c._wp = null; c._wpKey = null; return; }
+    c.roomId = c.path.shift();
+    c._wp = null; c._wpKey = null;
+    if (c.path.length === 0) {
+      // last room: pick a free slot and EASE into it (was: teleport to the slot)
+      const r2 = ship.rooms[c.roomId];
+      const occ = occupantsOf(ship, c.roomId, battle).filter(o => o !== c);
+      c.slot = occ.length % r2.w;
+      c._wp = [ship.slotPos(c.roomId, c.slot)]; c._wpKey = c.aboard + ':settle' + c.roomId; c._settling = true;
+    }
+  }
+  // advance a walking sailor `budget` px along its waypoints (distance carries across corners)
+  stepCrew(c, ship, budget, battle) {
+    for (let guard = 0; guard < 8 && budget > 1e-6; guard++) {
+      const wp = this.crewWaypoint(c, ship); if (!wp) return;
+      const dx = wp.x - c.px, dy = wp.y - c.py, d = Math.hypot(dx, dy);
+      if (Math.abs(dx) > 0.05) c._face = dx > 0 ? 1 : -1;     // face where we're heading (hold on ladders)
+      c._climbing = Math.abs(dy) > Math.abs(dx) * 1.5;        // vertical leg = ladder / hatch
+      const mv = Math.min(d, budget);
+      if (d > 1e-6) { c.px += dx / d * mv; c.py += dy / d * mv; }
+      c._walkDist = (c._walkDist || 0) + mv;                   // walk frames advance by distance
+      budget -= mv;
+      if (mv >= d - 1e-6) this.crewReachWaypoint(c, ship, battle);
+    }
   }
 
   // ---------- per-frame simulation ----------
@@ -543,7 +613,7 @@ class Ship {
   tickCrew(c, locShip, dt, battle) {
     if (c._healT > 0) c._healT -= dt;
     c._task = null; // cleared every tick; set below while actually working
-    c._fighting = false; c._climbing = false; c._operating = false; // anim flags
+    c._fighting = false; c._climbing = false; c._operating = false; c._drowning = false; // anim flags
     if (c.stun > 0) { c.stun -= dt; return; }
     const race = DATA.RACES[c.race];
     const room = locShip.rooms[c.roomId];
@@ -563,35 +633,20 @@ class Ship {
       const ti = locShip.crewLocalTile(c, room);
       if (ti >= 0 && room._fires[ti] > 0) c.hp -= dt * TUNING.crewFireDps;
     }
-    if (room.water > TUNING.crewDrownWater && !race.waterImmune && !(c.owner === 'player' && Game.run && Game.run.augs.includes('selkie_cloak'))) c.hp -= dt * TUNING.crewWaterDps;
+    if (room.water > TUNING.crewDrownWater && !race.waterImmune && !(c.owner === 'player' && Game.run && Game.run.augs.includes('selkie_cloak'))) {
+      c.hp -= dt * TUNING.crewWaterDps; c._drowning = true; // drives the `drown` anim (R16)
+    }
 
     if (c.hp <= 0) { this.killCrew(c, battle); return; }
 
-    // movement
-    if (c.path.length > 0) {
-      const nextRoom = locShip.rooms[c.path[0]];
-      const tgt = { x: (nextRoom.x + Math.floor(nextRoom.w / 2)) * TILE + 2, y: nextRoom.y * TILE + 1 };
+    // movement: door-routed legs + an eased settle into the slot (see stepCrew)
+    if (c.path.length > 0 || c._settling) {
       let spd = TUNING.crewMoveSpeed * race.spd;
-      if (room.water > 0.4) spd *= race.waterSpd ? race.waterSpd : TUNING.waterMoveMul;
+      if (room.water > TUNING.floodedMoveWater) spd *= race.waterSpd ? race.waterSpd : TUNING.waterMoveMul;
       // reinforced enemy doors slow boarders
       if (c.aboard === 'away' && locShip.sysLv.doors) spd /= (1 + locShip.sysLv.doors * TUNING.doorSlowPerLv);
-      const dx = tgt.x - c.px, dy = tgt.y - c.py;
-      const d = Math.hypot(dx, dy);
-      if (d < spd * dt) {
-        c.px = tgt.x; c.py = tgt.y; c.roomId = c.path.shift();
-        if (c.path.length === 0) {
-          // settle into a free slot
-          const r2 = locShip.rooms[c.roomId];
-          const occ = occupantsOf(locShip, c.roomId, battle).filter(o => o !== c);
-          c.slot = occ.length % r2.w;
-          const sp = locShip.slotPos(c.roomId, c.slot);
-          c.px = sp.x; c.py = sp.y;
-        }
-      } else {
-        c.px += dx / d * spd * dt; c.py += dy / d * spd * dt;
-        c.ft += dt * 3; c.frame = Math.floor(c.ft) % 2;
-        c._climbing = Math.abs(dy) > Math.abs(dx) * 1.5; // vertical move = ladder
-      }
+      this.stepCrew(c, locShip, spd * dt, battle);
+      c.ft += dt * 3; c.frame = Math.floor(c.ft) % 2;
       return;
     }
 
@@ -606,6 +661,7 @@ class Ship {
       if (c.aboard === 'away' && locShip.owner === 'player' && Game.run && Game.run.augs.includes('siren_lure')) dps *= 0.75;
       tgt2.hp -= dps * dt;
       c._fighting = true;
+      if (Math.abs(tgt2.px - c.px) > 0.5) c._face = tgt2.px > c.px ? 1 : -1; // square up to the foe
       c.ft += dt * 2.5; c.frame = Math.floor(c.ft) % 2;
       if (race.igniter && U.chance(dt * race.igniter)) locShip.igniteRandomTile(locShip.rooms[c.roomId], TUNING.newFireHp);
       if (tgt2.hp <= 0) {
@@ -640,7 +696,11 @@ class Ship {
       // throw water on the HOTTEST tile first — one bucket at a time
       const rate = dt * TUNING.fireFightRate * repMul * (race.fireFight || 1) * (race.fireImmune ? 1.6 : 1);
       let bi = -1, bh = 0; for (let i = 0; i < room._fires.length; i++) if (room._fires[i] > bh) { bh = room._fires[i]; bi = i; }
-      if (bi >= 0) room._fires[bi] = Math.max(0, room._fires[bi] - rate);
+      if (bi >= 0) {
+        room._fires[bi] = Math.max(0, room._fires[bi] - rate);
+        const fx = (room.x + (bi % room.w) + 0.5) * TILE - (c.px + 6); // face the blaze you're dousing
+        if (Math.abs(fx) > 2) c._face = fx > 0 ? 1 : -1;
+      }
       c.ft += dt * 2.5; c.frame = Math.floor(c.ft) % 2;
       c._task = 'fire'; c._taskP = bh > 0 ? 1 - Math.max(0, room._fires[bi]) / TUNING.newFireHp : 1;
       return;
@@ -654,7 +714,7 @@ class Ship {
       }
       if (room.key && this.sysLv[room.key] && room.dmg > 0) {
         c.repProg += dt * TUNING.repairRate * repMul * race.rep;
-        c._task = 'repair'; c._taskP = c.repProg;
+        c._task = 'repair'; c._taskP = c.repProg; this.faceStation(c, room);
         if (c.repProg >= 1) { c.repProg = 0; room.dmg = Math.max(0, room.dmg - 1); this.gainXp(c, 'repair', 1, battle); }
         return;
       }
@@ -670,25 +730,38 @@ class Ship {
     // standing idle: ONLY the single sailor actually manning the station (mannedBy) plays the
     // operate pose — other crew in the same room read as idle (the manning bonus is single-operator).
     c._operating = c.aboard === 'home' && !!(room.key && locShip.sysLv[room.key]) && locShip.mannedBy(room.key, battle) === c;
+    if (c._operating) this.faceStation(c, room);
+    c._opKey = c._operating ? room.key : null; // which station (the human operate frames have a helm wheel painted in)
     c.frame = 0;
+  }
+  // turn a sailor toward its room's station (the system icon at the room centre); hold if centred
+  faceStation(c, room) {
+    const dx = (room.x + room.w / 2) * TILE - (c.px + 6);
+    if (Math.abs(dx) > 2) c._face = dx > 0 ? 1 : -1;
   }
 
   killCrew(c, battle) {
     if (c.dead) return;
+    // R18: key the death pipeline on ROSTER membership, not c.owner — a Siren-charmed sailor of
+    // yours has owner 'enemy' while charmed but is still your crew (and may be killed via either ship).
+    const other = battle ? otherShip(this, battle) : null;
+    const home = this.crew.includes(c) ? this : (other && other.crew.includes(c) ? other : this);
+    const mine = home.owner === 'player';
     // phoenix ash revival (player only)
-    if (c.owner === 'player' && Game.run && Game.run.augs.includes('phoenix_ash') && !this.phoenixUsed && this.roomByKey('infirmary')) {
-      this.phoenixUsed = true;
+    if (mine && typeof Game !== 'undefined' && Game.run && Game.run.augs.includes('phoenix_ash') && !home.phoenixUsed && home.roomByKey('infirmary')) {
+      home.phoenixUsed = true;
       c.hp = c.maxhp * 0.3;
       c.aboard = 'home';
-      this.placeCrew(c, this.roomByKey('infirmary').id);
+      home.placeCrew(c, home.roomByKey('infirmary').id);
       if (typeof AUDIO !== 'undefined') AUDIO.sfx('heal');
       if (battle) battle.log('PHOENIX ASH REVIVES ' + c.name + '!');
       return;
     }
     c.dead = true; c.hp = 0;
+    c.path = []; c._wp = null; c._settling = false; // the body stays where it fell
     if (typeof AUDIO !== 'undefined') AUDIO.sfx('death');
-    if (c.owner === 'player' && typeof Game !== 'undefined' && Game.run) Game.run.stats.crewLost++;
-    if (battle && c.owner === 'player') battle.log(c.name + ' IS LOST!');
+    if (mine && typeof Game !== 'undefined' && Game.run) Game.run.stats.crewLost++;
+    if (battle && mine) battle.log(c.name + ' IS LOST!');
   }
 
   damageSystem(room, n) {
@@ -716,7 +789,8 @@ class Ship {
     // clear transient combat debuffs + system cooldowns so they don't bleed into the next battle
     this._blindT = 0; this._reefT = 0; this.enrage = 0; this.hullF = 0;
     this.veilCd = 0; this.gateCd = 0; this.hexCd = 0; this.songCd = 0;
-    for (const w of this.weapons) { w.charge = 0; w.target = -1; }
+    // R5: chargers' banked bolts, ramp heat and a stale beam aim must not carry into the next fight
+    for (const w of this.weapons) { w.charge = 0; w.target = -1; w._bank = 0; w._ramp = 0; w.beamAim = null; }
   }
 
   // ---------- save / load ----------
@@ -725,7 +799,8 @@ class Ship {
       def: this.def, hull: this.hull, hullMax: this.hullMax, manaMax: this.manaMax,
       sysLv: this.sysLv, alloc: this.alloc,
       weapons: this.weapons.map(w => w.key),
-      crew: this.crew.filter(c => !c.dead).map(c => ({ race: c.race, name: c.name, hp: Math.round(c.hp), maxhp: c.maxhp, xp: c.xp, station: c.station })),
+      weaponsOn: this.weapons.map(w => !!w.on), // R29: armed/disarmed state survives save/load
+      crew: this.crew.filter(c => !c.dead).map(c => ({ race: c.race, name: c.name, hp: Math.round(c.hp), maxhp: c.maxhp, xp: c.xp, station: c.station, poison: c.poison > 0 ? Math.round(c.poison * 10) / 10 : 0 })),
       rooms: this.rooms.map(r => ({ dmg: r.dmg, water: Math.round(r.water * 100) / 100, fires: r._fires.map(v => Math.round(v)), leak: r.leak ? 1 : 0, scupper: r.scupper ? 1 : 0 })),
       doorOpen: this.doorOpen,
     };
@@ -742,7 +817,9 @@ class Ship {
       c.name = cs.name; c.hp = cs.hp; c.maxhp = cs.maxhp; c.owner = owner;
       if (cs.xp) c.xp = cs.xp;
       if (cs.station !== undefined) c.station = cs.station;
+      if (cs.poison > 0) c.poison = cs.poison; // R29: save/load no longer cures poison
     });
+    if (Array.isArray(s.weaponsOn)) ship.weapons.forEach((w, i) => { if (i < s.weaponsOn.length) w.on = !!s.weaponsOn[i]; });
     s.rooms.forEach((rs, i) => {
       const rm = ship.rooms[i]; if (!rm) return;
       rm.dmg = rs.dmg; rm.water = rs.water; rm.leak = !!rs.leak; rm.scupper = !!rs.scupper;

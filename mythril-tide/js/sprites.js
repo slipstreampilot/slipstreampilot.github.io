@@ -112,15 +112,23 @@ const SPR = {
   // operate) renders shorter, instead of being stretched up to full standing height (which
   // inflated its width and made the sailor look huge while repairing). The human video kit shares
   // one canvas height, so ref == every frame's height and nothing changes for it.
-  _crewRefH(race) {
-    if (!this._refH) this._refH = {};
-    if (this._refH[race]) return this._refH[race];
-    for (const key of ['idle_side1', 'idle_side', 'walk1', 'idle_front']) {
-      const e = this.artEntry('crew_' + race + '_' + key);
-      if (e) { this._refH[race] = e.img.naturalHeight; return this._refH[race]; }
-    }
-    return 0; // idle not decoded yet -> caller falls back to per-frame height this frame
+  // Reference height for scaling a crew frame, taken from the MANIFEST (never from which PNG happened to
+  // decode first — in the browser that race used to cache the wrong kit's height for the whole session and
+  // render the human kit ~1/3 too small). A race can carry TWO kits on different canvases: the 8-frame video
+  // kit (all frames share one canvas, anchored by idle_side1/walk8) and the older still kit (idle_side...).
+  // Each frame is scaled by ITS OWN kit's idle height, so both kits draw the same figure size.
+  _kitRef(race, key) {
+    const kit = (typeof window !== 'undefined' && window.CREW_ART && window.CREW_ART[race]) || null;
+    if (!kit) return 0;
+    const m = kit[key], vid = kit.idle_side1 || kit.walk8;
+    if (m && m.sh) return m.sh;   // a video-action frame carries its own standing-height reference (dev/import_cycle.py)
+    // `fh` = the idle figure's opaque height (written into the manifest): the video kit draws its sailor
+    // with headroom inside a taller canvas, so scaling by canvas height would leave him ~20% short.
+    if (vid && m && m.h === vid.h) return vid.fh || vid.h;       // a video-kit frame
+    const leg = kit.idle_side || kit.idle_front || kit.walk1;    // the still kit's standing height
+    return leg ? (leg.fh || leg.h) : (m ? m.h : 0);
   },
+  _crewRefH(race) { return this._kitRef(race, 'idle_side1') || this._kitRef(race, 'idle_side'); },
   drawCrewPose(ctx, race, poseKey, flip, footX, footY, targetH) {
     let k = 'crew_' + race + '_' + poseKey;
     let e = this.artEntry(k);
@@ -130,31 +138,36 @@ const SPR = {
     // never visibly flickers between the big new art and the small old art while loading.
     if (!e && window.CREW_ART && window.CREW_ART[race]) {
       const poses = window.CREW_ART[race];
-      const order = ['idle_side', 'idle_front', 'operate', 'walk1', 'attack1'];
+      const order = ['idle_side1', 'idle_side2', 'walk1', 'idle_front', 'idle_side', 'operate', 'attack1']; // same-design (video) kit first
       for (const alt of order) { if (poses[alt]) { const ae = this.artEntry('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } } }
       if (!e) for (const alt of Object.keys(poses)) { const ae = this.artEntry('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } }
     }
     if (!e) return false; // no pose for this race has loaded at all -> legacy fallback
     const a = this._crewAnchor[k] || {};
     const nW = e.img.naturalWidth, nH = e.img.naturalHeight;
-    const ref = this._crewRefH(race) || nH;   // scale by the race's idle height, not this frame's
+    const poseK = k.slice(('crew_' + race + '_').length);
+    const ref = this._kitRef(race, poseK) || nH;   // scale by this frame's KIT idle height (manifest), not this frame's own height
     let scale = (targetH || ref) / ref;
-    // anti-flicker: legacy kits (and a few old single poses) are cropped at varying canvas
-    // heights, so an animation cycling them would flash sizes frame-to-frame. Clamp each
-    // frame's rendered height to a tight band around the target so it can't visibly jump.
+    // anti-flicker: legacy kits are cropped at varying canvas heights, so a CYCLING idle/walk could
+    // flash sizes frame-to-frame — clamp just those frames to a tight band around the target.
+    // Every other pose is exempt (Stage 1): the clamp blew the lying `down`/die/drown body up 2-3x
+    // and inflated crouched repair/attack/operate poses by up to 39%, since those are legitimately
+    // shorter than the standing reference height.
     const tH = targetH || ref, hh = nH * scale;
-    if (hh > tH * 1.16) scale = (tH * 1.16) / nH;
-    else if (hh < tH * 0.86) scale = (tH * 0.86) / nH;
+    if (/^(idle|walk)/.test(poseK)) {
+      if (hh > tH * 1.16) scale = (tH * 1.16) / nH;
+      else if (hh < tH * 0.86) scale = (tH * 0.86) / nH;
+    }
     const w = nW * scale, h = nH * scale;
     const ax = (a.ax != null ? a.ax : nW / 2) * scale;
     const ay = (a.ay != null ? a.ay : nH) * scale;
-    const dy = Math.round(footY - ay);
+    const dy = footY - ay;   // unrounded: the scene renders at ~3.1x, logical rounding read as stepping
     if (!flip) {
-      ctx.drawImage(e.img, Math.round(footX - ax), dy, w, h);
+      ctx.drawImage(e.img, footX - ax, dy, w, h);
     } else {
       const dxf = footX - (w - ax);
       ctx.save();
-      ctx.translate(Math.round(dxf + w), dy);
+      ctx.translate(dxf + w, dy);
       ctx.scale(-1, 1);
       ctx.drawImage(e.img, 0, 0, w, h);
       ctx.restore();
@@ -187,7 +200,7 @@ const SPR = {
   // system icon art (icon_sys_<key>): the painted AI icon for a ship system, or null for
   // keys with no art yet (hull, sirensong) -> drawSysSym falls back to its vector silhouette.
   sysIcon(key) {
-    if (key === 'hull' || key === 'sirensong' || key === 'open') return null;
+    if (key === 'open') return null; // hull + sirensong use their painted icon_sys_* art when imported, else the vector fallback
     const e = this.artEntry('icon_sys_' + key);
     return e ? e.img : null;
   },
@@ -205,10 +218,58 @@ const SPR = {
   //   t      = animation clock (seconds)
   //   act    = 0..1 action phase (0 = idle; >0 = mid-action, e.g. firing / striking)
   //   deploy = 0..1 spawn phase (1 = fully present; <1 = scaling/fading in)
-  // A future AI sheet `icon_fam_<key>` would win here; procedural is the fallback.
+  // The painted `icon_fam_<key>` art wins when it has loaded (_drawFamiliarArt); procedural is the fallback.
+  // Painted familiar art (icon_fam_<key>) animated in code: each spirit has its own idle motion (hover, flap,
+  // flicker, sway, skitter), an action punch with a magic flash, and a pop-in on deploy. ~22 units across.
+  FAM_MOTION: {
+    emberimp:       { glow: '#ff9a3c', bob: 1.4, rate: 3.1, flick: 0.06 },
+    clockworkgull:  { glow: '#ffd27a', bob: 1.8, rate: 2.4, tilt: 0.10 },
+    squallsprite:   { glow: '#bfe6ff', bob: 1.2, rate: 1.7, spin: 0.08 },
+    countersigil:   { glow: '#5ff0d0', bob: 1.0, rate: 1.5, pulse: 0.05 },
+    tinkerbeetles:  { glow: '#7fe0ff', bob: 0.4, rate: 6.0, skitter: 0.9 },
+    coralsentinel:  { glow: '#ff9c8a', bob: 0.5, rate: 1.1, sway: 0.03 },
+    reefsingers:    { glow: '#6ff0e0', bob: 1.1, rate: 1.3, sway: 0.05 },
+    brassjanissary: { glow: '#ffd27a', bob: 0.6, rate: 1.6, sway: 0.03 },
+  },
+  _drawFamiliarArt(ctx, e, key, cx, cy, scale, t, act, deploy) {
+    const M = this.FAM_MOTION[key] || { glow: '#5ff0d0', bob: 1, rate: 2 };
+    const ph = (key.length * 1.37) % 6.28, s = t * M.rate + ph;
+    const flash = act > 0 ? Math.sin(Math.min(1, act) * Math.PI) : 0;
+    const size = 17 * scale, pop = 0.5 + 0.5 * deploy;
+    let dx = 0, dy = Math.sin(s) * M.bob * scale, rot = 0, sx = 1, sy = 1;
+    if (M.tilt) rot = Math.sin(s * 0.5) * M.tilt;
+    if (M.spin) rot = Math.sin(s) * M.spin;
+    if (M.sway) rot = Math.sin(s * 0.7) * M.sway;
+    if (M.flick) { sx = 1 - M.flick * Math.sin(s * 2.3); sy = 1 + M.flick * Math.sin(s * 2.3 + 0.6); }
+    if (M.pulse) sx = sy = 1 + M.pulse * Math.sin(s * 1.4);
+    if (M.skitter) dx = Math.sin(s * 0.37) * M.skitter * scale + (Math.sin(s) > 0.6 ? 0.25 * scale : 0);
+    const k = pop * (1 + 0.14 * flash);
+    const iw = e.img.naturalWidth, ih = e.img.naturalHeight, f = size / Math.max(iw, ih);
+    const w = iw * f, h = ih * f;
+    ctx.save();
+    ctx.translate(cx + dx, cy + dy);
+    ctx.globalAlpha = deploy;
+    // magic glow behind the spirit: a soft breath at idle, a bright bloom on the action
+    const gr = size * (0.55 + 0.25 * flash);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, gr);
+    g.addColorStop(0, M.glow); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = deploy * (0.14 + 0.05 * Math.sin(s * 1.3) + 0.5 * flash);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, gr, 0, 7); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = deploy;
+    ctx.rotate(rot); ctx.scale(k * sx, k * sy);
+    ctx.drawImage(e.img, -w / 2, -h / 2, w, h);
+    if (flash > 0.05) { // a white-hot rim of light on the action frame
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = deploy * flash * 0.35;
+      ctx.drawImage(e.img, -w / 2, -h / 2, w, h);
+    }
+    ctx.restore();
+  },
   drawFamiliar(ctx, key, cx, cy, scale, t, act, deploy) {
     act = act || 0; deploy = (deploy === undefined ? 1 : deploy); scale = scale || 1;
     if (deploy <= 0) return;
+    const fe = this.artEntry('icon_fam_' + key);
+    if (fe) return this._drawFamiliarArt(ctx, fe, key, cx, cy, scale, t || 0, act, deploy);
     const A = ctx;
     A.save();
     A.translate(cx, cy);

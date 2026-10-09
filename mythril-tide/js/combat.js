@@ -37,8 +37,12 @@ class Battle {
     this.aiT = 0;
     this.hazT = U.rf(6, 12);
     this.surrenderOffer = null;
-    this.flash = 0;
-    this.shake = 0;
+    this.flash = 0;          // full-scene additive flash, seconds remaining (drawn by renderHD's scene blit)
+    this.shake = 0;          // legacy field (kept for the deck view); camera shake now runs on `trauma`
+    this.trauma = 0;         // 0..1 camera-shake trauma; offset ~ trauma^2 * TUNING.shakeMax (smooth noise)
+    this.hitStop = 0;        // seconds of sim freeze left (40-80 ms on a hull hit)
+    this.timeScale = 1;      // 0 while hit-stopped: the sim freezes, ambient FX keep running
+    this.floaters = [];      // floating damage numbers / MISS / WARDED (scene-logical px)
 
     this.p.settle();
     this.e.settle();
@@ -66,6 +70,7 @@ class Battle {
     if (this.hazard !== 'none') this.log('HAZARD: ' + this.hazardName());
   }
 
+  static get ORIENTED() { return { torpedo: 1, drill: 1, quill: 1, venom: 1, wave: 1, gust: 1, fire: 1, fire2: 1 }; }
   hazardName() {
     return { storm: 'LIGHTNING STORM', kraken: 'KRAKEN WATERS', whirlpool: 'WHIRLPOOL', fog: 'CURSED FOG', reef: 'RAZOR REEFS' }[this.hazard] || '';
   }
@@ -119,9 +124,10 @@ class Battle {
     if (this.state === 'lost' && ship === this.p) return Math.min(1, this.stateT / 3.8);
     return 0;
   }
-  pY() { return KEEL_Y - this.p.rh + Math.round(Math.sin(this.time * 1.1) * 1.5) + Math.round(Math.pow(this.sinkF(this.p), 2) * 76); }
+  // ship bob is NOT rounded to logical px: the scene is drawn at ~3.1x, so logical rounding read as 3px stepping
+  pY() { return KEEL_Y - this.p.rh + Math.sin(this.time * 1.1) * 1.5 + Math.pow(this.sinkF(this.p), 2) * 76; }
   eX() { return 512 - 42 - this.e.rw; }
-  eY() { return KEEL_Y - this.e.rh + Math.round(Math.sin(this.time * 1.3 + 2) * 1.5) + Math.round(Math.pow(this.sinkF(this.e), 2) * 76); }
+  eY() { return KEEL_Y - this.e.rh + Math.sin(this.time * 1.3 + 2) * 1.5 + Math.pow(this.sinkF(this.e), 2) * 76; }
 
   roomRect(ship, r) {
     if (ship === this.p) {
@@ -134,8 +140,10 @@ class Battle {
   crewScreenPos(c) {
     const home = this.p.crew.includes(c) ? this.p : this.e;
     const loc = c.aboard === 'home' ? home : (home === this.p ? this.e : this.p);
-    if (loc === this.p) return { x: this.pX() + c.px, y: this.pY() + c.py, flip: false, loc };
-    return { x: this.eX() + this.e.rw - c.px - 12, y: this.eY() + c.py, flip: true, loc };
+    // per-crew facing (c._face, ship-LOCAL: +1 = toward the bow) XOR the ship mirror (enemy hull is flipped)
+    const back = (c._face || 1) < 0;
+    if (loc === this.p) return { x: this.pX() + c.px, y: this.pY() + c.py, flip: back, loc };
+    return { x: this.eX() + this.e.rw - c.px - 12, y: this.eY() + c.py, flip: !back, loc };
   }
   mountPos(ship, i) {
     // guns are mounted on the EXTERIOR weather deck (FTL-style hull mounts);
@@ -149,7 +157,7 @@ class Battle {
   // recoiled `dx` makes the origin shake with the gun. Mirror handled for the enemy.
   muzzleWorld(ship, i, w, wd) {
     const isP = ship === this.p, m = this.mountPos(ship, Math.min(i | 0, 3));
-    const rec = (w && w._recoil > 0) ? Math.round(Math.min(0.2, w._recoil) * 15) : 0;
+    const rec = (w && w._recoil > 0) ? Math.min(0.2, w._recoil) * 15 : 0;
     const dx = isP ? m.x - rec : m.x + rec;
     const def = (wd.family === 'magic' || wd.family === 'horn') ? [20, 3] : (wd.type === 'missile' ? [22, 7] : [22, 6]);
     const mz = wd.muzzle || def;
@@ -159,9 +167,11 @@ class Battle {
   // ---------- update ----------
   update(dt) {
     this.time += dt;
-    if (!this.paused) this.simTime += dt;   // crew animation clock — frozen while paused
-    if (this.flash > 0) this.flash -= dt;
-    if (this.shake > 0) this.shake -= dt;
+    // hit-stop: a hull hit freezes the SIM for a few frames (timeScale 0); ambient FX keep running
+    if (!this.paused && this.hitStop > 0) { this.hitStop -= dt; this.timeScale = 0; } else this.timeScale = 1;
+    if (!this.paused) this.simTime += dt * this.timeScale;   // crew animation clock — frozen while paused
+    // impact feedback decays only while the game runs — pausing freezes shake/flash/numbers mid-air
+    if (!this.paused) this.updateJuice(dt);
     for (const l of this.logs) l.t -= dt;
     // cosmetic timers - decayed here (dt-based) so they no longer run at render
     // frame-rate (~0.016/frame ~= dt at 60fps for the tentacle; 3/s and 2.4/s wards)
@@ -191,6 +201,7 @@ class Battle {
       return;
     }
     if (this.paused) return;
+    if (this.timeScale === 0) { this.updateFx(dt); return; } // hit-stop: sim frozen, particles fly on
 
     // charm timers (both directions: Siren's Crown + Siren's Song)
     for (let i = this.charms.length - 1; i >= 0; i--) {
@@ -265,7 +276,7 @@ class Battle {
       }
     }
     // long battles resolve themselves: enemies disengage, the Warden enrages
-    if (this.time > 120) {
+    if (this.simTime > 120) { // R6: pause-aware — pausing during a surrender offer no longer burns the clock
       if (this.e.boss && !this.e.enrage) {
         this.e.enrage = true;
         this.log('THE WARDEN BLAZES WITH FURY!');
@@ -320,7 +331,7 @@ class Battle {
       if (senders.length && targets.length) {
         const tr = U.pick(targets);
         for (const c of senders) {
-          c.aboard = 'away'; c.path = [];
+          c.aboard = 'away'; c.path = []; c._wp = null; c._settling = false;
           c.roomId = tr.id;
           const sp = this.p.slotPos(tr.id, U.ri(0, tr.w - 1));
           c.px = sp.x; c.py = sp.y;
@@ -368,6 +379,7 @@ class Battle {
       // captured when no hostile crew remain — killed OR charmed over to us (Siren's Song).
       // a "hold" charm (Siren's Crown) counts as still-aboard, so it disrupts but never auto-captures.
       this.state = 'captured'; this.banner = 'SHIP CAPTURED! THE HOLD IS YOURS!';
+      this.logs = []; this.selWeapon = -1; this.gateMode = this.hexMode = this.songMode = false; // the fight is over: clear stale combat chatter + aim modes
       AUDIO.sfx('levelup');
     }
     if ((this.p.hull <= 0 || this.p.aliveCrew().length === 0) && this.state === 'fight') {
@@ -384,6 +396,17 @@ class Battle {
       pr.delay -= dt;
       if (pr.delay > 0) continue;
       pr.t += dt / pr.dur;
+      // a dodged/missed shot keeps flying PAST the hull and splashes in the sea beyond
+      if (pr._miss) {
+        const mp = this.projAt(pr, pr.t);
+        if (mp.y >= SEA_Y + 1 || mp.x < -24 || mp.x > 536 || pr.t > 3) { this.projectiles.splice(i, 1); this.splashFx(U.clamp(mp.x, 0, 512), SEA_Y); }
+        continue;
+      }
+      // torpedoes are dodged as they rise out of their skim (so a miss swims on past the hull)
+      if (!pr._dodgeChecked && pr.t >= 0.8 && !pr.ghost && DATA.WEAPONS[pr.wkey].type === 'missile') {
+        pr._dodgeChecked = true;
+        if (this.rollDodge(pr.targetShip)) { this.missShot(pr); continue; }
+      }
       // defensive familiars guard the player's ship
       if (pr.targetShip === this.p && pr.srcShip === this.e && !pr._defChecked && pr.t > 0.45) {
         pr._defChecked = true;
@@ -418,7 +441,7 @@ class Battle {
           const fp = this.familiarPos(k);
           this.boom(fp.x, fp.y, 4);
           if (this._famHp[k] <= 0) {
-            this._famDown[k] = this.time;
+            this._famDown[k] = this.simTime; // R6: pause-aware re-bind cooldown
             this._famAwake.delete(k);
             this.boom(fp.x, fp.y, 9);
             AUDIO.sfx('torpedo');
@@ -441,21 +464,13 @@ class Battle {
           const ndx = (pos.x - bb.cx) / bb.rx, ndy = (pos.y - bb.cy) / bb.ry;
           if (ndx * ndx + ndy * ndy <= 1) {
             // evasion first, FTL-style: a dodged shot never tests the wards
-            let ev = dst.evasion(this);
-            if (this.hazard === 'fog') ev += 15;
-            if (this.hazard === 'reef' || this.hazard === 'whirlpool') ev = Math.max(0, ev - 10);
-            if (U.chance(ev / 100)) {
-              this.projectiles.splice(i, 1);
-              AUDIO.sfx('miss');
-              this.splashFx(pr.toX + U.ri(-8, 8), SEA_Y);
-              this.awardDodge(dst);
-              this.log(dst === this.e ? 'THE ENEMY EVADES!' : 'YOU EVADE!');
-              continue;
-            }
+            pr._dodgeChecked = true;
+            if (this.rollDodge(dst)) { this.missShot(pr); continue; }
             if (dst.wards.layers > (wdp.pierce || 0)) {
               this.projectiles.splice(i, 1);
               const wardsUp = dst.wards.layers; // before the strip, for the falloff
               this.stripWard(dst, pos.x, pos.y);
+              this.floatText(pos.x, pos.y - 4, 'WARDED', 'ward');
               this.igniteThroughWards(dst, dst.rooms[pr.roomId], wdp, wardsUp); // djinn heat bleeds through
               continue;
             }
@@ -467,7 +482,7 @@ class Battle {
           }
         }
       }
-      if (pr.t >= 1) { this.projectiles.splice(i, 1); this.resolveHit(pr); }
+      if (pr.t >= 1) { if (this.resolveHit(pr) === 'miss') pr._miss = true; else this.projectiles.splice(i, 1); }
     }
     for (let i = this.beams.length - 1; i >= 0; i--) {
       this.beams[i].t -= dt;
@@ -482,6 +497,7 @@ class Battle {
     }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const pa = this.particles[i];
+      if (pa.max == null) pa.max = pa.life > 0 ? pa.life : 1; // remember full life -> life-normalised fade
       pa.x += pa.vx * dt; pa.y += pa.vy * dt; pa.vy += (pa.grav || 0) * dt;
       pa.life -= dt;
       if (pa.life <= 0) this.particles.splice(i, 1);
@@ -496,7 +512,97 @@ class Battle {
         life: U.rf(0.3, 0.9), col: U.pick([COL.fire1, COL.fire2, COL.grey, COL.white]), size: U.ri(1, 3),
       });
     }
-    this.shake = 0.3;
+    this.addTrauma(Math.min(0.4, n * 0.008));
+  }
+
+  // ---------- impact feedback ("juice", Stage 1) ----------
+  // Trauma-style camera shake (offset ~ trauma^2, smooth noise), a brief additive scene flash, a
+  // 40-80 ms hit-stop, a white room flash and floating numbers. Nothing new spawns while PAUSED,
+  // and what exists freezes (updateJuice only runs unpaused). renderHD's scene blit applies the
+  // shake + flash; renderShip draws the room flash; renderFloaters draws the numbers.
+  addTrauma(a) { if (this.paused) return; this.trauma = Math.min(1, (this.trauma || 0) + a); }
+  shakeOffset() {
+    const tr = this.trauma || 0; if (tr <= 0) return { x: 0, y: 0, mag: 0 };
+    const m = TUNING.shakeMax * tr * tr, t = this.simTime != null ? this.simTime : this.time;
+    return { x: m * (Math.sin(t * 37.3) + 0.6 * Math.sin(t * 23.1 + 1.7)) / 1.6,
+             y: m * (Math.sin(t * 31.7 + 0.6) + 0.6 * Math.sin(t * 19.3 + 2.9)) / 1.6, mag: m };
+  }
+  floatText(x, y, text, kind) {
+    if (this.paused || !this.floaters) return;
+    // a volley lands several at once: stack fresh numbers at the same spot instead of overprinting
+    const near = this.floaters.filter(f => f.t < 0.35 && Math.abs(f.x - x) < 14 && Math.abs(f.y0 - y) < 10).length;
+    this.floaters.push({ x: x + U.rf(-2, 2), y: y - near * 9, y0: y, text, kind: kind || 'dmg', t: 0, max: TUNING.floatSecs });
+  }
+  // a HULL hit landed on `dst` in `room` for `dmg`: shake + flash + hit-stop + room flash + number
+  hitFeedback(dst, room, dmg) {
+    if (this.paused) return;
+    const d = Math.min(6, Math.max(1, dmg));
+    this.addTrauma(TUNING.shakePerDmg * d * (dst === this.p ? 1.25 : 1));
+    this.hitStop = Math.max(this.hitStop || 0, TUNING.hitStopSecs);
+    this.flash = Math.max(this.flash || 0, 0.05 + 0.02 * d);
+    if (room) {
+      room._hitFlash = TUNING.roomFlashSecs;
+      const rr = this.roomRect(dst, room);
+      this.floatText(rr.x + rr.w / 2, rr.y + 2, '\u2212' + Math.round(dmg), 'dmg');
+    }
+  }
+  updateJuice(dt) {
+    if (this.flash > 0) this.flash -= dt;
+    if (this.shake > 0) this.shake -= dt;
+    if (this.trauma > 0) this.trauma = Math.max(0, this.trauma - dt * TUNING.shakeDecay);
+    for (const sh of [this.p, this.e]) if (sh && sh.rooms) for (const r of sh.rooms) if (r._hitFlash > 0) r._hitFlash -= dt;
+    if (this.floaters) for (let i = this.floaters.length - 1; i >= 0; i--) { const f = this.floaters[i]; f.t += dt; if (f.t >= f.max) this.floaters.splice(i, 1); }
+  }
+  renderFloaters(ctx) {
+    if (!this.floaters) return;
+    for (const f of this.floaters) {
+      const k = U.clamp(f.t / f.max, 0, 1), ease = 1 - Math.pow(1 - k, 3);  // ease-out rise
+      const a = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;                        // hold, then fade
+      const dmg = f.kind === 'dmg', sz = dmg ? 11 : 8;
+      const pop = dmg && k < 0.12 ? 1 + (0.12 - k) * 2.5 : 1;                 // tiny pop on spawn
+      ctx.save(); ctx.globalAlpha = a;
+      TYPE.drawCentered(ctx, f.text, f.x, f.y - ease * TUNING.floatRise - sz * 0.5, sz * pop,
+        dmg ? '#ff4a3a' : f.kind === 'ward' ? '#bfe4ee' : '#e6dcc4',
+        { display: true, outline: dmg ? '#2a0806' : 'rgba(18,14,10,0.85)', outlineW: 0.7 });
+      ctx.restore();
+    }
+  }
+  // life-normalised particles: alpha fades with remaining life, size shrinks over life; fire/magic
+  // sparks blend additively ('lighter') and draw as soft round dots instead of hard squares.
+  renderParticles(ctx) {
+    const ADD = Battle._ADD || (Battle._ADD = new Set([COL.fire1, COL.fire2, COL.gold, COL.white, COL.cyan, COL.lime, COL.pink, '#cfffe0']));
+    for (const additive of [false, true]) {
+      ctx.save();
+      if (additive) ctx.globalCompositeOperation = 'lighter';
+      for (const pa of this.particles) {
+        const add = pa.add != null ? !!pa.add : ADD.has(pa.col);
+        if (add !== additive) continue;
+        const max = pa.max || pa.life || 1, f = U.clamp(pa.life / max, 0, 1);
+        const sz = pa.size * (add ? 0.45 + 0.55 * f : 0.7 + 0.3 * f);
+        ctx.globalAlpha = add ? Math.min(1, f * 1.3) : Math.min(1, f * 1.8);
+        ctx.fillStyle = pa.col;
+        if (sz < 1.6) ctx.fillRect(pa.x - sz / 2, pa.y - sz / 2, sz, sz);
+        else { ctx.beginPath(); ctx.arc(pa.x, pa.y, sz / 2, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.restore();
+    }
+  }
+  // one evasion roll against `dst` (fog helps the dodger; reefs/whirlpools hinder)
+  rollDodge(dst) {
+    let ev = dst.evasion(this);
+    if (this.hazard === 'fog') ev += 15;
+    if (this.hazard === 'reef' || this.hazard === 'whirlpool') ev = Math.max(0, ev - 10);
+    return U.chance(ev / 100);
+  }
+  // a dodged shot: it keeps flying past the hull (renderProjectiles / updateProjectiles carry it on)
+  missShot(pr) {
+    const dst = pr.targetShip;
+    pr._miss = true;
+    AUDIO.sfx('miss');
+    this.awardDodge(dst);
+    this.log(dst === this.e ? 'THE ENEMY EVADES!' : 'YOU EVADE!');
+    const r = dst.rooms[pr.roomId];
+    if (r) { const rr = this.roomRect(dst, r); this.floatText(rr.x + rr.w / 2, rr.y + 2, 'MISS', 'miss'); }
   }
   splashFx(x, y) {
     for (let i = 0; i < 8; i++) this.particles.push({ x, y, vx: U.rf(-30, 30), vy: U.rf(-80, -20), grav: 200, life: 0.5, col: COL.ltblue, size: 1 });
@@ -529,17 +635,17 @@ class Battle {
     if (!this.isOrbiting(k)) return null;                       // onboard/defensive: always free
     if (this.shrineSlots().indexOf(k) < 0) return 'asleep';     // shrine not powered for this slot
     if (this._famDown && this._famDown[k] != null) {
-      if (this.time - this._famDown[k] < TUNING.famRedeploySecs) return 'cooldown';
+      if (this.simTime - this._famDown[k] < TUNING.famRedeploySecs) return 'cooldown'; // R6: simTime, not wall clock
       return (Game.run.candles || 0) > 0 ? 'rebind' : 'nofund';
     }
     if (this._famDeployed && this._famDeployed.has(k)) return 'active';
     return (Game.run.candles || 0) > 0 ? 'deploy' : 'nofund';
   }
-  // captain spends one Summoner's Candle to launch (or re-bind) an orbiting familiar
+  // captain spends one Seance Candle to launch (or re-bind) an orbiting familiar
   deployFamiliar(k) {
     const st = this.famDeployState(k);
     if (st !== 'deploy' && st !== 'rebind') {
-      if (st === 'nofund') this.log('NO SUMMONER’S CANDLES TO BIND THAT SPIRIT.');
+      if (st === 'nofund') this.log('NO SEANCE CANDLES TO BIND THAT SPIRIT.'); // R19
       else if (st === 'cooldown') this.log('THE SPIRIT IS STILL RE-FORMING.');
       else if (st === 'asleep') this.log('POWER THE BINDING SHRINE FIRST.');
       return false;
@@ -548,7 +654,7 @@ class Battle {
     this._famDeployed = this._famDeployed || new Set(); this._famDeployed.add(k);
     if (this._famDown) delete this._famDown[k];
     this._famHp = this._famHp || {}; this._famHp[k] = TUNING.famHp;
-    this._famDeploy = this._famDeploy || {}; this._famDeploy[k] = this.time;
+    this._famDeploy = this._famDeploy || {}; this._famDeploy[k] = this.simTime;
     this._famAwake = this._famAwake || new Set(); this._famAwake.add(k);
     AUDIO.sfx('teleport');
     const nm = (DATA.FAMILIARS[k] ? DATA.FAMILIARS[k].name.toUpperCase() : 'A SPIRIT');
@@ -570,7 +676,7 @@ class Battle {
     const act = this.activeFamiliars();
     for (const k of act) if (!this._famAwake.has(k)) {
       this._famAwake.add(k);
-      this._famDeploy[k] = this.time;
+      this._famDeploy[k] = this.simTime;
       if (this._famHp[k] == null) this._famHp[k] = TUNING.famHp;
       this.log((DATA.FAMILIARS[k] ? DATA.FAMILIARS[k].name.toUpperCase() : 'A SPIRIT') + ' AWAKENS AT THE SHRINE.');
     }
@@ -735,14 +841,17 @@ class Battle {
   }
 
   // where a projectile is right now, on the same path the renderer draws
-  projPos(pr) {
+  projPos(pr) { return this.projAt(pr, U.clamp(pr.t, 0, 1)); }
+  // the path at an UNCLAMPED t — t>1 extrapolates past the target, which is how a missed shot
+  // keeps flying beyond the hull (the arc term turns it down into the sea; torpedoes skim on).
+  projAt(pr, t) {
     const wd = DATA.WEAPONS[pr.wkey];
-    const t = U.clamp(pr.t, 0, 1);
     const x = U.lerp(pr.fromX, pr.toX, t);
     let y = U.lerp(pr.fromY, pr.toY, t) - Math.sin(t * Math.PI) * pr.arc;
     if (wd.type === 'missile') {
       const skimY = SEA_Y - 4;
-      y = t < 0.2 ? U.lerp(pr.fromY, skimY, t / 0.2) : t > 0.8 ? U.lerp(skimY, pr.toY, (t - 0.8) / 0.2) : skimY;
+      y = t < 0.2 ? U.lerp(pr.fromY, skimY, t / 0.2) : (t > 0.8 && !pr._miss) ? U.lerp(skimY, pr.toY, Math.min(1, (t - 0.8) / 0.2)) : skimY;
+      if (pr.wkey === 'seekertorpedo' && t > 0.2 && t < 0.8) y += Math.sin(t * Math.PI * 5) * 3; // it weaves as it hunts
     }
     return { x, y };
   }
@@ -852,7 +961,11 @@ class Battle {
     if (effDmg > 0) {
       dst.damageHull(effDmg); dst.damageSystem(room, effDmg);
       const rr = this.roomRect(dst, room); this.boom(rr.x + rr.w / 2, rr.y + rr.h / 2, 4 + Math.min(effDmg, 6) * 2); AUDIO.sfx('hit');
-    } else if (soak > 0 && !sw._soakLog) { sw._soakLog = true; this.log(dst === this.p ? 'YOUR WARDS SOAK THE LANCE!' : 'THE WARDS SOAK THE LANCE!'); }
+      this.hitFeedback(dst, room, effDmg);
+    } else if (soak > 0 && !sw._soakLog) {
+      sw._soakLog = true; this.log(dst === this.p ? 'YOUR WARDS SOAK THE LANCE!' : 'THE WARDS SOAK THE LANCE!');
+      const rr = this.roomRect(dst, room); this.floatText(rr.x + rr.w / 2, rr.y + 2, 'WARDED', 'ward');
+    }
   }
   beamHitTile(sw, tile) {
     const wd = sw.wd, dst = sw.dst, room = tile.room, soak = dst.wards.layers;
@@ -898,19 +1011,9 @@ class Battle {
     if (pr.ghost) { this.applyEffects(dst, room, wd, pr.srcShip); return; }
     // pierced the wards mid-flight: evasion + ward toll already paid at the bubble
     if (pr._pierced) { this.applyEffects(dst, room, wd, pr.srcShip); return; }
-    // dodge (bombs can't be dodged)
-    if (wd.type !== 'bomb') {
-      let ev = dst.evasion(this);
-      if (this.hazard === 'fog') ev += 15;
-      if (this.hazard === 'reef' || this.hazard === 'whirlpool') ev = Math.max(0, ev - 10);
-      if (U.chance(ev / 100)) {
-        AUDIO.sfx('miss');
-        this.splashFx(pr.toX + U.ri(-8, 8), SEA_Y);
-        this.awardDodge(dst);
-        if (dst === this.e) this.log('THE ENEMY EVADES!');
-        else this.log('YOU EVADE!');
-        return;
-      }
+    // dodge (bombs can't be dodged; torpedoes already rolled as they rose out of their skim)
+    if (wd.type !== 'bomb' && !pr._dodgeChecked) {
+      if (this.rollDodge(dst)) { this.missShot(pr); return 'miss'; } // it flies on past the hull
     }
     // wards fallback (normally caught at the bubble edge mid-flight; this
     // covers wards raised while the shot was already inside the bubble)
@@ -920,6 +1023,7 @@ class Battle {
       if (dst.wards.layers > (wd.pierce || 0)) {
         const wardsUp = dst.wards.layers;
         this.stripWard(dst, rr.x + rr.w / 2, rr.y - 12);
+        this.floatText(rr.x + rr.w / 2, rr.y - 14, 'WARDED', 'ward');
         this.igniteThroughWards(dst, room, wd, wardsUp); // djinn heat bleeds through
         return;
       }
@@ -943,6 +1047,7 @@ class Battle {
       dst.damageSystem(room, dmg);
       AUDIO.sfx('hit');
       this.boom(RR.x + RR.w / 2, RR.y + RR.h / 2, 6 + Math.min(dmg, 12) * 3); // cap the debris count (the rail gun's dmg 99 spawned 300+ particles)
+      this.hitFeedback(dst, room, dmg);
     }
     if (wd.ion) {
       room.ion = Math.min(10, room.ion + 4 * wd.ion);
@@ -1055,7 +1160,8 @@ class Battle {
     const w = this.p.weapons[i]; if (!w) return null;
     const wd = DATA.WEAPONS[w.key]; if (!wd) return null;
     const wepBars = this.p.powered('weapons');
-    let used = 0; for (let k = 0; k < i; k++) { const ww = this.p.weapons[k]; if (ww && ww.on) used += DATA.WEAPONS[ww.key].power; }
+    // R13: mirror Ship.tick — an earlier gun only CONSUMES power if it actually fits in the bars left
+    let used = 0; for (let k = 0; k < i; k++) { const ww = this.p.weapons[k]; if (ww && ww.on) { const pw = DATA.WEAPONS[ww.key].power; if (used + pw <= wepBars) used += pw; } }
     const hasPower = w.on && used + wd.power <= wepBars;
     const needsRune = (wd.type === 'missile' || wd.type === 'bomb') && !wd.noRune;
     const outOfRune = needsRune && Game.run.runeshot <= 0;
@@ -1073,7 +1179,7 @@ class Battle {
     //   repair systems (by importance) > man stations.
     const crew = e.aliveCrew().filter(c => c.aboard === 'home' && c.owner === 'enemy');
     const busy = new Set();
-    const STATIONS = ['helm', 'weapons', 'sails'];
+    const STATIONS = ['helm', 'weapons', 'sails', 'wards']; // R30: wards manning speeds ward regrowth, so re-man it too
     // a free hand: idle (not pathing), not already tasked, and not the pilot (keep the helm manned)
     const freeHand = () => crew.find(c => !busy.has(c.id) && c.path.length === 0 && e.rooms[c.roomId].key !== 'helm');
     const sendTo = (c, roomId) => { if (c.roomId !== roomId && c.path[c.path.length - 1] !== roomId) e.orderCrew(c, roomId); busy.add(c.id); };
@@ -1141,7 +1247,7 @@ class Battle {
       ship.damageSystem(room, 1);
       ship.damageHull(1);
       if (U.chance(0.3)) ship.igniteRandomTile(room, TUNING.newFireHp); // a storm bolt lights a tile
-      this.flash = 0.25;
+      this.flash = 0.25; this.addTrauma(0.3);
       AUDIO.sfx('lightning');
       this.log('LIGHTNING STRIKES ' + (ship === this.p ? 'YOUR SHIP!' : 'THE ENEMY!'));
       const rr = this.roomRect(ship, room);
@@ -1151,7 +1257,7 @@ class Battle {
       ship.damageHull(1);
       const room = U.pick(ship.rooms);
       ship.damageSystem(room, 1);
-      this.shake = 0.4;
+      this.shake = 0.4; this.addTrauma(0.55);
       AUDIO.sfx('creak');
       this.log('A TENTACLE SLAMS ' + (ship === this.p ? 'YOUR HULL!' : 'THE ENEMY!'));
       this.tentacleT = 1.2;
@@ -1299,76 +1405,96 @@ class Battle {
     this.selWeapon = -1;
   }
 
-  clickHUD(x, y, btn) {
-    // system power icons
-    if (this.clickPowerPanel(x, y, btn, 6)) return;
-    // weapons slots
-    for (let i = 0; i < this.p.weapons.length; i++) {
-      if (this.inRect(x, y, 232 + i * 48, 230, 46, 30)) {
-        if (btn === 2) {
-          const w = this.p.weapons[i];
-          w.on = !w.on; if (!w.on) w.target = -1;
-        } else {
-          this.selWeapon = this.selWeapon === i ? -1 : i;
-          this.gateMode = false;
-        }
-        AUDIO.sfx('click');
-        return;
-      }
+  // The classic 512x288 HUD strip below HUD_Y is retired (2026-10-08): the HD chrome (CombatScreen.renderHD)
+  // owns every control and calls the explicit command methods below directly — no more forged clicks at the
+  // old HUD's coordinates. Kept as a no-op because Battle.click still routes y >= HUD_Y here.
+  clickHUD() {}
+
+  // ---------- explicit player commands (called by the HD chrome, keys and tests) ----------
+  // why the player cannot run from this fight, or null when they can (house rule: failures say WHY)
+  fleeBlockedReason() {
+    if (this.canFlee) return null;
+    if (this.e.boss) return /WARDEN/i.test(this.e.name || '') ? 'The Warden blocks every escape.' : 'There is no outrunning this foe.';
+    return 'There is no open water to run for.';
+  }
+  // toggle the retreat. Returns null on success, or the reason string when fleeing is impossible (logged).
+  tryFlee() {
+    const why = this.fleeBlockedReason();
+    if (why) { this.log(why.toUpperCase()); AUDIO.sfx('back'); return why; }
+    this.p.fleeing = !this.p.fleeing;
+    if (this.p.fleeing) this.log('MAKING FOR OPEN WATER... KEEP THE HELM MANNED!');
+    else { this.p.escape = 0; this.log('HOLDING POSITION.'); }
+    AUDIO.sfx('click');
+    return null;
+  }
+  veilReady() { return this.p.sysLv.fogveil > 0 && this.p.powered('fogveil') > 0 && (this.p.veilCd || 0) <= 0; }
+  // Fog Veil: vanish (evasion) for a few seconds. Returns null on success or the reason it failed (logged).
+  castVeil() {
+    if (this.p.sysLv.fogveil <= 0) return 'No Fog Veil installed.';
+    if (this.p.powered('fogveil') <= 0) { this.log('THE FOG VEIL HAS NO MANA.'); AUDIO.sfx('back'); return 'The Fog Veil has no mana.'; }
+    if (this.p.veilCd > 0) { this.log('THE FOG VEIL IS STILL GATHERING.'); AUDIO.sfx('back'); return 'The Fog Veil is still gathering.'; }
+    this.p.veilT = 3 + this.p.powered('fogveil') * 1.5;
+    this.p.veilCd = this.p.veilCdMax = 20;
+    AUDIO.sfx('teleport');
+    this.log('YOU VANISH INTO CONJURED FOG!');
+    // LEGENDARY: Stormcaller Mast - the veil bites back
+    if (Game.run.augs.includes('stormcaller_mast')) {
+      for (const w of this.e.weapons) w.charge *= 0.5;
+      const wr = this.e.roomByKey('weapons');
+      if (wr) wr.ion = Math.min(10, wr.ion + 3);
+      AUDIO.sfx('ion');
+      this.log('STORMCALLER LIGHTNING ARCS ACROSS THEIR GUNS!');
     }
-    // crew portraits
-    const pc = this.p.aliveCrew();
-    for (let i = 0; i < pc.length; i++) {
-      const cx = 430 + (i % 2) * 16, cy = 228 + Math.floor(i / 2) * 15;
-      if (this.inRect(x, y, cx, cy, 15, 14)) {
-        const c = pc[i];
-        if (!Game.keys['Shift']) this.selCrew.clear();
-        if (this.selCrew.has(c.id)) this.selCrew.delete(c.id); else this.selCrew.add(c.id);
-        AUDIO.sfx('click');
-        return;
-      }
-    }
-    // buttons
-    if (this.inRect(x, y, 232, 264, 46, 11)) { this.togglePause(); return; }
-    if (this.inRect(x, y, 330, 276, 50, 11)) { // crew stations: L = recall, R = save
-      if (btn === 2) { this.setStations(); this.log('STATIONS SAVED - LEFT-CLICK OR R TO RECALL.'); }
-      else { if (this.returnStations()) this.log('ALL HANDS TO STATIONS!'); else this.log('EVERYONE IS ALREADY AT THEIR STATION.'); }
-      AUDIO.sfx('click'); return;
-    }
-    if (this.canFlee && this.inRect(x, y, 282, 264, 46, 11)) {
-      this.p.fleeing = !this.p.fleeing;
-      if (this.p.fleeing) this.log('MAKING FOR OPEN WATER... KEEP THE HELM MANNED!');
-      else this.p.escape = 0;
-      AUDIO.sfx('click'); return;
-    }
-    if (this.p.sysLv.fogveil > 0 && this.inRect(x, y, 332, 264, 46, 11)) {
-      if (this.p.powered('fogveil') > 0 && this.p.veilCd <= 0) {
-        this.p.veilT = 3 + this.p.powered('fogveil') * 1.5;
-        this.p.veilCd = this.p.veilCdMax = 20;
-        AUDIO.sfx('teleport');
-        this.log('YOU VANISH INTO CONJURED FOG!');
-        // LEGENDARY: Stormcaller Mast - the veil bites back
-        if (Game.run.augs.includes('stormcaller_mast')) {
-          for (const w of this.e.weapons) w.charge *= 0.5;
-          const wr = this.e.roomByKey('weapons');
-          if (wr) wr.ion = Math.min(10, wr.ion + 3);
-          AUDIO.sfx('ion');
-          this.log('STORMCALLER LIGHTNING ARCS ACROSS THEIR GUNS!');
-        }
-      }
-      return;
-    }
-    if (this.p.sysLv.brinegate > 0 && this.inRect(x, y, 382, 264, 42, 11)) { this.tryGate(); return; }
-    if (this.p.sysLv.brinegate > 0 && this.inRect(x, y, 382, 276, 42, 11)) { this.tryRecall(); return; }
+    return null;
+  }
+  // arm / disarm gun i for targeting (left-click a weapon row, or keys 1-4)
+  selectWeapon(i) {
+    if (!this.p.weapons[i]) return;
+    this.selWeapon = this.selWeapon === i ? -1 : i;
+    this.gateMode = false; this.hexMode = false; this.songMode = false;
+    AUDIO.sfx('click');
+  }
+  // power gun i on/off (right-click a weapon row); powering down drops its target
+  toggleWeapon(i) {
+    const w = this.p.weapons[i]; if (!w) return;
+    w.on = !w.on; if (!w.on) { w.target = -1; if (this.selWeapon === i) this.selWeapon = -1; }
+    AUDIO.sfx('click');
+  }
+  // all hands back to their saved battle stations (Stations button / R)
+  returnToStations() {
+    const moved = this.returnStations();
+    this.log(moved ? 'ALL HANDS TO STATIONS!' : 'EVERYONE IS ALREADY AT THEIR STATION.');
+    AUDIO.sfx('click');
+    return moved;
+  }
+  // remember where everyone stands now as their battle stations (right-click Stations / T)
+  saveStations() {
+    const any = this.setStations();
+    if (any) this.log('STATIONS SAVED - LEFT-CLICK STATIONS OR PRESS R TO RECALL.');
+    AUDIO.sfx('click');
+    return any;
+  }
+  acceptSurrender() {
+    if (!this.surrenderOffer) return;
+    this.state = 'surrendered'; this.banner = 'THEY STRIKE THEIR COLORS!';
+    this.paused = false;
+    AUDIO.sfx('coin');
+  }
+  declineSurrender() {
+    if (!this.surrenderOffer) return;
+    this.surrenderOffer = null; this.paused = false;
+    this.log('NO QUARTER!');
+    AUDIO.sfx('click');
   }
 
   doTeleport(enemyRoomId) {
     this.gateMode = false;
-    const senders = this.gateRoomCrew(); // ONLY crew standing in the brine gate room board
+    // ONLY crew standing in the Portal room board — and at most TUNING.portalMaxCrew of them (R11, FTL teleporter cap)
+    const senders = this.gateRoomCrew().slice(0, TUNING.portalMaxCrew);
     if (!senders.length) { this.log('NO CREW IN THE PORTAL ROOM.'); AUDIO.sfx('back'); return; }
     const tr = this.e.rooms[enemyRoomId];
     for (const c of senders) {
-      c.aboard = 'away'; c.path = [];
+      c.aboard = 'away'; c.path = []; c._wp = null; c._settling = false;
       c.roomId = enemyRoomId;
       const sp = this.e.slotPos(enemyRoomId, U.ri(0, tr.w - 1));
       c.px = sp.x; c.py = sp.y;
@@ -1488,7 +1614,8 @@ class Battle {
     for (const c of this.p.crew.concat(this.e.crew)) {
       if (c.dead) continue;
       const sp = this.crewScreenPos(c);
-      if (this.inRect(x, y, sp.x - 1, sp.y - 1, 14, 16)) return c;
+      const top = sp.y + 14 - TUNING.crewDrawH + 4; // the figure's head (feet at sp.y+14)
+      if (this.inRect(x, y, sp.x - 1, top, 14, sp.y + 16 - top)) return c;
     }
     return null;
   }
@@ -1660,6 +1787,21 @@ class Battle {
 
   // FTL-style deck plan: pale plank floors, tile grid, thick walls, real doors.
   // Rooms read as rooms; the painted hull keeps the romance around them.
+  // The dark timber 'sole' under the deck plan: the union of the rooms, each grown by a thin margin, with a
+  // darker rim — so the plate follows the room layout's own steps instead of covering the hull's bounding box.
+  drawRoomHull(ctx, ship) {
+    const M = 4, RIM = 1.5;
+    const rects = ship.rooms.map(r => this.roomRect(ship, r));
+    // close one-row gaps between decks (an empty tile with rooms directly above AND below reads as a hole, not a step)
+    const occ = new Set(); for (const r of ship.rooms) for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) occ.add(x + ',' + y);
+    for (const r of ship.rooms) for (let x = r.x; x < r.x + r.w; x++) {
+      const y = r.y + r.h; // the tile just below this room
+      if (!occ.has(x + ',' + y) && occ.has(x + ',' + (y + 1))) rects.push(this.roomRect(ship, { x, y, w: 1, h: 1 }));
+    }
+    const pass = (g, col) => { ctx.fillStyle = col; ctx.beginPath(); for (const rr of rects) ctx.rect(rr.x - g, rr.y - g, rr.w + g * 2, rr.h + g * 2); ctx.fill(); };
+    pass(M + RIM, '#140e09');
+    pass(M, '#3a2f25');
+  }
   drawDeckPlan(ctx, ship) {
     // floors
     for (const r of ship.rooms) {
@@ -1729,7 +1871,7 @@ class Battle {
     for (const c of this.p.crew) {
       if (c.dead) continue;
       const sp = this.crewScreenPos(c);
-      const cx = sp.x + 6, cy = sp.y + 7;
+      const cx = sp.x + 6, cy = sp.y + 14 - TUNING.crewDrawH / 2; // the figure's middle
       if (cx >= rx0 && cx <= rx1 && cy >= ry0 && cy <= ry1) this.selCrew.add(c.id);
     }
     if (this.selCrew.size) AUDIO.sfx('click');
@@ -1759,12 +1901,12 @@ class Battle {
       const artY = sy - m.oy / D;
       if (isP) {
         const artX = sx + ship.rw / 2 - (m.ox + m.iw / 2) / D;
-        ctx.drawImage(artE.img, Math.round(artX), Math.round(artY), lw, lh);
+        ctx.drawImage(artE.img, artX, artY, lw, lh);
         intX0 = artX + m.ox / D; intW = m.iw / D;
       } else {
         const oxFlip = m.w - m.ox - m.iw; // interior offset after mirroring
         const artX = sx + ship.rw / 2 - (oxFlip + m.iw / 2) / D;
-        this.mirrored(ctx, Math.round(artX) + lw, Math.round(artY), () => ctx.drawImage(artE.img, 0, 0, lw, lh));
+        this.mirrored(ctx, artX + lw, artY, () => ctx.drawImage(artE.img, 0, 0, lw, lh));
         intX0 = artX + oxFlip / D; intW = m.iw / D;
       }
       drewArt = true;
@@ -1825,40 +1967,8 @@ class Battle {
 
     // furnished interior cutaway (skip when AI art provides it; baked, procedural fallback)
     if (drewArt) {
-      // FTL-style neutral interior: a baked fill shape that hugs THIS hull's
-      // cutaway outline (silhouette ∩ interior band, computed at import time)
-      const fillKey = ship.style && SPR.artEntry('ship_' + ship.layoutKey + '_' + ship.style + '_fill')
-        ? 'ship_' + ship.layoutKey + '_' + ship.style + '_fill'
-        : 'ship_' + ship.layoutKey + '_fill';
-      const fe = SPR.artEntry(fillKey);
-      if (fe && artE) {
-        const m = artE.meta;
-        const D = m.dens || 2;
-        const lw = m.w / D, lh = m.h / D;
-        const artY = sy - m.oy / D;
-        if (isP) {
-          const artX = sx + ship.rw / 2 - (m.ox + m.iw / 2) / D;
-          ctx.drawImage(fe.img, Math.round(artX), Math.round(artY), lw, lh);
-        } else {
-          const oxFlip = m.w - m.ox - m.iw;
-          const artX = sx + ship.rw / 2 - (oxFlip + m.iw / 2) / D;
-          this.mirrored(ctx, Math.round(artX) + lw, Math.round(artY), () => ctx.drawImage(fe.img, 0, 0, lw, lh));
-        }
-      } else {
-        // fallback: simple rounded band (older imports without baked fills)
-        const fc = ({
-          pirate: '#6a5440', human: '#6b5a44', armada: '#5a5266', merfolk: '#2e6b74',
-          djinn: '#7a4a30', stormelf: '#4a5e78', dwarf: '#5c5650', lizard: '#55663c',
-          siren: '#6e5270', ghost: '#5a7080', boss: '#4a4066',
-        })[ship.style] || '#4a443c';
-        const fx0 = Math.round(intX0) - 5;
-        const fw = Math.round(intW) + 10;
-        const fy0 = sy - 3;
-        const fh = Math.max(ship.rh + 6, SEA_Y + 2 - fy0);
-        ctx.fillStyle = fc;
-        UI.roundRect(ctx, fx0, fy0, fw, fh, 6);
-        ctx.fill();
-      }
+      // FTL-style hull sole: a dark timber shape that hugs the rooms actually in use (not the whole cutaway band)
+      this.drawRoomHull(ctx, ship);
       // FTL-style deck plan: flat readable rooms over the neutral fill
       this.drawDeckPlan(ctx, ship);
     } else if (!SPR.drawFrame(ctx, 'int_' + ship.layoutKey + '_' + ship.style, sx, sy, !isP)) {
@@ -1997,6 +2107,11 @@ class Battle {
         ctx.fillStyle = 'rgba(74,44,102,0.5)';
         for (let d = 0; d < 4; d++) { const dx2 = rr.x + 3 + d * (rr.w - 6) / 3; ctx.fillRect(dx2, rr.y + 2, 2, 3 + ((this.time * 10 + d * 3) % 4)); }
       }
+      // struck-room flash: a hull hit whites the room out for ~80 ms (TUNING.roomFlashSecs)
+      if (r._hitFlash > 0) {
+        ctx.fillStyle = 'rgba(255,252,240,' + (0.8 * Math.min(1, r._hitFlash / TUNING.roomFlashSecs)).toFixed(3) + ')';
+        ctx.fillRect(rr.x, rr.y, rr.w, rr.h);
+      }
       // weapon target marker
       if (!isP) {
         this.p.weapons.forEach((w, wi) => {
@@ -2011,56 +2126,80 @@ class Battle {
         }
       }
     }
-    // crew on this ship
+    // crew on this ship — the living, plus the recently fallen (the body lies TUNING.corpseSecs while
+    // the die frames play once, then fades). Overlays are sized to the ~crewDrawH figure: a soft
+    // shadow + selection/hostile ELLIPSES at the feet, and the HP bar above the HEAD (FTL-style:
+    // only when hurt, selected or hovered). Positions are NOT rounded to logical px (smooth at 3.1x).
+    const animNow = (this.simTime != null) ? this.simTime : this.time; // frozen while paused; deck view -> this.time
+    const H = TUNING.crewDrawH;
+    const am = this._aimMouse, hov = am ? this.crewAt(am.x, am.y) : null;
+    const ell = (x, y, rx, ry) => { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); };
     for (const c of this.p.crew.concat(this.e.crew)) {
-      if (c.dead) continue;
       const sp = this.crewScreenPos(c);
       if (sp.loc !== ship) continue;
       if (hidden && !this.p.crew.includes(c)) continue;
-      // selection / hostility ring
-      if (this.selCrew.has(c.id)) {
-        ctx.strokeStyle = COL.white; ctx.strokeRect(sp.x - 1.5, sp.y - 1.5, 15, 17);
-      }
-      const hostileHere = c.owner === 'enemy' && sp.loc === this.p || c.owner === 'player' && sp.loc === this.e;
-      // soft shadow under feet
-      ctx.fillStyle = 'rgba(20,12,6,0.35)';
-      ctx.fillRect(Math.round(sp.x) + 1, Math.round(sp.y) + 13, 10, 2);
       // HD-2D pose animation (state machine); per-crew anim clock from state changes
       const ast = DATA.crewAnimState(c);
-      // crew poses run on simTime (frozen while paused); deck view has no simTime -> uses this.time
-      const animT = (this.simTime != null) ? this.simTime : this.time;
-      if (c._animSt !== ast) { c._animSt = ast; c._animT0 = animT; }
-      const aclk = animT - (c._animT0 || 0);
+      if (c._animSt !== ast) { c._animSt = ast; c._animT0 = animNow; }
+      let aclk = animNow - (c._animT0 || 0);
+      let alpha = 1;
+      if (c.dead) {
+        const fade = (aclk - TUNING.corpseSecs) / TUNING.corpseFadeSecs;
+        if (fade >= 1) continue;               // the body is gone
+        alpha = U.clamp(1 - fade, 0, 1);
+      }
+      const footX = sp.x + 6, baseY = sp.y + 14;
+      const sel = !c.dead && this.selCrew.has(c.id);
+      const hostileHere = !c.dead && this.state === 'fight' && (c.owner === 'enemy' && sp.loc === this.p || c.owner === 'player' && sp.loc === this.e);
+      ctx.save(); ctx.globalAlpha = alpha;
+      // soft elliptical shadow under the feet
+      ctx.fillStyle = 'rgba(20,12,6,0.30)'; ell(footX, baseY + 0.6, 6.5, 1.7); ctx.fill();
+      // selection ring / hostile marker: ellipses at the feet (dark under-stroke for contrast)
+      if (sel || hostileHere) {
+        ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(10,8,6,0.55)'; ell(footX, baseY + 0.6, 8, 2.7); ctx.stroke();
+        ctx.lineWidth = 0.9; ctx.strokeStyle = sel ? '#9df0a6' : '#ff5a4a'; ell(footX, baseY + 0.6, 8, 2.7); ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+      // walk / climb frames advance by DISTANCE travelled (per-race stride) — no foot-sliding
+      if (ast === 'walk' || ast === 'climb') {
+        const ra = DATA._resolveAnim(ast, c.race), n = ra.frames.length, fps = ra.a.fps || 10;
+        const stride = ast === 'climb' ? TUNING.crewClimbStride : (TUNING.crewStride[c.race] || TUNING.crewStride.default);
+        aclk = (c._walkDist || 0) / stride * (n / fps);
+      }
       const pose = DATA.crewAnimFrame(ast, aclk, c.race);
-      const footX = Math.round(sp.x) + 6;
-      const footY = Math.round(sp.y) + 14 + DATA.crewAnimDY(ast, aclk, c.race);
+      const footY = baseY + DATA.crewAnimDY(ast, aclk, c.race);
+      const artLeft = !!DATA._resolveAnim(ast, c.race).facesLeft; // a few kit frames are drawn facing left
       // pose kit first; else legacy 2-frame sprite; else baked/procedural fallback
-      if (!SPR.drawCrewPose(ctx, c.race, pose, sp.flip, footX, footY, TUNING.crewDrawH)) {
-        if (!SPR.drawCrewArt(ctx, c.race, c.frame, sp.flip, Math.round(sp.x), Math.round(sp.y))) {
+      if (!SPR.drawCrewPose(ctx, c.race, pose, sp.flip !== artLeft, footX, footY, H)) {
+        if (!SPR.drawCrewArt(ctx, c.race, c.frame, sp.flip, sp.x, sp.y)) {
           if (!SPR.drawFrame(ctx, 'crew_' + c.race + '_' + c.frame, Math.round(sp.x), Math.round(sp.y), sp.flip)) {
-            ctx.drawImage(SPR.crew(c.race, c.frame, sp.flip), Math.round(sp.x), Math.round(sp.y));
+            ctx.drawImage(SPR.crew(c.race, c.frame, sp.flip), sp.x, sp.y);
           }
         }
       }
-      // hp pip (only when actually hurt - no silly hats on healthy sailors)
-      if (c.hp < c.maxhp - 1) {
-        const hpw = Math.max(1, Math.round(10 * c.hp / c.maxhp));
-        ctx.fillStyle = COL.black; ctx.fillRect(sp.x, sp.y - 3, 12, 2);
-        ctx.fillStyle = c.owner === 'player' ? COL.green : COL.red;
-        ctx.fillRect(sp.x + 1, sp.y - 3, hpw, 2);
+      ctx.restore();
+      if (c.dead) continue;
+      const headY = baseY - H;
+      // HP bar above the head: only when hurt, selected or hovered (above the busy chip if working)
+      if (c.hp < c.maxhp - 1 || sel || hov === c) {
+        const f = U.clamp(c.hp / c.maxhp, 0, 1), hy = c._task ? headY - 14.5 : headY - 3.5;
+        ctx.fillStyle = 'rgba(10,8,6,0.8)'; ctx.fillRect(footX - 7, hy, 14, 2.6);
+        ctx.fillStyle = c.owner === 'player' ? (f > 0.5 ? COL.green : f > 0.25 ? COL.orange : COL.red) : COL.red;
+        ctx.fillRect(footX - 6.5, hy + 0.5, 13 * f, 1.6);
       }
-      if (c.stun > 0) { TYPE.draw(ctx, 'Z', sp.x + 10, sp.y - 10, 11, COL.cyan, { display: true }); }
-      if (c._healT > 0 && Math.floor(this.time * 6) % 2) { TYPE.draw(ctx, '+', sp.x + 10, sp.y - 10, 12, COL.green, { display: true }); }
+      if (c.stun > 0) { TYPE.draw(ctx, 'Z', footX + 4, headY - 11, 11, COL.cyan, { display: true }); }
+      if (c._healT > 0 && Math.floor(this.time * 6) % 2) { TYPE.draw(ctx, '+', footX + 4, headY - 11, 12, COL.green, { display: true }); }
       // busy badge: a tapping hammer chip + progress bar over any sailor who is
       // repairing (gold), patching a breach (timber), or fighting fire (water)
       if (c._task) {
-        const bx = Math.round(sp.x) + 1, by = Math.round(sp.y) - 21;
+        // a small round chip hugging the head (was a hard teal square floating up on the gun deck)
+        const bx = footX - 5, by = headY - 10;
         const swing = Math.floor(this.time * 6) % 2;
         const tcol = c._task === 'fire' ? COL.cyan : c._task === 'patch' ? '#c08a4a' : c._task === 'sabotage' ? COL.red : COL.gold;
-        ctx.fillStyle = 'rgba(12,8,4,0.82)';
-        ctx.fillRect(bx - 1, by - 1, 11, 11);
-        ctx.strokeStyle = tcol;
-        ctx.strokeRect(bx - 0.5, by - 0.5, 10, 10);
+        ctx.fillStyle = 'rgba(30,20,10,0.78)';
+        UI.roundRect(ctx, bx - 1, by - 1, 11, 11, 3); ctx.fill();
+        ctx.strokeStyle = tcol; ctx.lineWidth = 0.8;
+        UI.roundRect(ctx, bx - 0.5, by - 0.5, 10, 10, 2.6); ctx.stroke(); ctx.lineWidth = 1;
         ctx.fillStyle = tcol;
         if (c._task === 'fire') {
           // flung water droplets
@@ -2077,9 +2216,8 @@ class Battle {
         ctx.fillStyle = COL.black;
         ctx.fillRect(bx - 1, by + 11, 11, 2);
         ctx.fillStyle = tcol;
-        ctx.fillRect(bx - 1, by + 11, Math.max(1, Math.round(11 * p)), 2);
+        ctx.fillRect(bx - 1, by + 11, Math.max(1, 11 * p), 2);
       }
-      if (hostileHere) { ctx.strokeStyle = COL.red; ctx.strokeRect(sp.x - 0.5, sp.y - 0.5, 13, 15); }
     }
     // GUN DECK: each weapon lives in its own gunport in the weapons room,
     // recoils when it fires, and throws a muzzle flash out of the port.
@@ -2087,7 +2225,7 @@ class Battle {
       const wd = DATA.WEAPONS[w.key];
       const m = this.mountPos(ship, Math.min(i, 3));
       const mz = this.muzzleWorld(ship, Math.min(i, 3), w, wd); // emitter point for flash/smoke
-      const rec = w._recoil > 0 ? Math.round(Math.min(0.2, w._recoil) * 15) : 0;
+      const rec = w._recoil > 0 ? Math.min(0.2, w._recoil) * 15 : 0;
       // deck-gun carriage: a timber base so the gun sits ON the ship, not in the sky
       ctx.fillStyle = '#241a10';
       ctx.fillRect(m.x - 2, m.y + 7, 26, 3);
@@ -2349,14 +2487,14 @@ class Battle {
       if (pr.delay > 0) continue;
       const wd = DATA.WEAPONS[pr.wkey];
       const t = pr.t;
-      let x = U.lerp(pr.fromX, pr.toX, t);
-      let y = U.lerp(pr.fromY, pr.toY, t) - Math.sin(t * Math.PI) * pr.arc;
+      const P0 = this.projAt(pr, t);
+      let x = P0.x, y = P0.y;
       // EM Rail Gun: a hypervelocity slug — a bright bolt that STREAKS along the path
       // (leading nose + tapering EM tail), crackling arcs, muzzle charge + impact flash.
       if (pr.wkey === 'depleteduranium') {
         const dx = pr.toX - pr.fromX, dy = pr.toY - pr.fromY, len = Math.hypot(dx, dy) || 1;
         const ux = dx / len, uy = dy / len, nx = -uy, ny = ux; // unit + perpendicular
-        const lead = Math.min(1, t * 1.3);            // slug nose (reaches the target a hair early)
+        const lead = pr._miss ? t * 1.3 : Math.min(1, t * 1.3); // slug nose (a miss streaks on past the hull)
         const tail = Math.max(0, t * 1.3 - 0.55);     // streak tail trails the nose
         const lx = U.lerp(pr.fromX, pr.toX, lead), ly = U.lerp(pr.fromY, pr.toY, lead);
         const tlx = U.lerp(pr.fromX, pr.toX, tail), tly = U.lerp(pr.fromY, pr.toY, tail);
@@ -2393,8 +2531,8 @@ class Battle {
           ctx.globalAlpha = f; ctx.fillStyle = '#f4fff0';
           ctx.beginPath(); ctx.arc(pr.fromX, pr.fromY, 3 + f * 4, 0, Math.PI * 2); ctx.fill();
         }
-        if (t > 0.72) {
-          const f = (t - 0.72) / 0.28;
+        if (t > 0.72 && !pr._miss) {
+          const f = Math.min(1, (t - 0.72) / 0.28);
           ctx.globalAlpha = (1 - f) * 0.6; ctx.fillStyle = COL.lime;
           ctx.beginPath(); ctx.arc(pr.toX, pr.toY, 5 + f * 16, 0, Math.PI * 2); ctx.fill();
           ctx.globalAlpha = 1 - f; ctx.fillStyle = '#f4fff0';
@@ -2423,26 +2561,21 @@ class Battle {
         ctx.globalAlpha = 1;
         continue;
       }
-      // torpedoes dive and skim the waterline, leaving a wake
+      // torpedoes dive and skim the waterline (projAt), leaving a wake
       if (wd.type === 'missile') {
-        const skimY = SEA_Y - 4;
-        y = t < 0.2 ? U.lerp(pr.fromY, skimY, t / 0.2) : t > 0.8 ? U.lerp(skimY, pr.toY, (t - 0.8) / 0.2) : skimY;
-        // seeker torpedo "hears your keel": it weaves as it hunts
-        if (pr.wkey === 'seekertorpedo' && t > 0.2 && t < 0.8) y += Math.sin(t * Math.PI * 5) * 3;
         ctx.fillStyle = 'rgba(244,250,252,0.7)';
         const dir = pr.toX > pr.fromX ? 1 : -1;
-        for (let k = 1; k <= 4; k++) ctx.fillRect(Math.round(x - k * 5 * dir), Math.round(y) + 3, 3, 1);
+        for (let k = 1; k <= 4; k++) ctx.fillRect(x - k * 5 * dir, y + 3, 3, 1);
       }
       // motion trail (smoke-grey for iron, spell-tinted for everything else)
       const trailN = wd.family === 'cannon' ? 2 : 4;
       for (let k = trailN; k >= 1; k--) {
-        const tt = Math.max(0, t - k * 0.05);
-        const tx2 = U.lerp(pr.fromX, pr.toX, tt);
-        const ty2 = wd.type === 'missile' ? y : U.lerp(pr.fromY, pr.toY, tt) - Math.sin(tt * Math.PI) * pr.arc;
+        const tt = Math.max(0, t - k * 0.05), P2 = this.projAt(pr, tt);
+        const tx2 = P2.x, ty2 = wd.type === 'missile' ? y : P2.y;
         ctx.globalAlpha = Math.max(0.05, 0.3 - k * 0.06);
         ctx.fillStyle = wd.family === 'cannon' ? '#9aa0ae' : wd.tint;
         const s3 = Math.max(1, 3 - k);
-        ctx.fillRect(Math.round(tx2 - s3 / 2), Math.round(ty2 - s3 / 2), s3, s3);
+        ctx.fillRect(tx2 - s3 / 2, ty2 - s3 / 2, s3, s3);
       }
       ctx.globalAlpha = 1;
       // siren song: expanding crescents, no dot
@@ -2478,21 +2611,29 @@ class Battle {
         ctx.strokeStyle = '#6a6f7a'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(x - dx, y - dy); ctx.lineTo(x + dx, y + dy); ctx.stroke();
         const bsp = SPR.proj('ball');
-        ctx.drawImage(bsp, Math.round(x - dx - bsp.width / 2), Math.round(y - dy - bsp.height / 2));
-        ctx.drawImage(bsp, Math.round(x + dx - bsp.width / 2), Math.round(y + dy - bsp.height / 2));
+        ctx.drawImage(bsp, x - dx - bsp.width / 2, y - dy - bsp.height / 2);
+        ctx.drawImage(bsp, x + dx - bsp.width / 2, y + dy - bsp.height / 2);
         continue;
       }
       const spr = SPR.proj(type);
       const ms = wd.munScale || 1; // bigger guns throw bigger shot (Heavy Cannon = 2x Light Cannon)
-      ctx.drawImage(spr, Math.round(x - spr.width * ms / 2), Math.round(y - spr.height * ms / 2), spr.width * ms, spr.height * ms);
+      if (Battle.ORIENTED[type]) {
+        // oriented munitions (quills, drills, torpedoes, darts, crests, gusts, flame) point along their
+        // flight tangent; a leftward shot is mirrored first so its art never flies upside-down
+        const P1 = this.projAt(pr, t + 0.02), vx = P1.x - x, vy = P1.y - y, ang = Math.atan2(vy, vx);
+        ctx.save(); ctx.translate(x, y);
+        if (vx < 0) { ctx.scale(-1, 1); ctx.rotate(Math.PI - ang); } else ctx.rotate(ang);
+        ctx.drawImage(spr, -spr.width * ms / 2, -spr.height * ms / 2, spr.width * ms, spr.height * ms);
+        ctx.restore();
+      } else ctx.drawImage(spr, x - spr.width * ms / 2, y - spr.height * ms / 2, spr.width * ms, spr.height * ms);
     }
     // familiars: bound spirits with per-type animated sprites (deploy / idle / act states)
     for (const k of this.activeFamiliars()) {
       const fp = this.familiarPos(k);
-      const dep = (this._famDeploy && this._famDeploy[k] != null) ? U.clamp((this.time - this._famDeploy[k]) / 0.5, 0, 1) : 1;
+      const dep = (this._famDeploy && this._famDeploy[k] != null) ? U.clamp((this.simTime - this._famDeploy[k]) / 0.5, 0, 1) : 1;
       const raw = (this._famAct && this._famAct[k] != null) ? this.time - this._famAct[k] : 9;
       const actPhase = Math.max(0, 1 - raw / 0.45);
-      SPR.drawFamiliar(ctx, k, fp.x, fp.y, 1.3, this.time, actPhase, dep);
+      SPR.drawFamiliar(ctx, k, fp.x, fp.y, SPR.artEntry('icon_fam_' + k) ? 1.6 : 1.3, this.time, actPhase, dep);
     }
     // ward-impact shockwaves: concentric rings spreading from the strike point
     if (this.ripples) for (const rp of this.ripples) {
@@ -2527,7 +2668,9 @@ class Battle {
 
   // mana + system power panel - shared by the battle HUD and the DECKS screen
   enemyInteriorHidden() {
-    return this.p.sysLv.lookout === 0 || (this.hazard === 'fog' && this.p.sysLv.lookout < 2) || this.e.veilT > 0;
+    // R17a: the EFFECTIVE Lookout (a jammed/wrecked crow's nest goes blind), not the installed level
+    const look = this.p.sysEff('lookout');
+    return look === 0 || (this.hazard === 'fog' && look < 2) || this.e.veilT > 0;
   }
   // hovered sailor wins, else the first selected one (enemy crew need a clear deck)
   hoverCrew() {
@@ -2669,28 +2812,6 @@ class Battle {
     for (const dl of descLines) { TYPE.draw(ctx, dl, r.ix, ty, 10, TIP.body); ty += lh; }
     TYPE.draw(ctx, hint, r.ix, ty + 1, 10, TIP.action, { italic: true });
   }
-  clickPowerPanel(x, y, btn, ox) {
-    const sysList = this.sysIconList();
-    for (let i = 0; i < sysList.length; i++) {
-      const rect = this.sysIconRect(ox, i);
-      if (this.inRect(x, y, rect.x, rect.y, rect.w, rect.h)) {
-        const k = sysList[i];
-        if (DATA.SYS_SUB.includes(k)) return true;
-        if (btn === 2) this.p.setAlloc(k, (this.p.alloc[k] || 0) - 1);
-        else if (this.p.totalAlloc() < this.p.effMana()) {
-          this.p.setAlloc(k, (this.p.alloc[k] || 0) + 1);
-        } else {
-          this.log('THE HEARTHSTONE IS FULLY COMMITTED - RIGHT-CLICK A SYSTEM TO FREE A BAR.');
-          AUDIO.sfx('back');
-          return true;
-        }
-        AUDIO.sfx('click');
-        return true;
-      }
-    }
-    return false;
-  }
-
   sysIconList() {
     const list = [];
     for (const k of DATA.SYS_POWERED) if (this.p.sysLv[k] > 0) list.push(k);

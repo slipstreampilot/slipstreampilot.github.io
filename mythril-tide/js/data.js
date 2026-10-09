@@ -10,7 +10,7 @@ DATA.SYSTEMS = {
   sails:     { name: 'Sails',      icon: 'sails',     max: 6, sub: false, costs: [0, 0, 28, 40, 55, 70], desc: 'Enchanted rigging. Each bar +5% evasion. Needed to flee.' },
   weapons:   { name: 'Weapons',    icon: 'weapons',   max: 8, sub: false, costs: [0, 0, 35, 50, 60, 75, 90, 110], desc: 'Gun deck. Bars power your mounted weapons.' },
   infirmary: { name: 'Infirmary',  icon: 'infirmary', max: 3, sub: false, costs: [0, 0, 40, 70], desc: 'Heals crew inside. Higher levels heal faster.' },
-  brinegate: { name: 'Portal', icon: 'brinegate', max: 3, sub: false, costs: [55, 0, 45, 70], desc: 'Merfolk portal. Teleport up to 2 crew to board the enemy ship.' },
+  brinegate: { name: 'Portal', icon: 'brinegate', max: 3, sub: false, costs: [55, 0, 45, 70], desc: 'Merfolk portal. Sends up to 4 crew standing in the Portal room to board the enemy ship.' },
   fogveil:   { name: 'Fog Veil',   icon: 'fogveil',   max: 3, sub: false, costs: [50, 0, 40, 65], desc: 'Cursed-fog cloak. +60% evasion for a few seconds.' },
   sump:      { name: 'Sump Pumps', icon: 'sump',      max: 3, sub: false, costs: [35, 0, 30, 50], desc: 'Bilge pump network. Each powered bar drains floodwater from every room.' },
   shrine:    { name: 'Binding Shrine', icon: 'shrine', max: 3, sub: false, costs: [60, 0, 45, 70], desc: 'Carved altar for bound spirits. Each powered bar wakes one of your familiars.' },
@@ -101,6 +101,25 @@ const TUNING = {
   crewWaterDps:     5,     // crew hp/sec lost in deep water
   crewDrawH:        24,    // HD-2D pose render height in LOGICAL px (P1 modest size; P3 raises it)
   crewDrownWater:   0.6,   // water above this drowns non-aquatic crew
+  floodedMoveWater: 0.4,   // room water above this slows crew (x waterMoveMul / race.waterSpd)
+  // --- crew presentation (Stage 1, 2026-10-08) ---
+  // walk frames advance by DISTANCE, not time, so slow dwarves / fast elves / flooded rooms
+  // never foot-slide: logical px travelled per FULL frame cycle of the race's walk kit (the
+  // human 8-frame video kit covers two steps; the legacy 4-frame kits read as roughly one).
+  crewStride:       { human: 24, merfolk: 14, djinn: 14, stormelf: 17, dwarf: 11, lizard: 15, siren: 14, admiral: 14, armada: 14, ghost: 14, default: 14 },
+  crewClimbStride:  12,    // px per climb cycle (ladder through a hatch)
+  corpseSecs:       1.5,   // a fallen sailor's body stays this long (die frames play once, hold last)
+  corpseFadeSecs:   0.6,   // ...then fades out over this
+  portalMaxCrew:    4,     // FTL teleporter cap: at most this many sailors standing in the Portal room board per jump
+  // --- impact feedback ("juice", Stage 1) --- all scene-logical px / seconds
+  shakeMax:         3.0,   // max camera offset (logical px) at full trauma
+  shakePerDmg:      0.22,  // trauma added per point of hull damage (trauma is 0..1, offset ~ trauma^2)
+  shakeDecay:       1.6,   // trauma lost per second
+  hitStopSecs:      0.06,  // sim freeze on a hull hit (40-80 ms reads as weight; FX keep running)
+  roomFlashSecs:    0.08,  // struck room flashes white this long
+  sceneFlashMax:    0.35,  // peak additive full-scene flash alpha
+  floatSecs:        0.9,   // floating damage number lifetime
+  floatRise:        14,    // logical px a damage number rises (ease-out)
   // --- infirmary ---
   infHealBase:      3,     // crew hp/sec healed in a staffed infirmary
   infHealPerBar:    3,     // extra crew hp/sec healed per powered bar
@@ -140,7 +159,7 @@ const TUNING = {
 // each enemy ward layer SOAKS 1 dmg per room instead of blocking the beam
 DATA.WEAPONS = {
   // ---- IRON & POWDER (human): free ammo, volume fire strips ward layers ----
-  lightcannon:  { name: 'Light Cannon', race: 'human', family: 'cannon', tint: COL.grey, type: 'shot', power: 1, charge: 9, dmg: 1, shots: 1, cost: 38, rarity: 1, desc: 'A four-pounder and a prayer. 1 dmg.' },
+  lightcannon:  { name: 'Light Cannon', race: 'human', family: 'cannon', tint: COL.grey, type: 'shot', power: 1, charge: 9, dmg: 1, shots: 1, cost: 30, rarity: 1, desc: 'A four-pounder and a prayer. 1 dmg.' },
   chainshot:    { name: 'Chainshot', race: 'human', family: 'cannon', tint: COL.ltblue, type: 'shot', power: 1, charge: 9, dmg: 1, shots: 1, vsSails: 2, cost: 38, rarity: 1, desc: '1 dmg, double vs sails. Privateer\'s courtesy.' },
   swivels:      { name: 'Swivel Guns', race: 'human', family: 'cannon', tint: COL.gold, type: 'shot', power: 2, charge: 10, dmg: 1, shots: 2, cost: 50, rarity: 2, desc: 'Rail-mounted spite. Two quick 1-dmg shots.' },
   heavycannon:  { name: 'Heavy Cannon', race: 'human', family: 'cannon', tint: COL.dkred, type: 'shot', power: 2, charge: 13, dmg: 2, shots: 1, leak: 0.3, munScale: 2, cost: 60, rarity: 2, desc: '2 dmg, 30% to breach the hull.' },
@@ -213,7 +232,7 @@ DATA.AUGS = {
   dwarven_pumps:   { name: 'Dwarven Pumps', cost: 45, desc: 'Water drains 2.5x faster, leaks patch quicker.' },
   phoenix_ash:     { name: 'Phoenix Ash', cost: 80, desc: 'Once per battle, a dying crew member revives in the infirmary.' },
   siren_lure:      { name: 'Siren Lure', cost: 50, desc: 'Enemy boarders fight 25% weaker aboard your ship.' },
-  golden_compass:  { name: 'Golden Compass', cost: 45, desc: 'Reveals what awaits at each island on the chart.' },
+  golden_compass:  { name: 'Golden Compass', cost: 45, desc: 'Charts the whole sea: every island is labelled with what awaits there, even ones you cannot reach yet.' },
   tidecaller_pearl:{ name: 'Tidecaller Pearl', cost: 65, desc: 'Begin every battle with wards fully charged.' },
   runeforge:       { name: 'Runeforge', cost: 60, desc: '25% chance to not consume runeshot when firing.' },
   selkie_cloak:    { name: 'Selkie Cloak', cost: 40, desc: 'Your crew can breathe in flooded rooms.' },
@@ -377,7 +396,7 @@ DATA.REGIONS = [
   { name: 'Sapphire Shallows', race: 'merfolk', vig: 'reef', desc: 'Coral labyrinths of the drowners. Keep your doors shut and your pumps wet.', hazards: [['none', 5], ['reef', 2], ['storm', 1]] },
   { name: 'The Serpent Cays', race: 'lizard', vig: 'jungle', desc: 'Jungle islets of the headhunters. They want your crew, not your hull.', hazards: [['none', 5], ['reef', 1], ['kraken', 1]] },
   { name: 'The Cinder Isles', race: 'djinn', vig: 'volcano', desc: 'Volcanic forges of the djinn. Their lances do not miss. Their fires do not stop.', hazards: [['none', 5], ['storm', 1], ['kraken', 1]] },
-  { name: 'Tempest Reach', race: 'stormelf', vig: 'storm', desc: 'The storm elves ride the永 gales here.', hazards: [['none', 3], ['storm', 4], ['fog', 1]] },
+  { name: 'Tempest Reach', race: 'stormelf', vig: 'storm', desc: 'The storm elves ride the gales here.', hazards: [['none', 3], ['storm', 4], ['fog', 1]] },
   { name: 'The Iron Deeps', race: 'dwarf', vig: 'ruins', desc: 'Dwarven toll straits. Every runeshot on the sea was forged down here.', hazards: [['none', 5], ['whirlpool', 2], ['fog', 1]] },
   { name: "The Siren's Maze", race: 'siren', vig: 'fog', desc: 'A fog where ships go to listen, and stay. Stuff your ears. Watch your posts.', hazards: [['none', 3], ['fog', 4], ['kraken', 1]] },
   { name: 'The Last Meridian', race: 'armada', vig: 'city', desc: 'The New World is in sight. So is the Warden.', hazards: [['none', 4], ['storm', 2], ['whirlpool', 1]] },
@@ -585,28 +604,58 @@ DATA.REWARD = function (tier, elite) {
 DATA.CREW_ANIM = {
   idle:    { frames: ['idle_side1', 'idle_side2'], legacy: ['idle_side'], fps: 2, breathe: true },
   walk:    { frames: ['walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'walk6', 'walk7', 'walk8'],
-             legacy: ['walk1', 'walk2', 'walk3', 'walk4'], marker: 'walk8', fps: 10, bob: 1.5, videoMotion: true },
+             // legacy still kits: ONLY the two real painted frames. Their old walk3/walk4 were synthesized by the
+             // rejected dev/fix_walk.py leg-mirror (lower half mirrored under an unmirrored torso), which made every
+             // non-human sailor's top and bottom halves face opposite ways on half the steps. Deleted 2026-10-09;
+             // the real fix is a video walk per race (docs/CREW_ANIM_SHEET_PLAN.md).
+             legacy: ['walk1', 'walk2'], marker: 'walk8', fps: 10, bob: 1.5, videoMotion: true },
   climb:   { frames: ['climb1', 'climb2', 'climb3', 'climb4'], legacy: ['climb_a', 'climb_b'], fps: 6 },
-  operate: { frames: ['operate1', 'operate2'], legacy: ['operate'], fps: 3, bob: 0.6 },
+  // facing: frames are drawn facing RIGHT unless their manifest entry says `left: true` (the human video
+  // kit's operate/fight frames were drawn facing left) — the renderer XORs that into the flip.
+  operate: { frames: ['operate1', 'operate2'], legacy: ['operate'], fps: 3, bob: 0.6 },   // the legacy kits' helm wheel
+  // per-station operate cycles (8-frame video, prop painted in: wheel / rope / cannon / rune pedestal / pump / spyglass).
+  // DATA.crewAnimState only picks one when the race HAS its frames; otherwise helm -> 'operate', anything else -> idle.
+  op_helm:     { frames: ['helm1', 'helm2', 'helm3', 'helm4', 'helm5', 'helm6', 'helm7', 'helm8'], marker: 'helm8', fps: 8, videoMotion: true },
+  op_rope:     { frames: ['rope1', 'rope2', 'rope3', 'rope4', 'rope5', 'rope6', 'rope7', 'rope8'], marker: 'rope8', fps: 8, videoMotion: true },
+  op_gun:      { frames: ['gun1', 'gun2', 'gun3', 'gun4', 'gun5', 'gun6', 'gun7', 'gun8'], marker: 'gun8', fps: 8, videoMotion: true },
+  op_arcane:   { frames: ['arcane1', 'arcane2', 'arcane3', 'arcane4', 'arcane5', 'arcane6', 'arcane7', 'arcane8'], marker: 'arcane8', fps: 8, videoMotion: true },
+  op_pump:     { frames: ['pump1', 'pump2', 'pump3', 'pump4', 'pump5', 'pump6', 'pump7', 'pump8'], marker: 'pump8', fps: 8, videoMotion: true },
+  op_spyglass: { frames: ['spyglass1', 'spyglass2', 'spyglass3', 'spyglass4', 'spyglass5', 'spyglass6', 'spyglass7', 'spyglass8'], marker: 'spyglass8', fps: 6, videoMotion: true },
   repair:  { frames: ['repair1', 'repair2', 'repair3', 'repair4', 'repair5', 'repair6', 'repair7', 'repair8'],
              legacy: ['repair'], fps: 10, bob: 0.8, videoMotion: true },
   // bucket-of-water firefighting: its own 8-frame throw cycle from video; legacy races reuse 'repair'.
   firefight: { frames: ['firefight1', 'firefight2', 'firefight3', 'firefight4', 'firefight5', 'firefight6', 'firefight7', 'firefight8'],
-             legacy: ['repair'], fps: 10, bob: 1.3, videoMotion: true },
+             legacy: ['repair'], marker: 'firefight8', fps: 8, bob: 1.3, videoMotion: true },
   fight:   { frames: ['fight1', 'fight2', 'fight3', 'fight4', 'fight5', 'fight6', 'fight7', 'fight8'],
              legacy: ['attack1', 'attack2', 'attack3', 'attack4'], fps: 10, videoMotion: true },
-  drown:   { frames: ['drown1', 'drown2', 'drown3', 'drown4'], legacy: ['idle_side'], fps: 5, bob: 0.8 },
-  down:    { frames: ['die1', 'die2', 'die3', 'die4', 'die5'], legacy: ['down'], fps: 8, loop: false },
+  drown:   { frames: ['drown1', 'drown2', 'drown3', 'drown4', 'drown5', 'drown6', 'drown7', 'drown8'], legacy: ['idle_side'], marker: 'drown8', fps: 8, bob: 0.8, videoMotion: true },
+  down:    { frames: ['die1', 'die2', 'die3', 'die4', 'die5', 'die6', 'die7', 'die8'], legacy: ['down'], marker: 'die8', fps: 8, loop: false, videoMotion: true },
 };
 // derive the animation state from sim flags already maintained in tickCrew
 DATA.crewAnimState = function (c) {
   if (c.dead) return 'down';
   if (c._fighting) return 'fight';
-  if (c.path && c.path.length > 0) return c._climbing ? 'climb' : 'walk';
+  if ((c.path && c.path.length > 0) || c._settling) return c._climbing ? 'climb' : 'walk';
+  if (c._drowning) return 'drown';              // taking deep-water damage (R16)
   if (c._task === 'fire') return 'firefight';   // dousing a blaze (bucket toss)
   if (c._task) return 'repair';
-  if (c._operating) return 'operate';
+  if (c._operating) return DATA.stationAnim(c._opKey, c.race);
   return 'idle';
+};
+// which operate cycle a manned station plays. Every station family has its own prop painted into the frames, so a
+// sailor never steers a wheel at the gun deck: a race without that family's frames stands at its post (idle) —
+// except the helm, where the legacy kits' wheel pose ('operate') is the right picture.
+DATA.STATION_ANIM = {
+  helm: 'op_helm', sails: 'op_rope', weapons: 'op_gun', sump: 'op_pump', lookout: 'op_spyglass',
+  wards: 'op_arcane', shrine: 'op_arcane', brinegate: 'op_arcane', fogveil: 'op_arcane', stormhex: 'op_arcane', sirensong: 'op_arcane',
+  // doors + infirmary: the sailor simply stands at his post
+};
+DATA.stationAnim = function (key, race) {
+  const st = DATA.STATION_ANIM[key];
+  if (!st) return 'idle';
+  const a = DATA.CREW_ANIM[st], have = (typeof window !== 'undefined' && window.CREW_ART && window.CREW_ART[race]) || null;
+  if (have && have[a.marker]) return st;
+  return st === 'op_helm' ? 'operate' : 'idle';
 };
 // resolve a state to the frames a given race actually has (new HD kit, else legacy).
 // returns { a, frames, isVideo }. `race` optional — without manifest info, prefers legacy.
@@ -616,7 +665,7 @@ DATA._resolveAnim = function (state, race) {
   if (have) {
     const nu = a.frames.filter(function (n) { return have[n]; });
     const newOk = nu.length > 0 && (a.marker ? have[a.marker] != null : true);
-    if (newOk) return { a: a, frames: nu, isVideo: !!a.videoMotion };
+    if (newOk) return { a: a, frames: nu, isVideo: !!a.videoMotion, facesLeft: !!(have[nu[0]] && have[nu[0]].left) };
     if (a.legacy) { const lg = a.legacy.filter(function (n) { return have[n]; }); if (lg.length) return { a: a, frames: lg, isVideo: false }; }
   }
   return { a: a, frames: a.legacy || a.frames, isVideo: false };

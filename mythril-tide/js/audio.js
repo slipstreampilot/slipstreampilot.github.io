@@ -876,6 +876,7 @@ const AUDIO = {
     switch (name) {
       case 'click': osc('square', 700, 900, 0.05, 0.12); break;
       case 'back': osc('square', 500, 300, 0.07, 0.12); break;
+      case 'deny': osc('square', 220, 200, 0.07, 0.10); osc('square', 180, 160, 0.09, 0.10, 0.07); break; // disabled control pressed
       case 'coin': osc('square', 880, 880, 0.06, 0.14); osc('square', 1320, 1320, 0.09, 0.14, 0.06); break;
       case 'cannon': noise('lowpass', 420, 0.28, 0.5); osc('sine', 110, 40, 0.22, 0.5); break;
       case 'hit': noise('bandpass', 300, 0.18, 0.4); osc('sawtooth', 200, 60, 0.15, 0.2); break;

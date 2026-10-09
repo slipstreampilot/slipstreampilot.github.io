@@ -49,20 +49,24 @@ const Game = {
       shipmenu: ShipMenu,
       lore: LoreScreen,
       jukebox: JukeboxScreen,
+      shipyard: ShipyardScreen,
     };
 
     const opts = this.loadJSON(OPTS_KEY) || {};
     AUDIO.muted = !!opts.muted;
-    this.displayFit = opts.display !== 'pixel'; // FIT WINDOW is the default
+    this.displayFit = true; // FIT WINDOW only (pixel-perfect retired 2026-10-08; see resize())
 
     this.canvas.addEventListener('mousedown', e => {
       AUDIO.init();
       const p = this.toGame(e);
+      // kit controls (registered from the drawn rects) get first refusal; activation happens on mouse-UP
+      if (KIT.down(p.x, p.y, e.button)) { e.preventDefault(); return; }
       if (this.screen && this.screen.click) this.screen.click(p.x, p.y, e.button);
       e.preventDefault();
     });
     this.canvas.addEventListener('mouseup', e => {
       const p = this.toGame(e);
+      if (KIT.up(p.x, p.y, e.button)) return;
       if (this.screen && this.screen.mouseup) this.screen.mouseup(p.x, p.y, e.button);
     });
     this.canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -101,22 +105,31 @@ const Game = {
   },
 
   resize() {
-    // PIXEL-PERFECT: integer scale, crisp. FIT WINDOW: fills the window (slightly soft),
-    // and keeps the game playable on small screens by scaling below 1x if needed.
+    // FIT WINDOW (the only mode since 2026-10-08): the canvas fills the window at 16:9. The BACKING
+    // STORE follows the real pixel count (CSS size x devicePixelRatio, capped at 4K) so text, lines
+    // and painted art rasterize sharp at 1080p, 1440p and 4K instead of being resampled from a fixed
+    // 2048x1152 buffer. (The old "pixel-perfect" mode nearest-neighbour DOWNSCALED that buffer and
+    // garbled serif text; it is gone.) Headless harnesses (no devicePixelRatio) keep 2048x1152.
     const raw = Math.min(window.innerWidth / 512, window.innerHeight / 288);
-    const s = this.displayFit ? Math.max(0.5, raw) : Math.max(1, Math.floor(raw));
+    const s = Math.max(0.5, raw);
     this.scale = s;
-    this.canvas.style.width = Math.round(512 * s) + 'px';
-    this.canvas.style.height = Math.round(288 * s) + 'px';
-    this.canvas.style.imageRendering = (this.displayFit && s % 1 !== 0) ? 'auto' : 'pixelated';
+    const cssW = Math.round(512 * s), cssH = Math.round(288 * s);
+    this.canvas.style.width = cssW + 'px';
+    this.canvas.style.height = cssH + 'px';
+    this.canvas.style.imageRendering = 'auto';
+    if (typeof window.devicePixelRatio === 'number') {
+      const bw = Math.max(1024, Math.min(3840, Math.round(cssW * window.devicePixelRatio)));
+      const bh = Math.round(bw * 9 / 16);
+      if (this.canvas.width !== bw || this.canvas.height !== bh) { this.canvas.width = bw; this.canvas.height = bh; }
+    }
   },
-  saveOpts() { this.saveJSON(OPTS_KEY, { muted: AUDIO.muted, display: this.displayFit ? 'fit' : 'pixel' }); },
+  saveOpts() { this.saveJSON(OPTS_KEY, { muted: AUDIO.muted }); },
   toGame(e) {
     // map a client pixel to the current screen's logical grid (works at any design resolution)
     const r = this.canvas.getBoundingClientRect();
     return {
-      x: Math.floor((e.clientX - r.left) / r.width * this.VW),
-      y: Math.floor((e.clientY - r.top) / r.height * this.VH),
+      x: Math.floor((e.clientX - r.left) * this.VW / r.width),   // multiply first: exact at integer ratios
+      y: Math.floor((e.clientY - r.top) * this.VH / r.height),
     };
   },
   toggleMute() {
@@ -135,18 +148,21 @@ const Game = {
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = COL.black;
     ctx.fillRect(0, 0, this.VW, this.VH);
+    KIT.beginFrame();
     if (this.screen && this.screen.render) this.screen.render(ctx);
     // mute indicator
-    if (AUDIO.muted) TYPE.draw(ctx, 'Muted [M]', 4, this.VH - 10, 11, COL.dkgrey, { italic: true });
+    const k = this.VW / 512; // chrome scale: classic 512 grid = 1, HD 1920 grid = 3.75
+    if (AUDIO.muted) TYPE.draw(ctx, 'Muted [M]', 4 * k, this.VH - 10 * k, 11 * Math.min(k, 1.8), COL.dkgrey, { italic: true });
     // save/load warning banner (rare; clears on the next successful save).
     // Hidden during combat - saves only happen between nodes, and the top strip
     // there holds the enemy nameplate.
     if (this.saveWarning && this.screenName !== 'combat') {
-      const w = TYPE.width(ctx, this.saveWarning, 10) + 16;
-      ctx.fillStyle = 'rgba(120,20,20,0.92)'; ctx.fillRect(this.VW / 2 - w / 2, 0, w, 12);
-      ctx.strokeStyle = COL.red; ctx.strokeRect(this.VW / 2 - w / 2 + 0.5, 0.5, w - 1, 11);
-      TYPE.drawCentered(ctx, this.saveWarning, this.VW / 2, 1, 10, COL.white);
+      const fs = 10 * Math.min(k, 2.4), bh = 12 * Math.min(k, 2.4), w = TYPE.width(ctx, this.saveWarning, fs) + 16 * k;
+      ctx.fillStyle = 'rgba(120,20,20,0.92)'; ctx.fillRect(this.VW / 2 - w / 2, 0, w, bh);
+      ctx.strokeStyle = COL.red; ctx.strokeRect(this.VW / 2 - w / 2 + 0.5, 0.5, w - 1, bh - 1);
+      TYPE.drawCentered(ctx, this.saveWarning, this.VW / 2, bh * 0.08, fs, COL.white);
     }
+    KIT.endFrame(ctx); // cross-fade from the previous screen (browser only)
     // pointer cursor over interactive elements (affordance), applied once per frame
     if (this.canvas && this.canvas.style) {
       const cur = this.hot ? 'pointer' : 'default';
@@ -155,6 +171,8 @@ const Game = {
   },
 
   setScreen(name, args) {
+    if (this.screen && name !== this.screenName) KIT.beginTransition(this.canvas); // snapshot -> cross-fade
+    KIT._down = null; // a press never survives a screen change
     this.screenName = name;
     this.screen = this.screens[name];
     // adopt the screen's design resolution (defaults to the classic 512x288 grid).
@@ -232,6 +250,7 @@ const Game = {
   },
 
   save() {
+    if (this._sandbox) return; // the Shipyard test room runs on a throwaway run: never let it overwrite the real save
     if (!this.run || !this.ship) return;
     const ok = this.saveJSON(SAVE_KEY, { run: this.run, ship: this.ship.serialize(), v: SAVE_VERSION });
     // a failed write would otherwise lose progress silently (quota full / private mode)
@@ -657,11 +676,10 @@ const CombatScreen = {
   render(ctx) {
     if (!Game.battle) return;
     this.renderHD(ctx);
-    if (this._quitMenu) this.drawQuitMenu(ctx);
   },
   click(x, y, btn) {
     const b = Game.battle; if (!b) return;
-    if (this._quitMenu) { this.quitMenuClick(x, y); return; }
+    if (this._quitMenu) return; // the quit dialog is a KIT modal (its scrim swallows every click)
     this.hdClick(x, y, btn);
   },
   // the classic battle-scene click logic (rooms, crew sprites, doors, targeting, drag-select).
@@ -699,7 +717,7 @@ const CombatScreen = {
   // coords classic uses (parity by construction); center clicks translate to battle space. ----
   hdScale() { return (1920 - 330) / 512; }, // center-viewport scale (keep in sync with renderHD SX/SW)
   // panel labels + pip type per system ('m'=mana core, 'p'=powered, 's'=subsystem)
-  HD_SYS_LBL: { hearthstone: ['Hearth', 'm'], wards: ['Wards', 'p'], sails: ['Sails', 'p'], weapons: ['Guns', 'p'], infirmary: ['Surgeon', 'p'], sump: ['Bilge', 'p'], shrine: ['Shrine', 'p'], brinegate: ['Portal', 'p'], fogveil: ['Fog', 'p'], stormhex: ['Storm', 'p'], sirensong: ['Song', 'p'], helm: ['Helm', 's'], doors: ['Doors', 's'], lookout: ['Watch', 's'], open: ['Open', 'o'] },
+  HD_SYS_LBL: { hearthstone: ['Hearthstone', 'm'], wards: ['Wards', 'p'], sails: ['Sails', 'p'], weapons: ['Weapons', 'p'], infirmary: ['Infirmary', 'p'], sump: ['Pumps', 'p'], shrine: ['Shrine', 'p'], brinegate: ['Portal', 'p'], fogveil: ['Fog', 'p'], stormhex: ['Storm', 'p'], sirensong: ['Song', 'p'], helm: ['Helm', 's'], doors: ['Doors', 's'], lookout: ['Lookout', 's'], open: ['Open', 'o'] },
   // FIXED layout: reactor, 5 core powered, OPEN_MOUNTS mount slots (installed advanced or 'open'
   // placeholder), 3 subsystems. Always the same count -> stable card sizing. Shared by render + click.
   hdSysList() {
@@ -712,34 +730,47 @@ const CombatScreen = {
     return list;
   },
   hdActions(b) {
-    // DeckScreen ("underway") swaps the combat trio for the station controls
+    // DeckScreen ("underway") swaps the combat pair for the station controls
     const lx = this.hdBottom().sys.x; // left edge tracks the SHIP SYSTEMS panel so the whole column lines up
     if (this._deckV) return [ // big icon+label buttons (same treatment as combat's Pause/Stations)
-      { x: lx, y: 716, w: 144, h: 100, big: true, icon: 'flag', label: 'Set Stations', fn: () => { b.setStations(); b._deckMsg = 'STATIONS SAVED.'; b._deckMsgT = 2; AUDIO.sfx('click'); } },
-      { x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'To Stations', fn: () => { b._deckMsg = b.returnStations() ? 'ALL HANDS TO STATIONS!' : 'EVERYONE IS AT THEIR STATION.'; b._deckMsgT = 2; AUDIO.sfx('click'); } },
+      { id: 'deck.setStations', x: lx, y: 716, w: 144, h: 100, big: true, icon: 'flag', label: 'Set Stations',
+        tip: [{ t: 'Set Stations', c: TIP.ink }, { t: 'Remember where everyone stands now as their battle stations.', c: TIP.body }],
+        fn: () => { b.setStations(); b._deckMsg = 'STATIONS SAVED.'; b._deckMsgT = 2; } },
+      { id: 'deck.toStations', x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'To Stations',
+        tip: [{ t: 'To Stations', c: TIP.ink }, { t: 'Send every hand back to their saved station.', c: TIP.body }],
+        fn: () => { b._deckMsg = b.returnStations() ? 'ALL HANDS TO STATIONS!' : 'EVERYONE IS AT THEIR STATION.'; b._deckMsgT = 2; } },
     ];
     // Big icon+label buttons seated just above the SHIP SYSTEMS panel — left edge tracks L.sys.x so
-    // the Pause frame lines up with the SHIP SYSTEMS frame. Recall is GONE (it's on the Portal card).
-    const a = [
-      { x: lx, y: 716, w: 144, h: 100, big: true, icon: 'pause', label: 'Pause', fn: () => b.togglePause() },
-      { x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'Stations', fn: () => b.clickHUD(355, 281, 0) },
+    // the Pause frame lines up with the SHIP SYSTEMS frame. (Advanced systems — Veil / Board+Recall /
+    // Jam / Charm — are cast from a button ON their own system card; see hdSysActions.)
+    return [
+      { id: 'combat.pause', x: lx, y: 716, w: 144, h: 100, big: true, icon: 'pause', label: 'Pause', sound: false,
+        tip: [{ t: b.paused ? 'Resume' : 'Pause', c: TIP.ink }, { t: 'Orders still work while paused. Space also toggles.', c: TIP.body }],
+        fn: () => b.togglePause() },
+      { id: 'combat.stations', x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'Stations', sound: false,
+        tip: [{ t: 'All hands to stations', c: TIP.ink }, { t: 'Left-click (or R): everyone returns to their saved post.', c: TIP.body }, { t: 'Right-click (or T): save where everyone stands now.', c: TIP.faint }],
+        fn: () => b.returnToStations(), onRight: () => b.saveStations() },
     ];
-    // (advanced systems — Veil / Board+Recall / Jam / Charm — are activated from a button ON their own
-    // system card, above the pips; see hdSysAction. They're no longer crammed into this row.)
-    return a;
   },
-  // a big PARCHMENT-faced command button (Pause / Stations) — same look as the Retreat button:
-  // parchment face + ink icon/label. The ORNATE panel frame is added by the caller (pushed to
-  // frameLayer) so it matches the Retreat/gear/resource frames. Pause flips to a play-triangle + "Resume".
-  hdBigBtn(ctx, a, parchPat, b, hover) {
-    const { x, y, w, h } = a;
+  // a big PARCHMENT-faced command button (Pause / Stations) — same face + deferred ornate frame as the
+  // KIT Retreat button, but icon-over-label. A KIT registration (a.id): hover / press states, mouse-up
+  // activation, right-click via a.onRight. Pause flips to a play-triangle + "Resume" (and lights teal).
+  hdBigBtn(ctx, a, b) {
+    KIT.reg(a.id, a, { onClick: a.fn, onRight: a.onRight, sound: a.sound });
+    const hov = KIT.hovered(a.id, a), prs = KIT.pressed(a.id, a);
+    if (hov) Game.hot = true;
+    const ht = KIT.anim(a.id + ':h', hov ? 1 : 0, 18);
+    const x = a.x, y = a.y + (prs ? 1.5 : 0), w = a.w, h = a.h;
     const paused = a.icon === 'pause' && b.paused;
-    if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(x, y, w, h); ctx.fillStyle = 'rgba(244,232,205,0.30)'; ctx.fillRect(x, y, w, h); }
-    else { ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h); }
-    if (hover) { ctx.fillStyle = 'rgba(255,236,190,0.32)'; ctx.fillRect(x, y, w, h); }
+    KIT.parchFill(ctx, x, y, w, h);
+    if (paused) { ctx.fillStyle = 'rgba(47,138,114,0.16)'; ctx.fillRect(x, y, w, h); }       // lit while it holds the game
+    if (ht > 0) { ctx.fillStyle = 'rgba(255,236,190,' + (0.32 * ht).toFixed(3) + ')'; ctx.fillRect(x, y, w, h); }
+    if (prs) { ctx.fillStyle = 'rgba(60,36,12,0.16)'; ctx.fillRect(x, y, w, h); }
     const col = COL.inkdk;                                                          // dark ink icon + label on parchment
     hdActionIcon(ctx, paused ? 'play' : a.icon, x + w / 2, y + h * 0.40, 46, col);
-    TYPE.drawCentered(ctx, paused ? 'Resume' : a.label, x + w / 2, y + h - 30, 20, col, { display: true, maxWidth: w - 12, fit: 'shrink' });
+    KIT.text(ctx, paused ? 'Resume' : a.label, { x, y: y + h - 36, w, h: 24 }, { size: 20, display: true, align: 'center', padX: 18, color: col }); // clear of the frame's corner knots
+    KIT.frame({ x, y, w, h });
+    if (hov && a.tip) KIT.tip(a.tip, Game.mouse.x, Game.mouse.y);
   },
   // Activate-buttons for an advanced system, shown ON its system card (above the pips) — an array
   // so the Brine Gate can stack Board + Recall. Shared by renderHD (draws) and hdClick (handles)
@@ -752,32 +783,38 @@ const CombatScreen = {
     if (key === 'doors') {
       const note = (t) => { if (this._deckV) { b._deckMsg = t; b._deckMsgT = 2; } else b.log(t); };
       return [
-        { label: 'Open All', icon: 'open', fn: () => { b.p.setAllDoors(true); note('ALL DOORS THROWN OPEN.'); AUDIO.sfx('click'); }, ready: true, live: false, cd: 0, cdMax: 0 },
-        { label: 'Shut All', icon: 'shut', fn: () => { b.p.setAllDoors(false); note('ALL DOORS SEALED — WATERTIGHT.'); AUDIO.sfx('click'); }, ready: true, live: false, cd: 0, cdMax: 0 },
+        { label: 'Open All', icon: 'open', fn: () => { b.p.setAllDoors(true); note('ALL DOORS THROWN OPEN.'); }, snd: 'click', ready: true, live: false, cd: 0, cdMax: 0,
+          tip: 'Throw every door open — crew move freely, but fire and water spread.' },
+        { label: 'Shut All', icon: 'shut', fn: () => { b.p.setAllDoors(false); note('ALL DOORS SEALED — WATERTIGHT.'); }, snd: 'click', ready: true, live: false, cd: 0, cdMax: 0,
+          tip: 'Seal every door — contains fire and flooding, slows boarders.' },
       ];
     }
     if (this._deckV) return []; // no combat activations (Veil/Board/Jam/Charm) while underway
     const p = b.p;
+    // the one reason a system button is dark right now (shown as its tooltip; pressing logs it)
+    const why = (sys, cd) => p.powered(sys) <= 0 ? 'No mana — left-click this card to power it.' : cd > 0 ? 'Recharging — ' + Math.ceil(cd) + 's left.' : null;
     switch (key) {
-      case 'fogveil':   return [{ label: 'Veil', fn: () => b.clickHUD(355, 269, 0), ready: p.powered('fogveil') > 0 && (p.veilCd || 0) <= 0, live: false, cd: p.veilCd || 0, cdMax: p.veilCdMax || 0 }];
-      case 'brinegate': return [
-        { label: b.gateMode ? 'Board…' : 'Board', fn: () => b.tryGate(), ready: b.gateReady(), live: !!b.gateMode, cd: p.gateCd || 0, cdMax: p.gateCdMax || 0 },
-        { label: 'Recall', fn: () => b.tryRecall(), ready: b.gateReady() && b.p.crew.some(c => !c.dead && c.aboard === 'away'), live: false, cd: p.gateCd || 0, cdMax: p.gateCdMax || 0 },
-      ];
-      case 'stormhex':  return [{ label: 'Jam', icon: 'bolt', fn: () => b.tryStormhex(), ready: b.hexReady(), live: !!b.hexMode, cd: p.hexCd || 0, cdMax: p.hexCdMax || 0 }];
-      case 'sirensong': return [{ label: 'Charm', icon: 'heart', fn: () => b.trySong(), ready: b.songReady(), live: !!b.songMode, cd: p.songCd || 0, cdMax: p.songCdMax || 0 }];
+      case 'fogveil': return [{ label: 'Veil', fn: () => b.castVeil(), ready: b.veilReady(), live: (p.veilT || 0) > 0, cd: p.veilCd || 0, cdMax: p.veilCdMax || 0,
+        reason: why('fogveil', p.veilCd || 0), tip: 'Vanish into conjured fog: enemy shots lose you for a few seconds.' }];
+      case 'brinegate': {
+        const away = b.p.crew.some(c => !c.dead && c.aboard === 'away');
+        return [
+          { label: b.gateMode ? 'Board…' : 'Board', fn: () => b.tryGate(), ready: b.gateReady(), live: !!b.gateMode, cd: p.gateCd || 0, cdMax: p.gateCdMax || 0,
+            reason: why('brinegate', p.gateCd || 0), tip: 'Send the crew standing in the Portal room to an enemy room.' },
+          { label: 'Recall', fn: () => b.tryRecall(), ready: b.gateReady() && away, live: false, cd: p.gateCd || 0, cdMax: p.gateCdMax || 0,
+            reason: why('brinegate', p.gateCd || 0) || (away ? null : 'No one is aboard the enemy to recall.'), tip: 'Pull every boarder home through the Portal.' },
+        ];
+      }
+      case 'stormhex': return [{ label: 'Jam', icon: 'bolt', fn: () => b.tryStormhex(), ready: b.hexReady(), live: !!b.hexMode, cd: p.hexCd || 0, cdMax: p.hexCdMax || 0,
+        reason: why('stormhex', p.hexCd || 0), tip: 'Arc lightning onto an enemy system and jam it.' }];
+      case 'sirensong': return [{ label: 'Charm', icon: 'heart', fn: () => b.trySong(), ready: b.songReady(), live: !!b.songMode, cd: p.songCd || 0, cdMax: p.songCdMax || 0,
+        reason: why('sirensong', p.songCd || 0), tip: 'Sing an enemy sailor over to your side for a while.' }];
       default: return [];
     }
   },
+  // the familiar DEPLOY / RE-BIND button in slot i (shared by renderHD's draw and the regress hit-rect test)
+  famBtnRect(L, i) { const bw = 78, bh = 22, mid = L.fam.y + 50 + i * 44 + 20; return { x: L.fam.x + L.fam.w - 18 - bw, y: mid - bh / 2, w: bw, h: bh }; },
   hdSysBtnRect(L, idx, count, slot) { const cw = L.sys.w / count, x = L.sys.x + idx * cw, cardTop = L.sys.y + 48; return { x: x + 15, y: cardTop + 13 + (slot || 0) * 28, w: cw - 30, h: 23 }; },
-  // a recessed BROWN-PAPER slot inset into a parchment card (the in-card button base)
-  recessBtn(ctx, r) {
-    if (this._parchPat) { ctx.fillStyle = this._parchPat; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.fillStyle = 'rgba(78,50,20,0.5)'; ctx.fillRect(r.x, r.y, r.w, r.h); } // parchment tinted to kraft/brown paper
-    else { ctx.fillStyle = '#72512c'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-    ctx.fillStyle = 'rgba(30,18,6,0.30)'; ctx.fillRect(r.x, r.y, r.w, 2);                         // soft inner top shadow (recessed)
-    ctx.fillStyle = 'rgba(255,238,200,0.14)'; ctx.fillRect(r.x, r.y + r.h - 1.5, r.w, 1.5);       // bottom light lip
-    ctx.strokeStyle = 'rgba(46,30,14,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-  },
   // dispatch an in-button glyph by type (door open/shut, lightning bolt, heart)
   drawGlyph(ctx, type, cx, cy, s, col) {
     if (type === 'open' || type === 'shut') return this.doorGlyph(ctx, cx, cy, s, type === 'open', col);
@@ -831,57 +868,44 @@ const CombatScreen = {
       fam: { x: 1580, y: 832, w: 312, h: 230 },
     };
   },
-  // HD surrender dialog: while surrenderOffer stands, b.click swallows every click, so the HD
-  // view must draw + hit-test its own accept/decline buttons (or "targeting suddenly stops working").
+  // HD surrender dialog — a KIT modal: its scrim blocks every control beneath, so only Accept / Fight On are live.
   hdSurrenderRects() {
     const box = { x: 610, y: 388, w: 700, h: 300 };
     return {
       box,
-      accept: { x: box.x + 70, y: box.y + box.h - 86, w: 250, h: 64 },
-      decline: { x: box.x + box.w - 320, y: box.y + box.h - 86, w: 250, h: 64 },
+      accept: { x: box.x + 70, y: box.y + box.h - 96, w: 250, h: 64 },
+      decline: { x: box.x + box.w - 320, y: box.y + box.h - 96, w: 250, h: 64 },
     };
   },
   drawHdSurrender(ctx) {
-    const b = Game.battle, s = this.hdSurrenderRects();
-    ctx.fillStyle = 'rgba(14,13,29,0.6)'; ctx.fillRect(0, 0, 1920, 1080);
-    ctx.fillStyle = COL.woodfrdk; ctx.fillRect(s.box.x - 5, s.box.y - 5, s.box.w + 10, s.box.h + 10);
-    ctx.fillStyle = COL.paper; ctx.fillRect(s.box.x, s.box.y, s.box.w, s.box.h);
-    ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; ctx.strokeRect(s.box.x + 1.5, s.box.y + 1.5, s.box.w - 3, s.box.h - 3); ctx.lineWidth = 1;
-    TYPE.drawCentered(ctx, 'They signal surrender!', 960, s.box.y + 30, 34, COL.inkdk, { display: true });
-    TYPE.drawWrapped(ctx, 'The enemy captain offers tribute if you let them limp home: ' + b.surrenderOffer.shards + ' shards and ' + b.surrenderOffer.rune + ' runeshot.', s.box.x + 50, s.box.y + 96, s.box.w - 100, 24, COL.inkmd, { italic: true, maxLines: 3 }, 3);
-    const btn = (r, label, col) => { ctx.fillStyle = COL.brass; ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6); ctx.fillStyle = col; ctx.fillRect(r.x, r.y, r.w, r.h); TYPE.drawCentered(ctx, label, r.x + r.w / 2, r.y + 16, 28, COL.paperhi, { display: true, shadow: COL.black }); };
-    btn(s.accept, 'ACCEPT', '#2f6b39'); btn(s.decline, 'FIGHT ON', '#7a2222');
+    const b = Game.battle, s = this.hdSurrenderRects(), o = b.surrenderOffer;
+    KIT.scrim(ctx, 1920, 1080, 0.55);
+    const c = KIT.panel(ctx, s.box, { title: 'They signal surrender!', wood: true });
+    KIT.card(ctx, { x: c.x, y: c.y, w: c.w, h: 112 });
+    KIT.text(ctx, 'The enemy captain offers tribute if you let them limp home: ' + o.shards + ' shards and ' + o.rune + ' runeshot.',
+      { x: c.x + 24, y: c.y + 14, w: c.w - 48, h: 84 }, { size: 22, italic: true, color: COL.inkmd, fit: 'wrap', align: 'center', maxLines: 3 });
+    KIT.button(ctx, 'combat.surrender.accept', s.accept, 'Accept', { onClick: () => b.acceptSurrender(), sound: false, size: 26,
+      tip: [{ t: 'Take the tribute', c: TIP.ink }, { t: o.shards + ' shards and ' + o.rune + ' runeshot. They sail away.', c: TIP.body }] });
+    KIT.button(ctx, 'combat.surrender.decline', s.decline, 'Fight On', { variant: 'danger', onClick: () => b.declineSurrender(), sound: false, size: 26,
+      tip: [{ t: 'No quarter', c: TIP.ink }, { t: 'Refuse and finish the fight.', c: TIP.body }] });
   },
+  // clicks that land on NO kit control (the kit registry — Retreat, gear, Pause/Stations, system action
+  // buttons, weapon rows, familiar deploy, dialogs — gets first refusal in Game's mousedown).
   hdClick(x, y, btn) {
     const b = this.hdB(); if (!b) return;
     const deck = !!this._deckV;
     const inR = (rx, ry, rw, rh) => x >= rx && x < rx + rw && y >= ry && y < ry + rh;
     const L = this.hdBottom();
-    // surrender offer stands -> only its buttons are live (forward to classic accept/decline coords)
-    if (b.surrenderOffer) {
-      const s = this.hdSurrenderRects();
-      if (inR(s.accept.x, s.accept.y, s.accept.w, s.accept.h)) b.click(180, 175, 0);
-      else if (inR(s.decline.x, s.decline.y, s.decline.w, s.decline.h)) b.click(300, 175, 0);
-      return;
-    }
+    if (b.surrenderOffer) return; // modal (the scrim normally swallows the click first)
     // crew rail -> select crew (toggle, Shift = multi)
     if (x < L.sys.x + 302) for (let i = 0; i < 8; i++) if (inR(L.sys.x, 92 + i * 72, 300, 64)) {
       const c = b.p.crew[i];
       if (c && !c.dead) { if (!Game.keys['Shift']) b.selCrew.clear(); if (b.selCrew.has(c.id)) b.selCrew.delete(c.id); else b.selCrew.add(c.id); AUDIO.sfx('click'); }
       return;
     }
-    // action buttons (pause/stations/recall/veil/gate)
-    for (const a of this.hdActions(b)) if (inR(a.x, a.y, a.w, a.h)) { a.fn(); return; }
-    // settings gear -> quit-to-title menu (back to main menu)
-    if (inR(1818, 14, 72, 72)) { this._quitMenu = true; AUDIO.sfx('click'); return; }
-    // retreat = flee  ·  decks: the same slot is "To Chart"
-    if (inR(1648, 14, 150, 72)) { if (deck) { this._deckV = null; AUDIO.sfx('click'); Game.setScreen('map'); } else b.clickHUD(305, 269, 0); return; }
     // ship systems -> mana allocation (left +, right -); hearthstone + sub systems are no-ops
     if (inR(L.sys.x, L.sys.y + 44, L.sys.w, L.sys.h - 44)) {
       const sysL = this.hdSysList(), cw = L.sys.w / sysL.length, idx = Math.floor((x - L.sys.x) / cw), k = sysL[idx];
-      // advanced-system activate button (top of the card, above the pips) — left-click only
-      const acts = this.hdSysActions(b, k);
-      if (btn === 0 && acts.length) { for (let si = 0; si < acts.length; si++) { const r = this.hdSysBtnRect(L, idx, sysL.length, si); if (inR(r.x, r.y, r.w, r.h)) { acts[si].fn(); return; } } }
       if (k && k !== 'hearthstone' && k !== 'open' && !DATA.SYS_SUB.includes(k)) {
         if (btn === 2) { b.p.setAlloc(k, (b.p.alloc[k] || 0) - 1); AUDIO.sfx('click'); }
         else if (b.p.totalAlloc() < b.p.effMana()) { b.p.setAlloc(k, (b.p.alloc[k] || 0) + 1); AUDIO.sfx('click'); }
@@ -889,23 +913,12 @@ const CombatScreen = {
       }
       return;
     }
-    // weapons -> select/arm (forward to classic weapon-slot coords). Clicking the empty part of the
-    // panel (below the last gun) cancels a pending selection — re-clicking the area "deselects".
-    const wRows = L.wpn.y + 50;
-    if (inR(L.wpn.x, wRows, L.wpn.w, L.wpn.h - 52)) {
-      if (deck) return; // weapons are read-only while underway
-      const i = Math.floor((y - wRows) / 44);
-      if (i >= 0 && i < b.p.weapons.length && b.p.weapons[i]) b.clickHUD(255 + i * 48, 245, btn);
-      else if (b.selWeapon >= 0) { b.selWeapon = -1; this._beamAnchor = null; AUDIO.sfx('back'); }
+    // weapons panel: a click that missed every gun row cancels a pending selection ("click away deselects")
+    if (inR(L.wpn.x, L.wpn.y + 50, L.wpn.w, L.wpn.h - 52)) {
+      if (!deck && b.selWeapon >= 0) { b.selWeapon = -1; this._beamAnchor = null; AUDIO.sfx('back'); }
       return;
     }
-    // familiars -> spend a Summoner's Candle to deploy / re-bind an orbiting familiar
-    if (inR(L.fam.x, L.fam.y + 50, L.fam.w, L.fam.h - 54)) {
-      if (deck) return; // familiars are read-only while underway
-      const i = Math.floor((y - (L.fam.y + 50)) / 44), fams = Game.run.familiars || [];
-      if (i >= 0 && i < fams.length && fams[i] && b.isOrbiting(fams[i])) b.deployFamiliar(fams[i]);
-      return;
-    }
+    if (inR(L.fam.x, L.fam.y, L.fam.w, L.fam.h)) return; // familiar panel body is read-only (deploy is a button)
     // enemy box is read-only
     if (inR(1480, 92, 420, 200)) return;
     // center battle viewport -> translate to battle space and run the scene click
@@ -916,6 +929,35 @@ const CombatScreen = {
   },
   // ---- Stage 0: HD combat scaffold (1920x1080). Framed empty panels + center battle region.
   // Live data lands in Stage 2, interactions in Stage 3, the battle composite in Stage 1.
+  // +1 good for the player, -1 bad, 0 neutral — from the message's subject and verb
+  logTone(msg, b) {
+    const up = String(msg).toUpperCase();
+    const ename = b && b.e && b.e.name ? b.e.name.toUpperCase() : '\u0000';
+    const mine = /^(YOU|YOUR|ALL HANDS|EVERYONE|OUR)\b/.test(up) || (b && b.p && b.p.name && up.startsWith(b.p.name.toUpperCase()));
+    const theirs = /^(THE ENEMY|ENEMY|BOARDERS|THEIR|THE WARDEN|THE ARMADA)\b/.test(up) || up.startsWith(ename);
+    const bad = /(SHATTER|BURN|ABLAZE|FLOOD|BREACH|LOST|DIES|DIED|SLAIN|FALLS|DOWNED|JAMMED|STUNNED|BLIND|CHARMED|POISON|SINK|CRIPPL|DESTROY|WRECK|CANNOT|CAN'T|FAILS|NO MANA|OUT OF|FLEE|ESCAPE|BLOCK)/.test(up);
+    const good = /(EVADE|DODGE|ABSORB|SOAK|REPAIR|RESIST|HOLD|SAFE|REVIVE|HEAL|CAPTURE|PRIZE|SURRENDER|VICTORY|STRIKE|LANDS|HITS)/.test(up);
+    if (mine) return bad ? -1 : good ? 1 : 0;
+    if (theirs) return bad ? 1 : good ? -1 : 0;
+    if (/(SHIP CAPTURED|PRIZE TAKEN|ENEMY SUNK|VICTORY)/.test(up)) return 1;
+    return 0;
+  },
+  // ALL-CAPS log lines -> sentence case, keeping proper names (ships, crew, systems) capitalised
+  sentenceCase(msg, b) {
+    msg = String(msg);
+    const letters = msg.replace(/[^A-Za-z]/g, '');
+    if (!letters || letters !== letters.toUpperCase()) return msg; // already mixed case
+    let out = msg.toLowerCase().replace(/(^|[.!?]\s+)([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    const names = [];
+    if (b) { for (const sh of [b.p, b.e]) { if (sh && sh.name) names.push(sh.name); if (sh && sh.crew) for (const c of sh.crew) if (c.name) names.push(c.name); } }
+    for (const k in DATA.SYSTEMS) { const n = DATA.SYSTEMS[k].name; if (n && /\s/.test(n)) names.push(n); } // multi-word proper names only (not 'wards', 'sails'...)
+    names.push('Warden', 'Armada', 'Portal', 'Seance Candle', 'Seance Candles', 'Hearthstone', 'Imperial', 'Dawnchaser');
+    for (const nm of names) {
+      const re = new RegExp('\\b' + nm.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g');
+      out = out.replace(re, nm.charAt(0).toUpperCase() + nm.slice(1));
+    }
+    return out;
+  },
   renderHD(ctx) {
     const b = this.hdB(), run = Game.run || {};
     const deck = !!this._deckV; // DeckScreen "underway" mode: no enemy, station controls, read-only panels
@@ -923,19 +965,8 @@ const CombatScreen = {
     const LX = this.hdBottom().sys.x, dL = LX - 20; // track the SHIP SYSTEMS panel's left edge
     let hdTip = null; // {lines:[{t,c}], ax, ay} — scrap tooltip for the hovered HD element
     // AI chrome: 9-slice ornate frame + seamless parchment/stone tiles (fall back to code-drawn if absent)
-    const frameArt = SPR.artEntry('ui_panel_frame');
-    const pe = SPR.artEntry('ui_parchment'), se = SPR.artEntry('ui_stone'), we = SPR.artEntry('ui_wood');
-    const parchPat = pe ? ctx.createPattern(pe.img, 'repeat') : null;
-    const stonePat = se ? ctx.createPattern(se.img, 'repeat') : null;
-    const woodPat = we ? ctx.createPattern(we.img, 'repeat') : null;
-    this._parchPat = parchPat; // shared with recessBtn (brown-paper button face)
-    const draw9 = (img, x, y, w, h, si, di) => { // border-only 9-slice (center stays clear)
-      const sw = img.naturalWidth, sh = img.naturalHeight, sR = sw - si, sB = sh - si, dR = x + w - di, dB = y + h - di;
-      ctx.drawImage(img, 0, 0, si, si, x, y, di, di); ctx.drawImage(img, sR, 0, si, si, dR, y, di, di);
-      ctx.drawImage(img, 0, sB, si, si, x, dB, di, di); ctx.drawImage(img, sR, sB, si, si, dR, dB, di, di);
-      ctx.drawImage(img, si, 0, sw - 2 * si, si, x + di, y, w - 2 * di, di); ctx.drawImage(img, si, sB, sw - 2 * si, si, x + di, dB, w - 2 * di, di);
-      ctx.drawImage(img, 0, si, si, sh - 2 * si, x, y + di, di, h - 2 * di); ctx.drawImage(img, sR, si, si, sh - 2 * si, dR, y + di, di, h - 2 * di);
-    };
+    // chrome primitives live in the shared KIT (js/kit.js) since 2026-10-08; these are thin local aliases
+    const parchPat = KIT.pat(ctx, 'ui_parchment');
     // ---- the battle scene is the FULL-BLEED backdrop; panels paint on top of it ----
     // Render scene-only (no classic HUD/hover) into an offscreen sized to the ON-SCREEN width,
     // so the high-res (2x) ship art draws at full detail and the final blit is 1:1 (no blurry
@@ -945,20 +976,34 @@ const CombatScreen = {
       const SS = SW / 512, dh = Math.round(HUD_Y * SS); // SS ~3.1 -> offscreen renders at display res
       if (!this._sc || this._sc.width !== SW) { this._sc = document.createElement('canvas'); this._sc.width = SW; this._sc.height = dh; this._sctx = this._sc.getContext('2d'); }
       const o = this._sctx;
-      o.setTransform(SS, 0, 0, SS, 0, 0); o.clearRect(0, 0, 512, HUD_Y);
+      o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, SW, dh);
+      // camera shake (Stage 1 juice): trauma-driven smooth offset, with a matching overscan zoom about
+      // the scene centre so the shaken frame never exposes an edge. Frozen while paused.
+      const shk = b.shakeOffset ? b.shakeOffset() : { x: 0, y: 0, mag: 0 };
+      const zm = shk.mag > 0 ? 1 + (shk.mag + 0.5) / 110 : 1;
+      o.setTransform(SS * zm, 0, 0, SS * zm, SS * (256 * (1 - zm) + shk.x), SS * (HUD_Y / 2 * (1 - zm) + shk.y));
       o.imageSmoothingEnabled = true; o.imageSmoothingQuality = 'high'; // smooth the art at fractional scale; fillRect sea stays crisp
+      b._aimMouse = { x: (Game.mouse.x - SX) / SS, y: (Game.mouse.y - OFF) / SS }; // scene-logical cursor (aim previews + crew hover)
       b.renderSea(o); if (!deck) b.renderShip(o, b.e); b.renderShip(o, b.p);
       if (!deck) {
-        b._aimMouse = { x: (Game.mouse.x - SX) / SS, y: (Game.mouse.y - OFF) / SS }; // scene-logical cursor for aim previews
         b.renderProjectiles(o); b.renderSweeps(o); b.renderTargeting(o); b.renderHazardFx(o);
       }
-      for (const pa of b.particles) { o.fillStyle = pa.col; o.fillRect(Math.round(pa.x), Math.round(pa.y), pa.size, pa.size); }
+      if (b.renderParticles) b.renderParticles(o);   // life-faded, additive fire/magic sparks
+      if (b.renderFloaters) b.renderFloaters(o);     // floating damage numbers / MISS / WARDED
+      if (b.flash > 0) { // brief additive full-scene flash (hull hits, lightning)
+        o.save(); o.setTransform(1, 0, 0, 1, 0, 0); o.globalCompositeOperation = 'lighter';
+        o.fillStyle = 'rgba(255,240,215,' + (TUNING.sceneFlashMax * Math.min(1, b.flash / 0.25)).toFixed(3) + ')';
+        o.fillRect(0, 0, SW, dh); o.restore();
+      }
       // dark WALNUT surround (warm wood, not gray stone / digital blue) — panels float on it
       // unframed PARCHMENT page is the chrome background; the wood-framed panels sit on top of it
       if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(0, 0, 1920, 1080); ctx.fillStyle = 'rgba(223,205,166,0.12)'; ctx.fillRect(0, 0, 1920, 1080); }
       else { ctx.fillStyle = COL.paper; ctx.fillRect(0, 0, 1920, 1080); }
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(this._sc, 0, 0, SW, Math.round(8 * SS), SX, 0, SW, OFF + 2); // stretch top sky band to fill the gap above
+      // sky band above the scene: MIRROR the scene's top strip (continuous clouds, no stretched smear or
+      // hard seam), then deepen it slightly toward the top of the screen so it reads as open sky
+      ctx.save(); ctx.translate(SX, OFF + 1); ctx.scale(1, -1); ctx.drawImage(this._sc, 0, 0, SW, OFF + 2, 0, 0, SW, OFF + 2); ctx.restore();
+      { const g = ctx.createLinearGradient(0, 0, 0, OFF); g.addColorStop(0, 'rgba(36,74,150,0.30)'); g.addColorStop(1, 'rgba(36,74,150,0)'); ctx.fillStyle = g; ctx.fillRect(SX, 0, SW, OFF); }
       ctx.drawImage(this._sc, 0, 0, SW, dh, SX, OFF, SW, dh); // 1:1 blit -> crisp
       // --- hover the scene: room/door tooltips + a room outline (parity with the classic view) ---
       if (b.state === 'fight' && !b.surrenderOffer && Game.mouse.x >= SX) {
@@ -985,19 +1030,18 @@ const CombatScreen = {
       // start below the tall resource panels so the top line never hides behind them.
       // dark outline (not a sub-pixel shadow) so they read over the brightest sky.
       let py = 150;
-      for (const l of b.logs) {
-        if (l.t <= 0) continue;
-        const up = l.msg.toUpperCase();
-        const col = (up.startsWith('YOU') || up.startsWith('YOUR')) ? COL.ltblue
-          : (up.startsWith('THE ENEMY') || up.startsWith('ENEMY') || up.startsWith('BOARDERS') || (b.e.name && up.includes(b.e.name.toUpperCase()))) ? COL.red : COL.gold;
-        const txt = (l.n > 1) ? l.msg + '  ×' + l.n : l.msg;
-        // dark scrim pill behind each line so light/cyan text stays legible over the brightest sky
-        const tw = TYPE.width(ctx, txt, 26, { display: true });
-        ctx.globalAlpha = Math.min(1, l.t) * 0.46; ctx.fillStyle = '#08060e';
-        UI.roundRect(ctx, mid - tw / 2 - 16, py - 4, tw + 32, 33, 9); ctx.fill();
+      // combat log: newest 3 lines, coloured by what the event MEANS for the player (good teal /
+      // bad salmon / neutral gold) rather than by grammatical subject, in sentence case (no shouting).
+      const shown = b.logs.filter(l => l.t > 0).slice(-3);
+      for (const l of shown) {
+        const tone = this.logTone(l.msg, b);
+        const col = tone > 0 ? '#a8ecd6' : tone < 0 ? '#ffb39a' : COL.gold;
+        const txt = this.sentenceCase(l.msg, b) + ((l.n > 1) ? '  ×' + l.n : '');
+        const tw = TYPE.width(ctx, txt, 27, { weight: 600 });
+        KIT.pill(ctx, mid - tw / 2 - 18, py - 5, tw + 36, 36, Math.min(1, l.t) * 0.5);
         ctx.globalAlpha = Math.min(1, l.t);
-        TYPE.drawCentered(ctx, txt, mid, py, 26, col, { display: true, outline: COL.black, outlineW: 2 });
-        ctx.globalAlpha = 1; py += 34;
+        TYPE.drawCentered(ctx, txt, mid, py, 27, col, { weight: 600, outline: '#0b0805', outlineW: 2 });
+        ctx.globalAlpha = 1; py += 38;
       }
       // underway: the deck status message (Stations saved, doors, etc.) as a centered scene popup
       if (deck && b._deckMsg && b._deckMsgT > 0) {
@@ -1007,98 +1051,13 @@ const CombatScreen = {
       }
     } else { ctx.fillStyle = COL.cabin; ctx.fillRect(0, 0, 1920, 1080); }
 
-    // brass corner bracket: an L hugging the keyline corner (sx,sy point inward: +1/-1)
-    const bracket = (cx, cy, sx, sy) => {
-      const A = 20, T = 4;
-      const hx = sx > 0 ? cx : cx - A, vy = sy > 0 ? cy : cy - A;
-      ctx.fillStyle = COL.brassdk; ctx.fillRect(hx - 1, cy - 1, A + 2, T + 2); ctx.fillRect(cx - 1, vy - 1, T + 2, A + 2);
-      ctx.fillStyle = COL.brass; ctx.fillRect(hx, cy, A, T); ctx.fillRect(cx, vy, T, A);
-      ctx.fillStyle = COL.brasshi; ctx.fillRect(cx, cy, 3, 3);
-    };
-    // ornate brass corner art (Greg's reskin): stamp the bracket at a panel's 4 corners, mirrored.
-    const cornerArt = SPR.artEntry('ui_corner');
-    const stampCorners = (x, y, w, h, S) => {
-      if (!cornerArt) return;
-      const img = cornerArt.img, ar = img.naturalWidth / img.naturalHeight, sw = S * ar; // keep the bracket's aspect
-      const put = (cx, cy, fx, fy) => { ctx.save(); ctx.translate(cx, cy); ctx.scale(fx, fy); ctx.drawImage(img, 0, 0, sw, S); ctx.restore(); };
-      put(x, y, 1, 1); put(x + w, y, -1, 1); put(x, y + h, 1, -1); put(x + w, y + h, -1, -1);
-    };
-    const frameLayer = []; // the dark-wood 9-slice frame (empty frame.png) is drawn LAST so its brass corners sit topmost
-    const panel = (x, y, w, h, title, tcol, woodBody) => {
-      // interior: WOOD backing for content panels (cards float on it), else a parchment page
-      if (woodBody) {
-        if (woodPat) {
-          ctx.fillStyle = woodPat; ctx.fillRect(x, y, w, h);
-          const gi = ctx.createLinearGradient(x, y, x, y + h); // gentle top-light -> shadow for depth (not a flat black wash)
-          gi.addColorStop(0, 'rgba(255,236,198,0.10)'); gi.addColorStop(0.5, 'rgba(20,11,3,0.06)'); gi.addColorStop(1, 'rgba(12,6,1,0.24)');
-          ctx.fillStyle = gi; ctx.fillRect(x, y, w, h);
-        } else { ctx.fillStyle = COL.woodfr; ctx.fillRect(x, y, w, h); }
-      } else if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(x, y, w, h); ctx.fillStyle = 'rgba(244,232,205,0.30)'; ctx.fillRect(x, y, w, h); }
-      else { ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h); }
-      // brass keyline where wood meets parchment + a faint highlight on the outer wood edge
-      // the dark-wood frame (9-sliced empty frame.png) is DEFERRED + painted last, so its brass corners are topmost
-      frameLayer.push([x, y, w, h]);
-      if (title) {
-        // wood-plank header band (mockup look): wood strip behind the title, parchment body below
-        let tc = tcol || COL.inkdk;
-        if (woodPat) {
-          // band sits FLUSH to the panel top/sides; carved-depth lighting (top-light -> shadow) + edges
-          ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, 38); ctx.clip();
-          ctx.fillStyle = woodPat; ctx.fillRect(x, y, w, 38);
-          const gb = ctx.createLinearGradient(x, y, x, y + 38);
-          gb.addColorStop(0, 'rgba(255,238,200,0.16)'); gb.addColorStop(0.45, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(18,9,2,0.44)');
-          ctx.fillStyle = gb; ctx.fillRect(x, y, w, 38); ctx.restore();
-          ctx.fillStyle = 'rgba(255,240,205,0.22)'; ctx.fillRect(x, y, w, 1.5);    // top highlight
-          ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(x, y + 36.5, w, 1.5);   // bottom shadow groove
-          tc = tcol === COL.dkred ? '#ff9a7a' : COL.brasshi; // light title on the wood band
-        }
-        TYPE.draw(ctx, title, x + 16, y + 11, 24, tc, { display: true, shadow: 'rgba(16,9,3,0.85)', shadowDx: 1.4, shadowDy: 1.4 });
-        ctx.strokeStyle = 'rgba(40,26,12,0.7)'; ctx.beginPath(); ctx.moveTo(x + 12, y + 42); ctx.lineTo(x + w - 12, y + 42); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,238,196,0.3)'; ctx.beginPath(); ctx.moveTo(x + 12, y + 43.5); ctx.lineTo(x + w - 12, y + 43.5); ctx.stroke();
-      }
-    };
-    // a discrete PARCHMENT card styled like the aged plaque: rounded, an aged darker rim + a thin ink
-    // inner keyline (double border) + small brass corner studs. Floats on the panel's wood interior.
-    const card = (cx, cy, cw, ch) => {
-      const r = Math.min(6, cw / 2, ch / 2);
-      ctx.save(); UI.roundRect(ctx, cx, cy, cw, ch, r); ctx.clip();
-      if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(cx, cy, cw, ch); ctx.fillStyle = 'rgba(244,232,205,0.28)'; ctx.fillRect(cx, cy, cw, ch); }
-      else { ctx.fillStyle = COL.paper; ctx.fillRect(cx, cy, cw, ch); }
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(120,84,40,0.45)'; UI.roundRect(ctx, cx + 2, cy + 2, cw - 4, ch - 4, Math.max(1, r - 1)); ctx.stroke(); // soft aged rim
-      ctx.restore();
-      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(90,60,28,0.95)'; UI.roundRect(ctx, cx + 0.75, cy + 0.75, cw - 1.5, ch - 1.5, r); ctx.stroke(); // crisp outer keyline
-      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(74,51,24,0.5)'; UI.roundRect(ctx, cx + 5.5, cy + 5.5, cw - 11, ch - 11, Math.max(1, r - 3)); ctx.stroke(); // thin ink inner keyline
-      if (cw > 24 && ch > 22) { // brass corner studs (skip on tiny cards)
-        const m = 8, stud = (sx, sy) => {
-          ctx.beginPath(); ctx.arc(sx, sy, 2.6, 0, 7); ctx.fillStyle = COL.brassdk; ctx.fill();
-          ctx.beginPath(); ctx.arc(sx, sy, 1.7, 0, 7); ctx.fillStyle = COL.brass; ctx.fill();
-          ctx.beginPath(); ctx.arc(sx - 0.5, sy - 0.5, 0.8, 0, 7); ctx.fillStyle = COL.brasshi; ctx.fill();
-        };
-        stud(cx + m, cy + m); stud(cx + cw - m, cy + m); stud(cx + m, cy + ch - m); stud(cx + cw - m, cy + ch - m);
-      }
-    };
+    const panel = (x, y, w, h, title, tcol, woodBody) => KIT.panel(ctx, { x, y, w, h }, { title, tcol, wood: woodBody });
+    const card = (cx, cy, cw, ch) => KIT.card(ctx, { x: cx, y: cy, w: cw, h: ch });
     const slot = (x, y, w, h) => card(x, y, w, h); // crew-rail card == the same parchment card
     const pips = (x, y, total, on, sz, cOn, cOff) => { for (let i = 0; i < total; i++) { ctx.fillStyle = i < on ? cOn : cOff; ctx.fillRect(x + i * (sz + 1), y, sz, sz + 2); } };
-    // vertical pip stack (FTL-style power bars): fills bottom-up from baseY
-    const pipsV = (cx, baseY, total, on, w, h, gap, cOn, cOff) => { for (let i = 0; i < total; i++) { ctx.fillStyle = i < on ? cOn : cOff; ctx.fillRect(Math.round(cx - w / 2), baseY - (i + 1) * (h + gap), w, h); } };
-    const bar = (x, y, w, h, frac, col) => { ctx.fillStyle = '#2a1d10'; ctx.fillRect(x, y, w, h); ctx.fillStyle = col; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, frac || 0)), h); };
-    // segmented charge/charge-style meter (the mockup's discrete "boxes")
-    const segbar = (x, y, w, h, frac, col, n) => {
-      n = n || 8; const g = 2, sw = (w - (n - 1) * g) / n, on = Math.round(Math.max(0, Math.min(1, frac || 0)) * n);
-      for (let i = 0; i < n; i++) { ctx.fillStyle = i < on ? col : 'rgba(42,29,16,0.5)'; ctx.fillRect(x + i * (sw + g), y, sw, h); ctx.strokeStyle = 'rgba(42,29,16,0.6)'; ctx.strokeRect(x + i * (sw + g) + 0.5, y + 0.5, sw - 1, h - 1); }
-    };
-    // a PARCHMENT-faced HUD button (Retreat / settings) with the SAME deferred ornate WOOD frame as
-    // panel() (pushed to frameLayer, painted last) — so it matches the resource/nameplate parchment
-    // panels exactly and the whole top row aligns at one height. Ink label (dark on parchment).
-    const hdBtn = (x, y, w, h, label) => {
-      const hov = Game.mouse.x >= x && Game.mouse.x < x + w && Game.mouse.y >= y && Game.mouse.y < y + h;
-      if (hov) Game.hot = true;
-      if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(x, y, w, h); ctx.fillStyle = 'rgba(244,232,205,0.30)'; ctx.fillRect(x, y, w, h); }
-      else { ctx.fillStyle = COL.paper; ctx.fillRect(x, y, w, h); }
-      if (hov) { ctx.fillStyle = 'rgba(255,236,190,0.32)'; ctx.fillRect(x, y, w, h); }
-      frameLayer.push([x, y, w, h]);                                            // identical ornate frame -> aligned
-      if (label) TYPE.drawCentered(ctx, label, x + w / 2, y + h / 2 - 11, 22, COL.inkdk, { display: true });
-    };
+    const pipsV = (cx, baseY, total, on, w, h, gap, cOn, cOff) => KIT.pipsV(ctx, cx, baseY, total, on, w, h, gap, cOn, cOff);
+    const bar = (x, y, w, h, frac, col) => KIT.bar(ctx, x, y, w, h, frac, col);
+    const segbar = (x, y, w, h, frac, col, n) => KIT.segbar(ctx, x, y, w, h, frac, col, n);
     // a small cog glyph centered in a square button (settings)
     const cog = (cx, cy, R) => { // dark ink gear with a parchment center hole — high contrast, pops on parchment
       ctx.save(); ctx.translate(cx, cy);
@@ -1134,10 +1093,30 @@ const CombatScreen = {
       ][Math.max(0, Math.min(2, Math.floor((Game.mouse.x - RX) / third)))];
       hdTip = { lines: [{ t: rinfo[0], c: TIP.ink }, { t: rinfo[1], c: TIP.body }], ax: Game.mouse.x, ay: Game.mouse.y };
     }
-    // Retreat — a standard wood+brass button (no more info-panel look, no dead asterisk)
-    hdBtn(1648, 14, 150, 72, deck ? 'To Chart' : 'Retreat');
+    // Retreat (underway: To Chart) — a KIT parchment button. R15: when the fight can't be fled it renders
+    // DISABLED with the reason as its tooltip, and pressing it logs that reason (failures say WHY).
+    const RET = { x: 1648, y: 14, w: 150, h: 72 };
+    if (deck) {
+      KIT.button(ctx, 'deck.chart', RET, 'To Chart', { size: 22, onClick: () => { this._deckV = null; Game.setScreen('map'); },
+        tip: [{ t: 'Back to the chart', c: TIP.ink }, { t: 'Escape also returns to the chart.', c: TIP.body }] });
+    } else if (b) {
+      const why = b.fleeBlockedReason(), fleeing = !why && b.p.fleeing;
+      KIT.button(ctx, 'combat.retreat', RET, 'Retreat', {
+        size: 22, sound: false, disabled: !!why, reason: why, live: fleeing,
+        sub: fleeing ? 'fleeing ' + Math.floor((b.p.escape || 0) * 100) + '%' : null,
+        onClick: () => { if (b.state === 'fight') b.tryFlee(); },
+        onDenied: () => b.log(why.toUpperCase()),
+        tip: [{ t: fleeing ? 'Retreating' : 'Retreat', c: TIP.ink }].concat(why ? [] : [{ t: fleeing
+          ? 'Making for open water. Click again to hold position.'
+          : 'Make for open water. Needs a manned Helm and powered Sails.', c: TIP.body }]),
+      });
+    }
     // settings/menu gear — opens the quit-to-title menu (back to main menu)
-    hdBtn(1818, 14, 72, 72, ''); cog(1818 + 36, 14 + 36, 22);
+    KIT.button(ctx, deck ? 'deck.gear' : 'combat.gear', { x: 1818, y: 14, w: 72, h: 72 }, '', {
+      icon: (c2, cx, cy) => cog(cx, cy, 22),
+      onClick: () => { this._quitMenu = deck ? this._deckV : true; },
+      tip: [{ t: 'Menu', c: TIP.ink }, { t: deck ? 'Quit to the title screen.' : 'Quit to the title screen (Q).', c: TIP.body }],
+    });
 
     // ---- crew rail (live: portrait + name + hp + station) ----
     // FTL-style: size to the roster — one slot per crew member, no reserved empty frames.
@@ -1185,19 +1164,7 @@ const CombatScreen = {
     }
 
     // ---- command buttons under the crew rail (combat: big Pause/Stations; underway: station controls) ----
-    if (b) for (const a of this.hdActions(b)) {
-      const hov = Game.mouse.x >= a.x && Game.mouse.x < a.x + a.w && Game.mouse.y >= a.y && Game.mouse.y < a.y + a.h;
-      if (hov) Game.hot = true;
-      if (a.big) { this.hdBigBtn(ctx, a, parchPat, b, hov); frameLayer.push([a.x, a.y, a.w, a.h]); continue; }
-      ctx.fillStyle = COL.brassdk; ctx.fillRect(a.x - 2, a.y - 2, a.w + 4, a.h + 4);
-      ctx.fillStyle = woodPat || COL.woodfr; ctx.fillRect(a.x, a.y, a.w, a.h);
-      ctx.fillStyle = 'rgba(18,11,4,0.22)'; ctx.fillRect(a.x, a.y, a.w, a.h);
-      ctx.fillStyle = 'rgba(255,238,196,0.12)'; ctx.fillRect(a.x, a.y, a.w, 1); // top highlight
-      const live = a.live && a.live(), rdy = a.ready ? a.ready() : true;
-      if (live) { ctx.strokeStyle = COL.brasshi; ctx.lineWidth = 2; ctx.strokeRect(a.x + 1, a.y + 1, a.w - 2, a.h - 2); ctx.lineWidth = 1; }
-      const lblCol = live ? '#fff0c8' : (rdy ? COL.brasshi : '#86744a');
-      TYPE.drawCentered(ctx, a.label === 'Pause' && b.paused ? 'Resume' : a.label, a.x + a.w / 2, a.y + 5, 18, lblCol, { display: true, shadow: COL.black });
-    }
+    if (b) for (const a of this.hdActions(b)) this.hdBigBtn(ctx, a, b);
 
     // ---- enemy box (combat) / Damage Control (underway) ----
     if (deck) {
@@ -1211,7 +1178,7 @@ const CombatScreen = {
       let wy = 190;
       const haz = (label, n, col) => { TYPE.draw(ctx, label, ex, wy + 8, 19, col, { baseline: 'middle' }); TYPE.drawRight(ctx, '×' + n, eR, wy + 8, 19, col, { baseline: 'middle' }); wy += 28; };
       if (fires) haz('Fire', fires, Math.floor(b.time * 3) % 2 ? COL.red : COL.orange);
-      if (leaks) haz('Breach', leaks, COL.steelblue);
+      if (leaks) haz('Breach', leaks, '#2b5a7a'); // R14b: dark sea-blue reads on parchment (was pale steelblue)
       if (wet) haz('Flooding', wet, COL.steelblue);
       if (!fires && !leaks && !wet) TYPE.draw(ctx, 'All quiet — the ship is sound.', ex, wy + 8, 17, COL.inkmd, { italic: true, baseline: 'middle' });
     } else {
@@ -1273,7 +1240,7 @@ const CombatScreen = {
             Game.hot = true;
             const sd = DATA.SYSTEMS[k], tl = [{ t: sd ? sd.name : k, c: TIP.ink }];
             if (offline) tl.push({ t: 'OFFLINE — knocked out', c: TIP.danger });
-            else if (ion) tl.push({ t: 'Ion-jammed — disabled', c: TIP.action });
+            else if (ion) tl.push({ t: 'Lightning-jammed — disabled', c: TIP.action });
             else if (dmgd) tl.push({ t: 'Damaged', c: TIP.danger });
             if (sub) tl.push({ t: 'Subsystem — always on', c: TIP.faint });
             else if (sysDetail) tl.push({ t: 'Power ' + pow + '/' + (b.e.sysLv[k] || 0), c: pow > 0 ? TIP.action : TIP.faint });
@@ -1344,20 +1311,29 @@ const CombatScreen = {
         // the Brine Gate stacks Board + Recall. A dark wipe + countdown shows the system cooldown.
         this.hdSysActions(b, s[0]).forEach((sAct, si) => {
           const r = this.hdSysBtnRect(L, i, SYS.length, si);
-          this.recessBtn(ctx, r);                                          // brown-paper slot carved into the card
+          // a KIT recess button (hover / press / disabled+reason); the glyph, label and cooldown wipe are ours
+          const dis = !sAct.ready && !sAct.live;
+          const tip = [{ t: sAct.label.replace('…', ''), c: TIP.ink }]; if (sAct.tip) tip.push({ t: sAct.tip, c: TIP.body });
+          const res = KIT.button(ctx, 'combat.sys.' + s[0] + '.' + si, r, '', {
+            variant: 'recess', live: sAct.live, disabled: dis, reason: sAct.reason, sound: sAct.snd || false, tip,
+            onClick: sAct.fn, onDenied: sAct.fn, // the try* command logs the exact reason it can't fire
+          });
+          const dy = res.pressed ? 1.5 : 0, mid = r.y + r.h / 2 + dy;
           // icon glyphs glow mythril-teal (pops off the brown paper); charged abilities go gold while live; text stays brass.
-          const gcol = sAct.live ? COL.gold : sAct.ready ? (sAct.icon ? COL.magiccy : COL.brasshi) : '#7a6b48';
-          const mid = r.y + r.h / 2;
+          const gcol = sAct.live ? COL.gold : !dis ? (sAct.icon ? COL.magiccy : (res.hover ? COL.paperhi : COL.brasshi)) : '#7a6b48';
           if (sAct.cd > 0) { // recharging: receding dark wipe + the seconds remaining
             const f = sAct.cdMax > 0 ? Math.min(1, sAct.cd / sAct.cdMax) : 1;
-            ctx.fillStyle = 'rgba(6,4,2,0.55)'; ctx.fillRect(r.x, r.y, r.w, r.h * f);
-            TYPE.drawCentered(ctx, Math.ceil(sAct.cd) + 's', r.x + r.w / 2, mid, 16, '#e7d9b2', { display: true, baseline: 'middle', shadow: COL.black });
+            ctx.fillStyle = 'rgba(6,4,2,0.55)'; ctx.fillRect(r.x, r.y + dy, r.w, r.h * f);
+            KIT.text(ctx, Math.ceil(sAct.cd) + 's', { x: r.x, y: r.y + dy, w: r.w, h: r.h }, { size: 16, display: true, align: 'center', color: '#e7d9b2', shadow: COL.black, shadowDx: 1, shadowDy: 1 });
           } else if (sAct.icon) {
-            this.drawGlyph(ctx, sAct.icon, r.x + r.w / 2, mid, Math.min(r.h - 6, 18), gcol);
+            // glyph AND its word (Greg: no cryptic UI — a bare bolt/heart/door doesn't say what it does)
+            const gs = Math.min(r.h - 8, 15);
+            this.drawGlyph(ctx, sAct.icon, r.x + 4 + gs / 2, mid, gs, gcol);
+            KIT.text(ctx, sAct.label.replace('…', ''), { x: r.x + gs + 6, y: r.y + dy, w: r.w - gs - 8, h: r.h }, { size: 15, display: true, align: 'center', color: dis ? '#7a6b48' : '#ecdcb6', minSize: 10, shadow: COL.black, shadowDx: 1, shadowDy: 1 });
           } else {
-            TYPE.drawCentered(ctx, sAct.label, r.x + r.w / 2, mid, TYPE.fitSize(ctx, sAct.label, r.w - 8, 16), gcol, { display: true, baseline: 'middle', shadow: COL.black });
+            KIT.text(ctx, sAct.label, { x: r.x, y: r.y + dy, w: r.w, h: r.h }, { size: 16, display: true, align: 'center', padX: 4, color: gcol, shadow: COL.black, shadowDx: 1, shadowDy: 1 });
           }
-          if (sAct.live) { ctx.strokeStyle = COL.gold; ctx.lineWidth = 1.5; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2); ctx.lineWidth = 1; }
+          if (sAct.live) { ctx.strokeStyle = COL.gold; ctx.lineWidth = 1.5; ctx.strokeRect(r.x + 1, r.y + 1 + dy, r.w - 2, r.h - 2); ctx.lineWidth = 1; }
         });
       });
       TYPE.drawRight(ctx, 'left-click +mana  ·  right-click −mana', L.sys.x + L.sys.w - 8, L.sys.y + 10, 15, '#ecdcb6', { italic: true, shadow: 'rgba(16,9,3,0.8)', shadowDx: 1, shadowDy: 1 });
@@ -1378,13 +1354,17 @@ const CombatScreen = {
         const needsRune = (wd.type === 'missile' || wd.type === 'bomb') && !wd.noRune;
         const outOfRune = needsRune && (Game.run.runeshot || 0) <= 0;
         const needsAim = hasPower && b.weaponReady(w, wd) && w.target < 0 && !outOfRune;
-        const hovered = Game.mouse.x >= rx && Game.mouse.x < rx + rw && Game.mouse.y >= wy && Game.mouse.y < wy + RH - 4;
-        if (hovered) { Game.hot = true; hdTip = { lines: [{ t: wd.name, c: TIP.ink }, { t: b.weaponTip(i) || '', c: TIP.action }], ax: Game.mouse.x, ay: Game.mouse.y }; }
+        // each gun row is a KIT control 'combat.wpn.<i>': left-click arms it for targeting, right-click powers it
+        // on/off (read-only while underway). The drawn card rect IS the hit rect.
+        const wr = { x: rx, y: wy, w: rw, h: RH - 4 }, wid = 'combat.wpn.' + i;
+        if (!deck) KIT.reg(wid, wr, { sound: false, onClick: () => { this._beamAnchor = null; b.selectWeapon(i); }, onRight: () => b.toggleWeapon(i) });
+        const hovered = KIT.hovered(wid, wr), wprs = !deck && KIT.pressed(wid, wr);
+        if (hovered) { Game.hot = !deck; hdTip = { lines: [{ t: wd.name, c: TIP.ink }, { t: b.weaponTip(i) || '', c: TIP.action }].concat(deck ? [] : [{ t: 'left-click to aim  ·  right-click to power on/off', c: TIP.faint }]), ax: Game.mouse.x, ay: Game.mouse.y }; }
         // parchment card first, then a translucent state tint on top (selected -> brass; hover -> darker)
         card(rx, wy, rw, RH - 4); // parchment card per weapon (floats on the panel's wood backing)
         ctx.fillStyle = b.selWeapon === i ? 'rgba(202,162,74,0.5)' : (w.on ? 'rgba(202,162,74,0.16)' : 'rgba(90,67,34,0.06)');
         ctx.fillRect(rx + 1, wy + 1, rw - 2, RH - 6);
-        if (hovered) { ctx.fillStyle = 'rgba(20,12,4,0.12)'; ctx.fillRect(rx + 1, wy + 1, rw - 2, RH - 6); }
+        if (hovered && !deck) { ctx.fillStyle = wprs ? 'rgba(20,12,4,0.2)' : 'rgba(20,12,4,0.12)'; ctx.fillRect(rx + 1, wy + 1, rw - 2, RH - 6); }
         if (needsAim) {
           ctx.save(); ctx.strokeStyle = COL.gold; ctx.lineWidth = 2.5;
           ctx.shadowColor = COL.gold; ctx.shadowBlur = 6 + 12 * pulse; ctx.globalAlpha = 0.55 + 0.45 * pulse;
@@ -1435,11 +1415,14 @@ const CombatScreen = {
         // 'deploy'/'rebind' draw a pressable parchment button with a candle (it costs 1 to launch).
         const st = b.famDeployState(k), rightX = L.fam.x + L.fam.w - 18;
         if (st === 'deploy' || st === 'rebind') {
-          const bw = 78, bh = 22, bx = rightX - bw, by = mid - bh / 2, hot = Game.mouse.x >= bx && Game.mouse.x < bx + bw && Game.mouse.y >= by && Game.mouse.y < by + bh;
-          if (hot) Game.hot = true;
-          this.recessBtn(ctx, { x: bx, y: by, w: bw, h: bh });
-          TYPE.draw(ctx, st === 'rebind' ? 'RE-BIND' : 'DEPLOY', bx + 5, by + bh / 2, 13, hot ? COL.gold : COL.brasshi, { baseline: 'middle', display: true, shadow: COL.black });
-          UI.drawRes(ctx, 'candle', bx + bw - 15, by + 5, 12);
+          // a KIT recess button 'combat.fam.<i>' — the hit rect is exactly the drawn button (this.famBtnRect)
+          const fr = this.famBtnRect(L, i), fid = 'combat.fam.' + i;
+          const res = KIT.button(ctx, fid, fr, '', { variant: 'recess', sound: false, disabled: deck, reason: 'Familiars are launched in battle.',
+            onClick: () => b.deployFamiliar(k),
+            tip: [{ t: (st === 'rebind' ? 'Re-bind ' : 'Deploy ') + (fd ? fd.name : k), c: TIP.ink }, { t: 'Burns 1 Seance Candle (' + (run.candles || 0) + ' left).', c: TIP.body }] });
+          const dy = res.pressed ? 1.5 : 0;
+          KIT.text(ctx, st === 'rebind' ? 'RE-BIND' : 'DEPLOY', { x: fr.x + 5, y: fr.y + dy, w: fr.w - 24, h: fr.h }, { size: 13, display: true, color: res.hover ? COL.gold : COL.brasshi, shadow: COL.black, shadowDx: 1, shadowDy: 1 });
+          UI.drawRes(ctx, 'candle', fr.x + fr.w - 15, fr.y + 5 + dy, 12);
         } else {
           const map = { active: ['orbiting', COL.green], cooldown: ['reforming', COL.inkfade], nofund: ['no candle', COL.dkred], asleep: ['asleep', COL.inkmd] };
           const m = map[st] || [i < awake ? 'awake' : 'asleep', COL.inkmd];
@@ -1450,7 +1433,7 @@ const CombatScreen = {
       // say WHY (project rule: player-visible failures must explain themselves). Combat view only.
       this._famHint = !deck && fams.length > 0 && awake === 0;
       if (this._famHint) {
-        TYPE.drawCentered(ctx, 'Power a Binding Shrine to wake them.', L.fam.x + L.fam.w / 2, L.fam.y + L.fam.h - 15, 13, COL.inkmd, { italic: true, baseline: 'middle', maxWidth: L.fam.w - 24 });
+        KIT.text(ctx, 'Power a Binding Shrine to wake them.', { x: L.fam.x + 12, y: L.fam.y + L.fam.h - 32, w: L.fam.w - 24, h: 22 }, { size: 16, italic: true, align: 'center', color: KIT.C.onWoodMuted, shadow: 'rgba(16,9,3,0.85)', shadowDx: 1, shadowDy: 1, fit: 'shrink' }); // light on the wood (ink was invisible)
       }
     }
 
@@ -1479,65 +1462,54 @@ const CombatScreen = {
       ctx.globalAlpha = 1; ctx.restore();
     }
     // the dark-wood frame + brass-knot corners as the TOPMOST chrome layer (popups draw after this)
-    const frameImg = SPR.artEntry('ui_frame');
-    for (const f of frameLayer) { if (frameImg) draw9(frameImg.img, f[0] - 3, f[1] - 3, f[2] + 6, f[3] + 6, 120, 24); else stampCorners(f[0] - 5, f[1] - 5, f[2] + 10, f[3] + 10, 32); }
-    TYPE.draw(ctx, deck ? 'Click a sailor, then a room  ·  right-click a hull room to flood  ·  Esc returns to the chart' : 'Space pauses  ·  Q quits', 24, 1070, 15, COL.brasshi, { italic: true });
-    // --- the hovered scrap tooltip, painted on top of everything (after a short dwell) ---
-    if (hdTip && hdTip.lines && hdTip.lines.length && Game.tipReady()) {
-      const TS = 17, LH = 21, MAXINNER = 520; // wrap to MAXINNER so long body lines never overrun the scrap
-      // pass 1: wrap every source line to the inner-width budget, keeping per-line size/colour
-      const wrapped = [];
-      for (let i = 0; i < hdTip.lines.length; i++) {
-        const l = hdTip.lines[i], sz = i === 0 ? TS : TS - 2, disp = i === 0;
-        if (!l.t) continue;
-        for (const seg of TYPE.wrap(ctx, l.t, MAXINNER, sz, { display: disp })) wrapped.push({ t: seg, c: l.c, sz, disp });
-      }
-      let mw = 0; for (const l of wrapped) mw = Math.max(mw, TYPE.width(ctx, l.t, l.sz, { display: l.disp }));
-      const W = Math.min(560, Math.round(mw) + 40);
-      const H = 14 + wrapped.length * LH + 10;
-      let x = hdTip.ax + 22; if (x + W > 1912) x = hdTip.ax - W - 18; x = U.clamp(x, 8, 1912 - W);
-      const y = U.clamp(hdTip.ay - 10, 8, 1072 - H);
-      const r = UI.drawScrap(ctx, x, y, W, H);
-      let ty = r.iy + 4;
-      for (const l of wrapped) { TYPE.draw(ctx, l.t, r.ix, ty, l.sz, l.c, { display: l.disp, maxWidth: r.iw, fit: 'ellipsis' }); ty += LH; }
-    }
-    if (b && b.surrenderOffer) this.drawHdSurrender(ctx);
+    KIT.flushFrames(ctx);
+    TYPE.draw(ctx, deck ? 'Click a sailor, then a room  ·  right-click a hull room to flood  ·  Esc returns to the chart' : 'Space pauses  ·  Q quits', 24, 1056, 15, COL.brasshi, { italic: true });
+    // --- the hovered scrap tooltip, painted on top of everything (after a short dwell). A hovered KIT
+    // control's own tip (e.g. a disabled button's reason) wins over the panel-level hover tip beneath it. ---
+    const modal = (b && b.surrenderOffer && !deck) || this.quitOpen();
+    if (!modal && hdTip && hdTip.lines && hdTip.lines.length && !KIT._tip) KIT.tip(hdTip.lines, hdTip.ax, hdTip.ay);
+    // modal dialogs: their scrim dims the finished chrome (frames already flushed) and blocks it
+    if (b && b.surrenderOffer && !deck) { this.drawHdSurrender(ctx); KIT.flushFrames(ctx); }
+    if (this.quitOpen()) { this.drawQuitMenu(ctx); KIT.flushFrames(ctx); }
+    KIT.flushTip(ctx, 1920, 1080);
   },
   key(k) {
     if (k === 'q' || k === 'Q') { this._quitMenu = !this._quitMenu; return; }
     if (this._quitMenu) { if (k === 'Escape' || k === 'Enter') this._quitMenu = false; return; }
     if (Game.battle) Game.battle.key(k);
   },
-  // ---- quit-to-title menu (Q). Scales to the active resolution; no mid-combat save
-  // (the run is already saved at the last node, so a resume re-approaches that node). ----
-  quitRect() { const w = Math.min(Game.VW * 0.5, 560), h = Math.min(Game.VH * 0.4, 220); return { x: (Game.VW - w) / 2, y: (Game.VH - h) / 2, w, h }; },
-  inQR(x, y, r) { return r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; },
-  drawQuitMenu(ctx) {
-    const VW = Game.VW, VH = Game.VH, r = this.quitRect();
-    ctx.fillStyle = 'rgba(8,7,16,0.7)'; ctx.fillRect(0, 0, VW, VH);
-    ctx.fillStyle = COL.woodfrdk; ctx.fillRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
-    ctx.fillStyle = COL.woodfr; ctx.fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
-    ctx.fillStyle = COL.brass; for (const [bx, by] of [[r.x - 3, r.y - 3], [r.x + r.w - 5, r.y - 3], [r.x - 3, r.y + r.h - 5], [r.x + r.w - 5, r.y + r.h - 5]]) ctx.fillRect(bx, by, 8, 8);
-    ctx.fillStyle = COL.paper; ctx.fillRect(r.x, r.y, r.w, r.h);
-    const ts = Math.round(VH * 0.024) + 4, ss = Math.round(VH * 0.012) + 4, bs = Math.round(VH * 0.016) + 4;
-    TYPE.drawCentered(ctx, 'Quit to title?', r.x + r.w / 2, r.y + r.h * 0.16, ts, COL.inkdk, { display: true });
-    TYPE.drawCentered(ctx, 'Your voyage is saved at your last port.', r.x + r.w / 2, r.y + r.h * 0.42, ss, COL.inkmd, { italic: true });
-    const bw = r.w * 0.36, bh = r.h * 0.24, by = r.y + r.h * 0.6, lx = r.x + r.w * 0.09, qx = r.x + r.w * 0.55;
-    const btn = (bx, lab, col) => { ctx.fillStyle = COL.brass; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4); ctx.fillStyle = col; ctx.fillRect(bx, by, bw, bh); TYPE.drawCentered(ctx, lab, bx + bw / 2, by + bh * 0.28, bs, COL.brasshi, { display: true }); };
-    btn(lx, 'Resume', COL.woodfr); btn(qx, 'Quit to title', COL.dkred);
-    this._quitRects = { resume: { x: lx, y: by, w: bw, h: bh }, quit: { x: qx, y: by, w: bw, h: bh } };
-  },
-  quitMenuClick(x, y) {
-    const r = this._quitRects;
+  // ---- quit-to-title menu (Q / the gear). A KIT modal; no mid-combat save (the run is already saved at
+  // the last node, so a resume re-approaches that node). Underway (deck mode) it is keyed to that deck view
+  // so a menu left open never resurfaces on a later visit. ----
+  quitOpen() { return !!this._quitMenu && (this._deckV ? this._quitMenu === this._deckV : this._quitMenu === true); },
+  quitRect() { return { x: 660, y: 380, w: 600, h: 300 }; },
+  quitToTitle() {
     // drop the battle on quit: a leaked Game.battle disables Game.checkDoom (it early-returns
     // mid-battle) and points hdSysList at a stale ship after Continue/load. (R3, 2026-07-02)
-    if (r && this.inQR(x, y, r.quit)) { this._quitMenu = false; Game.battle = null; if (AUDIO.stopMusic) AUDIO.stopMusic(); Game.setScreen('title'); return; }
-    this._quitMenu = false; AUDIO.sfx('back'); // Resume or click-away
+    this._quitMenu = false; this._deckV = null; Game.battle = null;
+    if (AUDIO.stopMusic) AUDIO.stopMusic();
+    Game.setScreen('title');
+  },
+  drawQuitMenu(ctx) {
+    const r = this.quitRect(), resume = () => { this._quitMenu = false; };
+    KIT.scrim(ctx, 1920, 1080, 0.62);
+    KIT.reg('combat.quit.away', { x: 0, y: 0, w: 1920, h: 1080 }, { onClick: resume, sound: 'back' }); // click away = resume
+    const c = KIT.panel(ctx, r, { title: 'Quit to title?', wood: true });
+    KIT.card(ctx, { x: c.x, y: c.y, w: c.w, h: 92 });
+    KIT.text(ctx, 'Your voyage is saved at your last port.', { x: c.x + 20, y: c.y + 10, w: c.w - 40, h: 40 }, { size: 22, italic: true, align: 'center', color: COL.inkmd });
+    KIT.text(ctx, this._deckV ? 'Fires and floods keep their state.' : 'This fight will begin again when you return.', { x: c.x + 20, y: c.y + 46, w: c.w - 40, h: 32 }, { size: 18, italic: true, align: 'center', color: COL.inkfade });
+    const by = r.y + r.h - 96, bw = 236;
+    KIT.button(ctx, 'combat.quit.resume', { x: r.x + 48, y: by, w: bw, h: 64 }, 'Resume', { onClick: resume, size: 24, tip: [{ t: 'Back to the ' + (this._deckV ? 'decks' : 'fight'), c: TIP.ink }, { t: 'Escape or Q also resumes.', c: TIP.body }] });
+    KIT.button(ctx, 'combat.quit.title', { x: r.x + r.w - 48 - bw, y: by, w: bw, h: 64 }, 'Quit to Title', { variant: 'danger', onClick: () => this.quitToTitle(), sound: 'back', size: 24 });
   },
 };
 
 // ============ TITLE ============
+// HD title (1920x1080, Stage 2c): the full-bleed painting under soft gradient scrims, the engraved title,
+// and a framed wood panel holding a refined KIT button column. New Voyage swaps the column for the two
+// difficulties and opens a parchment Playtest Cheats panel beside it. Every control is a KIT id ('title.*').
 const TitleScreen = {
+  designW: 1920, designH: 1080,
   enter() {
     this.t = 0;
     AUDIO.play('title');
@@ -1547,60 +1519,12 @@ const TitleScreen = {
     this.cheatTeleport = false;
     this.cheatMaxShip = false;
     this.cheatSysSlots = new Array(DATA.OPEN_MOUNTS).fill(null); // chosen advanced systems per mount
+    // the saved voyage's sea + day, read once (not per frame) for the Continue button's sub-line
+    const sv = Game.loadJSON(SAVE_KEY);
+    this._saveMeta = sv && sv.run ? { region: sv.run.region || 0, day: sv.run.day || 1 } : null;
   },
   update(dt) { this.t += dt; },
-  menuY() { return this.confirmNew ? 108 : 134; }, // lifted up so the cheat note + footer clear the bottom
-  click(x, y) {
-    // cheat checkboxes + mount-slot cyclers — hit-test the rects drawCheats recorded (no drift)
-    if (this.confirmNew) {
-      for (const r of (this._cheatRows || [])) {
-        if (x >= r.rect.x && x < r.rect.x + r.rect.w && y >= r.rect.y && y < r.rect.y + r.rect.h) {
-          if (r.act === 'cycle') this.cycleSysSlot(r.slot);
-          else if (r.act === 'uranium') this.cheatUranium = !this.cheatUranium;
-          else if (r.act === 'shards') this.cheatShards = !this.cheatShards;
-          else if (r.act === 'teleport') this.cheatTeleport = !this.cheatTeleport;
-          else if (r.act === 'maxship') this.cheatMaxShip = !this.cheatMaxShip;
-          AUDIO.sfx('click'); return;
-        }
-      }
-    }
-    const my = this.menuY();
-    this.items().forEach((it, i) => {
-      if (x >= 186 && x < 326 && y >= my + i * 18 && y < my + 16 + i * 18) it.fn();
-    });
-  },
-  drawCheats(ctx) {
-    if (!this.confirmNew) return;
-    this._cheatRows = []; // {rect, act, slot} — click() hit-tests these (no geometry drift)
-    const slots = this.cheatSysSlots || (this.cheatSysSlots = new Array(DATA.OPEN_MOUNTS).fill(null));
-    const rows = 4 + slots.length, ST = 14, noteY = 166, Y0 = noteY + 8; // roomy rows; lifted clear of the footer
-    UI.drawScrap(ctx, 164, noteY, 196, 8 + rows * ST + 6); // torn parchment note, sized to the rows
-    const rowY = (i) => Y0 + i * ST;
-    const box = (i, on, label, act) => {
-      const y = rowY(i), by = y + (ST - 9) / 2; // checkbox centred in the row, label on the same midline
-      ctx.fillStyle = on ? COL.brass : '#cdbb90'; ctx.fillRect(172, by, 9, 9);
-      ctx.strokeStyle = on ? COL.brassdk : COL.inklt; ctx.strokeRect(172.5, by + 0.5, 8, 8);
-      if (on) { ctx.fillStyle = COL.inkdk; ctx.fillRect(174, by + 2, 5, 5); }
-      TYPE.draw(ctx, label, 186, y + ST / 2, 10, on ? COL.inkdk : COL.inkmd, { italic: true, baseline: 'middle' });
-      this._cheatRows.push({ rect: { x: 172, y, w: 184, h: ST }, act });
-    };
-    box(0, this.cheatUranium, 'Cheat: one-shot EM Rail Gun', 'uranium');
-    box(1, this.cheatShards, 'Cheat: 15,000 shards', 'shards');
-    box(2, this.cheatTeleport, 'Cheat: magic teleport', 'teleport');
-    box(3, this.cheatMaxShip, 'Cheat: fully upgraded ship', 'maxship');
-    // optional-system mount cyclers: click a row to cycle its system (none + the 5 advanced)
-    slots.forEach((key, i) => {
-      const y = rowY(4 + i), cy = y + 1, ch = ST - 2, mid = y + ST / 2;
-      const hot = Game.mouse.x >= 172 && Game.mouse.x < 356 && Game.mouse.y >= y && Game.mouse.y < y + ST;
-      ctx.fillStyle = COL.parchdk; UI.roundRect(ctx, 172, cy, 184, ch, 3); ctx.fill();
-      ctx.lineWidth = 1; ctx.strokeStyle = hot ? COL.golddk : COL.inkfade; UI.roundRect(ctx, 172.5, cy + 0.5, 183, ch - 1, 3); ctx.stroke();
-      const name = key ? (DATA.SYSTEMS[key] ? DATA.SYSTEMS[key].name : key) : '— none —';
-      TYPE.draw(ctx, 'Mount ' + ['I', 'II', 'III', 'IV'][i] + ' = ' + name, 178, mid, 9, key ? COL.inkdk : COL.inkmd, { italic: !key, baseline: 'middle' });
-      ctx.fillStyle = hot ? COL.golddk : COL.inkmd; // right-pointing "click to cycle" cue
-      ctx.beginPath(); ctx.moveTo(347, mid - 3); ctx.lineTo(351, mid); ctx.lineTo(347, mid + 3); ctx.closePath(); ctx.fill();
-      this._cheatRows.push({ rect: { x: 172, y, w: 184, h: ST }, act: 'cycle', slot: i });
-    });
-  },
+  click() {}, // every control is a KIT registration
   // cycle a mount slot to the next option (none + each advanced system), skipping a system
   // already chosen in another slot so the two mounts never duplicate.
   cycleSysSlot(i) {
@@ -1613,94 +1537,133 @@ const TitleScreen = {
       if (cand === null || !this.cheatSysSlots.some((s, j) => j !== i && s === cand)) { this.cheatSysSlots[i] = cand; return; }
     }
   },
+  cheats() { return { uranium: this.cheatUranium, shards: this.cheatShards, teleport: this.cheatTeleport, maxship: this.cheatMaxShip, systems: (this.cheatSysSlots || []).filter(Boolean) }; },
+  // the menu column: {id, label, sub, fn, tip, half}. 'half' items share the last row (Sound / Display).
   items() {
     const arr = [];
     if (this.confirmNew) {
-      const ch = () => ({ uranium: this.cheatUranium, shards: this.cheatShards, teleport: this.cheatTeleport, maxship: this.cheatMaxShip, systems: (this.cheatSysSlots || []).filter(Boolean) });
-      arr.push({ label: 'EASY SEAS', fn: () => { Game.newGame('easy', ch()); Game.setScreen('intro'); } });
-      arr.push({ label: 'CAPTAIN\'S SEAS', fn: () => { Game.newGame('captain', ch()); Game.setScreen('intro'); } });
-      arr.push({ label: 'BACK', fn: () => { this.confirmNew = false; AUDIO.sfx('back'); } });
+      arr.push({ id: 'title.easy', label: 'Easy Seas', sub: 'A slower Armada and richer prizes', fn: () => { Game.newGame('easy', this.cheats()); Game.setScreen('intro'); } });
+      arr.push({ id: 'title.captain', label: 'Captain’s Seas', sub: 'The voyage as it was meant', fn: () => { Game.newGame('captain', this.cheats()); Game.setScreen('intro'); } });
+      arr.push({ id: 'title.back', label: 'Back', fn: () => { this.confirmNew = false; }, sound: 'back' });
       return arr;
     }
-    arr.push({ label: 'NEW VOYAGE', fn: () => { this.confirmNew = true; AUDIO.sfx('click'); } });
-    if (Game.hasSave()) arr.push({ label: 'CONTINUE', fn: () => { if (Game.load()) Game.setScreen('map'); } });
-    arr.push({ label: 'LORE', fn: () => Game.setScreen('lore') });
-    arr.push({ label: 'MUSIC ROOM', fn: () => { AUDIO.sfx('click'); Game.setScreen('jukebox'); } });
-    arr.push({ label: 'HOW TO PLAY', fn: () => Game.setScreen('help') });
-    arr.push({ label: AUDIO.muted ? 'SOUND: OFF' : 'SOUND: ON', fn: () => Game.toggleMute() });
-    arr.push({ label: Game.displayFit ? 'DISPLAY: FIT WINDOW' : 'DISPLAY: PIXEL-PERFECT', fn: () => { Game.displayFit = !Game.displayFit; Game.resize(); Game.saveOpts(); AUDIO.sfx('click'); } });
+    const m = this._saveMeta;
+    arr.push({ id: 'title.new', label: 'New Voyage', fn: () => { this.confirmNew = true; } });
+    if (Game.hasSave()) arr.push({ id: 'title.continue', label: 'Continue', sub: m ? 'Sea ' + UI.regionLabel(m.region) + '  ·  Day ' + m.day : null, fn: () => { if (Game.load()) Game.setScreen('map'); } });
+    arr.push({ id: 'title.lore', label: 'Lore', fn: () => Game.setScreen('lore') });
+    arr.push({ id: 'title.music', pair: true, label: 'Music Room', fn: () => Game.setScreen('jukebox') });
+    arr.push({ id: 'title.shipyard', pair: true, label: 'Shipyard', fn: () => Game.setScreen('shipyard'), tip: [{ t: 'Shipyard', c: TIP.ink }, { t: 'Test room: every crew animation, weapon, hull and familiar on demand.', c: TIP.body }] });
+    arr.push({ id: 'title.help', label: 'How to Play', fn: () => Game.setScreen('help') });
+    arr.push({ id: 'title.sound', half: true, label: AUDIO.muted ? 'Sound: Off' : 'Sound: On', fn: () => Game.toggleMute(), tip: [{ t: 'Sound', c: TIP.ink }, { t: 'M toggles it anywhere.', c: TIP.body }] });
+    // display: the canvas always fits the window sharply (DPR backing store); this toggles FULLSCREEN
+    const fs = typeof document !== 'undefined' && !!document.fullscreenElement;
+    arr.push({ id: 'title.display', half: true, label: fs ? 'Fullscreen' : 'Windowed', fn: () => {
+      const d = typeof document !== 'undefined' ? document : null;
+      try { if (d && d.fullscreenElement) d.exitFullscreen(); else if (d && d.documentElement && d.documentElement.requestFullscreen) d.documentElement.requestFullscreen(); } catch (e) {}
+    }, tip: [{ t: 'Display', c: TIP.ink }, { t: 'Switch between a window and fullscreen.', c: TIP.body }] });
     return arr;
   },
   key(k) {
+    if (k === 'Escape' && this.confirmNew) { this.confirmNew = false; AUDIO.sfx('back'); return; }
     if (k === 'Enter') this.items()[0].fn();
   },
-  render(ctx) {
-    // user AI title painting, if provided
-    if (SPR.drawArt(ctx, 'title', 0, 0, 512, 288)) {
-      this.drawTitleText(ctx);
-      const its = this.items(), my = this.menuY();
-      this.plaque(ctx, 176, my - 7, 160, its.length * 18 + 10); // warm walnut menu plaque + brass keyline
-      its.forEach((it, i) => UI.drawBtn(ctx, 186, my + i * 18, 140, 16, it.label));
-      this.drawCheats(ctx);
-      TYPE.drawCentered(ctx, 'M to mute   ·   Space pauses battle', 256, 270, 10, COL.paperhi, { shadow: COL.black });
-      return;
-    }
-    // sky + sea
-    ctx.fillStyle = '#1a2a52'; ctx.fillRect(0, 0, 512, 70);
-    ctx.fillStyle = '#28406e'; ctx.fillRect(0, 70, 512, 50);
-    ctx.fillStyle = '#3a5a90'; ctx.fillRect(0, 120, 512, 30);
-    ctx.fillStyle = COL.sea; ctx.fillRect(0, 150, 512, 138);
-    // stars
-    ctx.fillStyle = COL.white;
-    for (let i = 0; i < 24; i++) ctx.fillRect((i * 73) % 512, (i * 37) % 60, 1, 1);
-    // moon
-    ctx.fillStyle = '#e8e8d8'; ctx.beginPath(); ctx.arc(430, 38, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#c8c8b8'; ctx.fillRect(425, 32, 4, 4); ctx.fillRect(434, 42, 3, 3);
-    // waves
-    ctx.fillStyle = COL.seahi;
-    for (let x = 0; x < 512; x += 14) {
-      ctx.fillRect(x, 152 + Math.round(Math.sin(x * 0.1 + this.t * 2) * 2), 9, 2);
-    }
-    // the Dawnchaser sailing by
-    const sx = 60 + (this.t * 6) % 480;
-    const ix = sx - 30, iy = 150 - 32;
-    if (SPR.drawFrame(ctx, 'ext_corvette_human', ix - SPR.SHIP_MX, iy - SPR.SHIP_MY)) {
-      SPR.drawFrame(ctx, 'int_corvette_human', ix, iy);
-    } else {
-      const ext = SPR.shipExterior({ style: 'human', rw: 96, rh: 32, masts: 2, sailPct: 1, hullPct: 1 });
-      ctx.drawImage(ext, ix - SPR.SHIP_MX, iy - SPR.SHIP_MY);
-      ctx.drawImage(SPR.shipInterior('corvette', 'human'), ix, iy);
-    }
-    // title
-    this.drawTitleText(ctx);
-    // menu
-    const my = this.menuY();
-    this.plaque(ctx, 176, my - 7, 160, this.items().length * 18 + 10);
-    this.items().forEach((it, i) => {
-      UI.drawBtn(ctx, 186, my + i * 18, 140, 16, it.label);
-    });
-    this.drawCheats(ctx);
-    TYPE.drawCentered(ctx, 'M to mute   ·   Space pauses battle', 256, 281, 10, COL.paperhi, { shadow: COL.black });
+  // layout: the menu panel (and, in New Voyage, the cheats panel beside it), centred as a pair
+  MENU_W: 460, CHEAT_W: 480, GAP: 40, BTN_H: 64, BTN_SUBH: 76, BTN_GAP: 14,
+  menuLayout() {
+    const its = this.items(), pad = 28;
+    let h = pad * 2 + (this.confirmNew ? 52 : 0); // New Voyage: a carved title band
+    const full = its.filter(i => !i.half), half = its.filter(i => i.half);
+    // 'pair' items share a row two-up (Music Room | Shipyard)
+    for (let i = 0; i < full.length; i++) { const it = full[i]; if (it.pair && full[i - 1] && full[i - 1].pair && !full[i - 1]._row2) { it._row2 = true; continue; } it._row2 = false; h += (it.sub ? this.BTN_SUBH : this.BTN_H) + this.BTN_GAP; }
+    if (half.length) h += 22 + 54 + this.BTN_GAP;
+    h -= this.BTN_GAP;
+    const pairW = this.confirmNew ? this.MENU_W + this.GAP + this.CHEAT_W : this.MENU_W;
+    const x = Math.round(960 - pairW / 2), y = this.confirmNew ? 420 : 440;
+    return { its, full, half, pad, panel: { x, y, w: this.MENU_W, h } };
   },
-  // a warm walnut plaque (translucent) + brass keyline — reads as a deliberate panel over the
-  // painting instead of the old flat grey/navy scrim.
-  plaque(ctx, x, y, w, h) {
-    // darker at the top, warmer below — reads as a wooden plaque, not a grey wash, even over bright sky
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, 'rgba(38,25,12,0.72)'); g.addColorStop(1, 'rgba(26,17,8,0.66)');
-    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = 'rgba(255,238,196,0.12)'; ctx.fillRect(x, y, w, 1); // top sheen
-    ctx.strokeStyle = 'rgba(202,162,74,0.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5); ctx.lineWidth = 1;
+  render(ctx) {
+    const W = 1920, H = 1080;
+    if (!KIT.backdrop(ctx, 'title', W, H, { stops: [[0, 0.62], [0.30, 0.18], [0.5, 0.06], [0.78, 0.30], [1, 0.70]], vignette: 0.45 })) {
+      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1a2a52'); g.addColorStop(0.55, '#3a5a90'); g.addColorStop(0.56, COL.sea); g.addColorStop(1, COL.sealow);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    this.drawTitleText(ctx);
+    const Lm = this.menuLayout(), P = Lm.panel;
+    this.dropShadow(ctx, P);
+    KIT.panel(ctx, P, { wood: true, title: this.confirmNew ? 'Choose Your Seas' : null });
+    // the button column: parchment plaques seated on the wood, hover-lit, mouse-up activated
+    let y = P.y + Lm.pad + (this.confirmNew ? 52 : 0);
+    const bx = P.x + Lm.pad, bw = P.w - Lm.pad * 2;
+    const plaque = (it, r, size) => {
+      const res = KIT.button(ctx, it.id, r, it.label, { onClick: it.fn, frame: false, size, sub: it.sub || null, sound: it.sound, tip: it.tip });
+      const dy = res.pressed ? 1.5 : 0; // a crisp ink keyline + inner rule so the plaque reads as inlaid
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(40,24,8,0.95)'; ctx.strokeRect(r.x + 0.75, r.y + 0.75 + dy, r.w - 1.5, r.h - 1.5);
+      ctx.lineWidth = res.hover ? 2 : 1; ctx.strokeStyle = res.hover ? 'rgba(176,128,40,0.95)' : 'rgba(120,84,40,0.45)'; ctx.strokeRect(r.x + 4.5, r.y + 4.5 + dy, r.w - 9, r.h - 9);
+      ctx.lineWidth = 1;
+    };
+    Lm.full.forEach((it, i) => {
+      if (it._row2) return; // drawn with its pair
+      const h = it.sub ? this.BTN_SUBH : this.BTN_H, nx = Lm.full[i + 1];
+      if (it.pair && nx && nx._row2) {
+        const hw = (bw - this.BTN_GAP) / 2;
+        plaque(it, { x: bx, y, w: hw, h }, 24); plaque(nx, { x: bx + hw + this.BTN_GAP, y, w: hw, h }, 24);
+      } else plaque(it, { x: bx, y, w: bw, h }, 26);
+      y += h + this.BTN_GAP;
+    });
+    if (Lm.half.length) {
+      KIT.ornRule(ctx, P.x + P.w / 2, y + 4, bw * 0.8, 'rgba(232,206,140,0.75)');
+      y += 22;
+      const hw = (bw - this.BTN_GAP) / 2;
+      Lm.half.forEach((it, i) => plaque(it, { x: bx + i * (hw + this.BTN_GAP), y, w: hw, h: 54 }, 19));
+    }
+    if (this.confirmNew) this.drawCheats(ctx, { x: P.x + P.w + this.GAP, y: P.y, w: this.CHEAT_W });
+    KIT.flushFrames(ctx);
+    KIT.text(ctx, 'M mutes the sound   ·   Space pauses a battle', { x: 0, y: 1022, w: W, h: 40 }, { size: 20, italic: true, align: 'center', color: COL.paperhi, shadow: 'rgba(0,0,0,0.85)', shadowDx: 1.5, shadowDy: 1.5 });
+    KIT.flushTip(ctx, W, H);
+  },
+  // the Playtest Cheats panel: four checkboxes + one cycler per open mount (all KIT controls)
+  drawCheats(ctx, at) {
+    const slots = this.cheatSysSlots || (this.cheatSysSlots = new Array(DATA.OPEN_MOUNTS).fill(null));
+    const RH = 52, rows = 4 + slots.length, h = 52 + 20 + rows * RH + 70;
+    this.dropShadow(ctx, { x: at.x, y: at.y, w: at.w, h });
+    const c = KIT.panel(ctx, { x: at.x, y: at.y, w: at.w, h }, { title: 'Playtest Cheats' });
+    let y = c.y + 4;
+    const box = (id, on, label, flip, tip) => { KIT.checkbox(ctx, 'title.cheat.' + id, { x: c.x, y, w: c.w, h: RH - 6 }, label, on, { onClick: flip, tip: [{ t: label, c: TIP.ink }, { t: tip, c: TIP.body }] }); y += RH; };
+    box('uranium', this.cheatUranium, 'One-shot EM Rail Gun', () => { this.cheatUranium = !this.cheatUranium; }, 'Start with a gun that sinks anything in one hit.');
+    box('shards', this.cheatShards, '15,000 shards', () => { this.cheatShards = !this.cheatShards; }, 'Start rich.');
+    box('teleport', this.cheatTeleport, 'Magic teleport', () => { this.cheatTeleport = !this.cheatTeleport; }, 'Sail to any island on the chart, not just linked ones.');
+    box('maxship', this.cheatMaxShip, 'Fully upgraded ship', () => { this.cheatMaxShip = !this.cheatMaxShip; }, 'Every core system and subsystem at its maximum.');
+    KIT.rule(ctx, c.x, y + 2, c.x + c.w, 0.35); y += 10;
+    slots.forEach((key, i) => {
+      const r = { x: c.x, y, w: c.w, h: RH - 8 }, name = key ? (DATA.SYSTEMS[key] ? DATA.SYSTEMS[key].name : key) : 'none';
+      const res = KIT.button(ctx, 'title.mount.' + i, r, '', { variant: 'recess', onClick: () => this.cycleSysSlot(i),
+        tip: [{ t: 'Mount ' + ['I', 'II', 'III', 'IV'][i], c: TIP.ink }, { t: 'Click to cycle the advanced system installed at the start.', c: TIP.body }] });
+      const dy = res.pressed ? 1.5 : 0;
+      KIT.text(ctx, 'Mount ' + ['I', 'II', 'III', 'IV'][i], { x: r.x + 14, y: r.y + dy, w: 130, h: r.h }, { size: 18, display: true, color: '#e8d6ae', shadow: 'rgba(16,9,3,0.85)', shadowDx: 1, shadowDy: 1 });
+      KIT.text(ctx, name, { x: r.x + 140, y: r.y + dy, w: r.w - 190, h: r.h }, { size: 20, italic: !key, color: key ? '#f6ead0' : 'rgba(236,222,190,0.6)', fit: 'shrink', shadow: 'rgba(16,9,3,0.85)', shadowDx: 1, shadowDy: 1 });
+      const mx = r.x + r.w - 26, my = r.y + r.h / 2 + dy; // "click to cycle" cue
+      ctx.fillStyle = res.hover ? COL.gold : COL.brasshi; ctx.beginPath(); ctx.moveTo(mx - 6, my - 8); ctx.lineTo(mx + 5, my); ctx.lineTo(mx - 6, my + 8); ctx.closePath(); ctx.fill();
+      y += RH;
+    });
+    KIT.text(ctx, 'Testing aids — leave them unticked for a true voyage.', { x: c.x, y: y + 2, w: c.w, h: 40 }, { size: 16, italic: true, color: COL.inkfade, align: 'center', fit: 'wrap', maxLines: 2 });
+  },
+  // a soft dark halo under a panel so it lifts off the painting
+  dropShadow(ctx, r) {
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 36; ctx.shadowOffsetY = 10;
+    ctx.fillStyle = 'rgba(20,12,4,0.9)'; ctx.fillRect(r.x + 6, r.y + 6, r.w - 12, r.h - 12); ctx.restore();
   },
   drawTitleText(ctx) {
-    this.plaque(ctx, 96, 28, 320, 64); // warm title plaque (was a flat grey scrim)
-    TYPE.label(ctx, 'MYTHRIL TIDE', 256, 50, 460, 36, COL.mythril, { display: true, shadow: COL.black, shadowDx: 1.4, shadowDy: 1.4 });
-    TYPE.drawCentered(ctx, 'An Age of Exploration Saga', 256, 74, 13, COL.brasshi, { italic: true, shadow: COL.black });
+    KIT.text(ctx, 'MYTHRIL TIDE', { x: 160, y: 90, w: 1600, h: 150 }, { size: 136, display: true, align: 'center', color: COL.mythril, shadow: 'rgba(6,4,2,0.9)', shadowDx: 4, shadowDy: 4 });
+    KIT.ornRule(ctx, 960, 266, 760, 'rgba(240,214,150,0.9)');
+    KIT.text(ctx, 'An Age of Exploration Saga', { x: 360, y: 282, w: 1200, h: 52 }, { size: 36, italic: true, align: 'center', color: COL.brasshi, shadow: 'rgba(6,4,2,0.9)', shadowDx: 2, shadowDy: 2 });
   },
 };
 
 // ============ INTRO ============
+// HD (1920x1080, Stage 2c): the captain's desk painting under a gradient scrim, a framed vignette plate,
+// the tale set in large italic serif, page dots, and KIT Skip / Continue buttons (a click anywhere also turns the page).
 const IntroScreen = {
+  designW: 1920, designH: 1080,
   enter() {
     this.page = 0;
     // last page = the day-one ship's log; wrapped at render time so it uses real serif metrics
@@ -1711,39 +1674,46 @@ const IntroScreen = {
     ['Then a dying navigator sold you a chart', 'for the price of a last drink.', '', 'It shows a route west across the uncharted sea', 'to a new world… and a city built of mythril.', '', 'The Armada knows you have it.', 'Their fleet left port an hour after you did.'],
     ['Your ship is the Dawnchaser.', 'No wards. No enchanted sails. No magic at all.', '', 'Between you and the city: seven seas full of', 'merfolk, djinn, storm elves, deep dwarves,', 'lizardfolk, sirens — and everything they sell.', '', 'Buy magic. Hire magic. Steal magic.', 'Outrun the Armada. Reach the city.', '', 'Good hunting, Captain.'],
   ],
-  click() {
-    this.page++;
-    AUDIO.sfx('click');
-    if (this.page >= this.allPages.length) Game.setScreen('map');
-  },
-  key(k) { if (k === ' ' || k === 'Enter') this.click(); },
+  next() { this.page++; if (this.page >= this.allPages.length) Game.setScreen('map'); },
+  click() { AUDIO.sfx('click'); this.next(); }, // anywhere off the buttons turns the page
+  key(k) { if (k === ' ' || k === 'Enter') this.click(); if (k === 'Escape') { AUDIO.sfx('back'); Game.setScreen('map'); } },
   update() {},
   render(ctx) {
-    ctx.fillStyle = COL.black; ctx.fillRect(0, 0, 512, 288);
-    if (SPR.drawArt(ctx, 'vig_desk', 0, 0, 512, 288)) {
-      // gentle vignette + a soft scrim behind the text column so light serif stays legible
-      ctx.fillStyle = 'rgba(8,6,14,0.32)'; ctx.fillRect(0, 0, 512, 288);
-      const g = ctx.createLinearGradient(0, 120, 0, 282);
-      g.addColorStop(0, 'rgba(8,6,14,0)'); g.addColorStop(0.5, 'rgba(8,6,14,0.55)'); g.addColorStop(1, 'rgba(8,6,14,0)');
-      ctx.fillStyle = g; ctx.fillRect(30, 120, 452, 162);
-    }
-    // a large framed painting up top (matte + brass keyline so it reads as a mounted plate)
+    const W = 1920, H = 1080;
+    if (!KIT.backdrop(ctx, 'vig_desk', W, H, { stops: [[0, 0.30], [0.42, 0.42], [0.7, 0.62], [1, 0.78]], tint: '8,6,10', vignette: 0.55 })) { ctx.fillStyle = '#0c0906'; ctx.fillRect(0, 0, W, H); }
+    // the framed vignette plate (dark matte + the ornate wood frame)
     const vg = ['armada', 'city', 'island', 'calm'][this.page] || 'island';
-    const pw = 196, ph = 110, px = (512 - pw) / 2, py = 8;
-    ctx.fillStyle = '#15100a'; ctx.fillRect(px - 3, py - 3, pw + 6, ph + 6);
-    if (!SPR.drawArt(ctx, 'vig_' + vg, px, py, pw, ph)) ctx.drawImage(SPR.vignette(vg), px, py, pw, ph);
-    ctx.strokeStyle = COL.golddk; ctx.strokeRect(px - 3.5, py - 3.5, pw + 7, ph + 7);
-    ctx.strokeStyle = COL.brasshi; ctx.strokeRect(px - 1.5, py - 1.5, pw + 3, ph + 3);
-    // narrative text below the painting (blank lines = a smaller paragraph gap)
-    let y = 130;
-    const lines = this.allPages[this.page] ||
-      ["— Ship's Log, Day One —", ''].concat(TYPE.wrap(ctx, DATA.REGION_LOGS[0], 430, 13, { italic: true }));
+    const pr = { x: 600, y: 52, w: 720, h: 405 };
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.65)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
+    ctx.fillStyle = '#15100a'; ctx.fillRect(pr.x - 10, pr.y - 10, pr.w + 20, pr.h + 20); ctx.restore();
+    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    if (!SPR.drawArt(ctx, 'vig_' + vg, pr.x, pr.y, pr.w, pr.h)) ctx.drawImage(SPR.vignette(vg), pr.x, pr.y, pr.w, pr.h);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(232,206,140,0.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(pr.x - 3.5, pr.y - 3.5, pr.w + 7, pr.h + 7); ctx.lineWidth = 1;
+    KIT.frame({ x: pr.x - 10, y: pr.y - 10, w: pr.w + 20, h: pr.h + 20 });
+    // the tale (blank lines = a paragraph gap); the log page wraps the region's day-one entry
+    const isLog = !this.allPages[this.page];
+    let lines = this.allPages[this.page];
+    if (isLog) lines = TYPE.wrap(ctx, DATA.REGION_LOGS[0], 1100, 30, { italic: true });
+    let y = 506;
+    if (isLog) { KIT.text(ctx, 'Ship’s Log, Day One', { x: 0, y, w: W, h: 50 }, { size: 34, display: true, align: 'center', color: COL.brasshi, shadow: 'rgba(0,0,0,0.9)', shadowDx: 2, shadowDy: 2 }); KIT.ornRule(ctx, 960, y + 64, 520, 'rgba(232,206,140,0.8)'); y += 92; }
     for (const line of lines) {
-      if (line === '') { y += 8; continue; }
-      TYPE.drawCentered(ctx, line, 256, y, 13, /mythril|dawnchaser/i.test(line) ? COL.mythril : COL.paperhi, { italic: true, shadow: COL.black });
-      y += 15;
+      if (line === '') { y += 16; continue; }
+      KIT.text(ctx, line, { x: 160, y, w: W - 320, h: 40 }, { size: 30, italic: true, align: 'center', color: /mythril|dawnchaser/i.test(line) ? COL.mythril : COL.paperhi, shadow: 'rgba(0,0,0,0.9)', shadowDx: 2, shadowDy: 2 });
+      y += 40;
     }
-    TYPE.drawCentered(ctx, 'click to continue', 256, 276, 11, Math.floor(Game.time * 2) % 2 ? COL.brasshi : COL.brassdk, { italic: true, shadow: COL.black });
+    // page dots + Skip / Continue
+    const N = this.allPages.length, dx0 = 960 - (N * 22) / 2;
+    for (let i = 0; i < N; i++) {
+      ctx.beginPath(); ctx.arc(dx0 + i * 22 + 11, 1020, i === this.page ? 7 : 5, 0, 7);
+      ctx.fillStyle = i === this.page ? COL.brasshi : 'rgba(232,206,140,0.35)'; ctx.fill();
+    }
+    const last = this.page >= N - 1;
+    KIT.button(ctx, 'intro.skip', { x: 48, y: 984, w: 220, h: 68 }, 'Skip', { onClick: () => Game.setScreen('map'), sound: 'back', size: 24,
+      tip: [{ t: 'Skip the tale', c: TIP.ink }, { t: 'Straight to the chart (Escape).', c: TIP.body }] });
+    KIT.button(ctx, 'intro.next', { x: 1652, y: 984, w: 220, h: 68 }, last ? 'Set Sail' : 'Continue', { onClick: () => this.next(), size: 24 });
+    KIT.flushFrames(ctx);
+    KIT.flushTip(ctx, W, H);
   },
 };
 
@@ -1755,8 +1725,8 @@ const HELP_PAGES = [
   {
     title: 'THE VOYAGE', sub: 'One run, eight seas, the Armada at your heels.', img: 'help_map',
     items: [
-      { head: 'The Goal', text: 'Sail east across eight seas to the City of Mythril and sink its Warden. The Armada’s red tide chases you across every chart — linger and it swallows you.' },
-      { head: 'Reading the Chart', text: 'Click any island joined to yours by a dotted route. Each is labelled: FIGHT and ELITE are battles, EVENT is a gamble, SOS a distress call, SHOP a trader, CALM open water, and EXIT the way on to the next sea.' },
+      { head: 'The Goal', text: 'Sail west across eight seas to the City of Mythril and sink its Warden. The Armada’s red tide chases you across every chart — linger and it swallows you.' },
+      { head: 'Reading the Chart', text: 'Click any island joined to yours by a dotted route. Each is labelled: Hostile and Warship are battles, a Drifting Wreck is a gamble, Distress a call for help, Harbor a trader, Calm Water open sea, and Onward the way to the next sea. (Each sea dresses these in its own names.)' },
       { head: 'Watch the Threat', text: 'The threat bar tracks how close the Armada is behind you. Your day, your shards, and the Captain’s Log all live on the chart — and shop rumours hint at what waits ahead.' },
     ],
   },
@@ -1797,7 +1767,7 @@ const HELP_PAGES = [
     items: [
       { head: 'Bound Spirits', text: 'Buy familiars at shops (three aboard at most), then install and power a Binding Shrine — one mana bar wakes each. Imps and gulls bombard, beetles repair, the sentinel stomps boarders, reef-singers regrow hull at sea.' },
       { head: 'Seance Candles', text: 'Attacking familiars orbit the enemy, exposed, and can be shot down. Each costs one Seance Candle to deploy or re-bind per battle; familiars that stay aboard are free.' },
-      { head: 'Boarding', text: 'Install a Portal, pick up to two crew standing in the portal room, press BOARD, then click an enemy room. Clear or charm every enemy sailor to capture the ship for a 60% richer haul.' },
+      { head: 'Boarding', text: 'Install a Portal, move up to four crew into the Portal room, press BOARD, then click an enemy room — only sailors standing in that room make the jump. Clear or charm every enemy sailor to capture the ship for a 60% richer haul.' },
     ],
   },
   {
@@ -1814,7 +1784,7 @@ const HelpScreen = {
   designW: 1920, designH: 1080,
   enter() { this.page = 0; },
   update() {},
-  // PREV / BACK / NEXT button rects — one source, shared by render (draws) and click (hit-tests).
+  // PREV / BACK / NEXT button rects (KIT ids help.prev / help.back / help.next)
   _btns() {
     return {
       prev: { x: 60, y: 984, w: 230, h: 66 },
@@ -1822,258 +1792,153 @@ const HelpScreen = {
       next: { x: 1630, y: 984, w: 230, h: 66 },
     };
   },
-  click(x, y) {
-    const B = this._btns(), inR = (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
-    if (this.page > 0 && inR(B.prev)) { this.page--; AUDIO.sfx('click'); return; }
-    if (this.page < HELP_PAGES.length - 1 && inR(B.next)) { this.page++; AUDIO.sfx('click'); return; }
-    if (inR(B.back)) { AUDIO.sfx('back'); Game.setScreen('title'); return; }
-  },
+  click() {}, // every control is a KIT registration
+  turn(d) { this.page = U.clamp(this.page + d, 0, HELP_PAGES.length - 1); },
   key(k) {
     if (k === 'Escape') Game.setScreen('title');
-    if (k === 'ArrowRight' || k === ' ') this.page = Math.min(HELP_PAGES.length - 1, this.page + 1);
-    if (k === 'ArrowLeft') this.page = Math.max(0, this.page - 1);
+    if (k === 'ArrowRight' || k === ' ') this.turn(1);
+    if (k === 'ArrowLeft') this.turn(-1);
   },
   render(ctx) {
-    const pg = HELP_PAGES[this.page], N = HELP_PAGES.length;
-    // ---- chrome: parchment / wood tiles + ornate frame, mirroring the combat HUD ----
-    const pe = SPR.artEntry('ui_parchment'), we = SPR.artEntry('ui_wood'), frameImg = SPR.artEntry('ui_frame');
-    const parchPat = pe ? ctx.createPattern(pe.img, 'repeat') : null;
-    const woodPat = we ? ctx.createPattern(we.img, 'repeat') : null;
-    // full-bleed parchment background
-    if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(0, 0, 1920, 1080); ctx.fillStyle = 'rgba(223,205,166,0.12)'; ctx.fillRect(0, 0, 1920, 1080); }
-    else { ctx.fillStyle = COL.paper; ctx.fillRect(0, 0, 1920, 1080); }
-    const frameLayer = [];
-    const draw9 = (img, x, y, w, h, si, di) => {
-      const s = si, d = di, iw = img.naturalWidth, ih = img.naturalHeight;
-      const sx = [0, s, iw - s], sw = [s, iw - 2 * s, s], dxs = [x, x + d, x + w - d], dws = [d, w - 2 * d, d];
-      const sy = [0, s, ih - s], sh = [s, ih - 2 * s, s], dys = [y, y + d, y + h - d], dhs = [d, h - 2 * d, d];
-      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
-        if (r === 1 && c === 1) continue; // border-only (center stays clear)
-        ctx.drawImage(img, sx[c], sy[r], sw[c], sh[r], dxs[c], dys[r], dws[c], dhs[r]);
-      }
-    };
-    // a wood-backed panel with a carved title band (same recipe as combat's panel())
-    const panel = (x, y, w, h, title) => {
-      if (woodPat) {
-        ctx.fillStyle = woodPat; ctx.fillRect(x, y, w, h);
-        const gi = ctx.createLinearGradient(x, y, x, y + h);
-        gi.addColorStop(0, 'rgba(255,236,198,0.10)'); gi.addColorStop(0.5, 'rgba(20,11,3,0.06)'); gi.addColorStop(1, 'rgba(12,6,1,0.24)');
-        ctx.fillStyle = gi; ctx.fillRect(x, y, w, h);
-      } else { ctx.fillStyle = COL.woodfr; ctx.fillRect(x, y, w, h); }
-      frameLayer.push([x, y, w, h]);
-      if (title) {
-        ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, 52); ctx.clip();
-        if (woodPat) { ctx.fillStyle = woodPat; ctx.fillRect(x, y, w, 52); }
-        const gb = ctx.createLinearGradient(x, y, x, y + 52);
-        gb.addColorStop(0, 'rgba(255,238,200,0.16)'); gb.addColorStop(0.45, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(18,9,2,0.44)');
-        ctx.fillStyle = gb; ctx.fillRect(x, y, w, 52); ctx.restore();
-        ctx.fillStyle = 'rgba(255,240,205,0.22)'; ctx.fillRect(x, y, w, 1.5);
-        ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(x, y + 50.5, w, 1.5);
-        TYPE.draw(ctx, title, x + 22, y + 13, 30, COL.brasshi, { display: true, shadow: 'rgba(16,9,3,0.85)', shadowDx: 1.4, shadowDy: 1.4 });
-        TYPE.drawRight(ctx, 'How to Sail  ·  ' + (this.page + 1) + ' / ' + N, x + w - 22, y + 18, 22, '#e7d3a0', { italic: true, shadow: 'rgba(16,9,3,0.8)', shadowDx: 1, shadowDy: 1 });
-      }
-    };
-    // a parchment plaque card with aged rims + brass corner studs (combat's card())
-    const card = (cx, cy, cw, ch) => {
-      const r = Math.min(7, cw / 2, ch / 2);
-      ctx.save(); UI.roundRect(ctx, cx, cy, cw, ch, r); ctx.clip();
-      if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(cx, cy, cw, ch); ctx.fillStyle = 'rgba(244,232,205,0.30)'; ctx.fillRect(cx, cy, cw, ch); }
-      else { ctx.fillStyle = COL.paper; ctx.fillRect(cx, cy, cw, ch); }
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(120,84,40,0.45)'; UI.roundRect(ctx, cx + 2, cy + 2, cw - 4, ch - 4, Math.max(1, r - 1)); ctx.stroke();
-      ctx.restore();
-      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(90,60,28,0.95)'; UI.roundRect(ctx, cx + 0.75, cy + 0.75, cw - 1.5, ch - 1.5, r); ctx.stroke();
-      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(74,51,24,0.5)'; UI.roundRect(ctx, cx + 5.5, cy + 5.5, cw - 11, ch - 11, Math.max(1, r - 3)); ctx.stroke();
-      const m = 9, stud = (sx, sy) => {
-        ctx.beginPath(); ctx.arc(sx, sy, 2.8, 0, 7); ctx.fillStyle = COL.brassdk; ctx.fill();
-        ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, 7); ctx.fillStyle = COL.brass; ctx.fill();
-        ctx.beginPath(); ctx.arc(sx - 0.5, sy - 0.5, 0.9, 0, 7); ctx.fillStyle = COL.brasshi; ctx.fill();
-      };
-      stud(cx + m, cy + m); stud(cx + cw - m, cy + m); stud(cx + m, cy + ch - m); stud(cx + cw - m, cy + ch - m);
-    };
-    // a parchment-faced wood-framed button (matches combat's hdBtn), hover-lit
-    const btn = (r, label, enabled) => {
-      const hov = enabled && Game.mouse.x >= r.x && Game.mouse.x < r.x + r.w && Game.mouse.y >= r.y && Game.mouse.y < r.y + r.h;
-      if (hov) Game.hot = true;
-      ctx.save(); if (!enabled) ctx.globalAlpha = 0.35;
-      if (parchPat) { ctx.fillStyle = parchPat; ctx.fillRect(r.x, r.y, r.w, r.h); ctx.fillStyle = 'rgba(244,232,205,0.30)'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-      else { ctx.fillStyle = COL.paper; ctx.fillRect(r.x, r.y, r.w, r.h); }
-      if (hov) { ctx.fillStyle = 'rgba(255,236,190,0.34)'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-      frameLayer.push([r.x, r.y, r.w, r.h]);
-      TYPE.drawCentered(ctx, label, r.x + r.w / 2, r.y + r.h / 2 - 13, 24, COL.inkdk, { display: true });
-      ctx.restore();
-    };
-
+    const pg = HELP_PAGES[this.page], N = HELP_PAGES.length, W = 1920, H = 1080;
+    KIT.page(ctx, W, H);
     // ---- the page: one big wood panel, parchment cards inside ----
     const PX = 46, PY = 36, PW = 1828, PH = 916;
-    panel(PX, PY, PW, PH, pg.title);
-    // subtitle, italic, just under the title band
-    if (pg.sub) TYPE.draw(ctx, pg.sub, PX + 24, PY + 60, 23, '#f0dcb0', { italic: true, shadow: 'rgba(16,9,3,0.8)', shadowDx: 1, shadowDy: 1 });
-
+    KIT.panel(ctx, { x: PX, y: PY, w: PW, h: PH }, { title: pg.title, wood: true, titleRightW: 300 });
+    KIT.text(ctx, 'How to Sail  ·  ' + (this.page + 1) + ' / ' + N, { x: PX + PW - 316, y: PY + 2, w: 300, h: 36 }, { size: 19, italic: true, align: 'right', color: KIT.C.onWoodMuted, shadow: 'rgba(16,9,3,0.85)', shadowDx: 1, shadowDy: 1 });
+    if (pg.sub) KIT.text(ctx, pg.sub, { x: PX + 24, y: PY + 52, w: 900, h: 40 }, { size: 23, italic: true, color: '#f0dcb0', shadow: 'rgba(16,9,3,0.8)', shadowDx: 1, shadowDy: 1, fit: 'ellipsis' });
     // image card on the right (contain-fit, capped so small crops don't blow up)
     const IBX = 968, IBY = PY + 110, IBW = 882, IBH = PH - 150;
     const e = pg.img && SPR.artEntry(pg.img);
     if (e) {
-      const nw = e.img.naturalWidth, nh = e.img.naturalHeight;
-      const s = Math.min(IBW / nw, IBH / nh, 1.35);
-      const dw = Math.round(nw * s), dh = Math.round(nh * s);
-      const dx = Math.round(IBX + (IBW - dw) / 2), dy = Math.round(IBY + (IBH - dh) / 2);
-      card(dx - 16, dy - 16, dw + 32, dh + 32);
+      const nw = e.img.naturalWidth, nh = e.img.naturalHeight, sc = Math.min(IBW / nw, IBH / nh, 1.35);
+      const dw = Math.round(nw * sc), dh = Math.round(nh * sc), dx = Math.round(IBX + (IBW - dw) / 2), dy = Math.round(IBY + (IBH - dh) / 2);
+      KIT.card(ctx, { x: dx - 16, y: dy - 16, w: dw + 32, h: dh + 32 });
       ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
       UI.roundRect(ctx, dx - 2, dy - 2, dw + 4, dh + 4, 4); ctx.clip();
       ctx.drawImage(e.img, dx, dy, dw, dh);
       ctx.restore();
-      ctx.strokeStyle = 'rgba(60,40,18,0.9)'; ctx.lineWidth = 1.5; ctx.strokeRect(dx - 0.5, dy - 0.5, dw + 1, dh + 1);
+      ctx.strokeStyle = 'rgba(60,40,18,0.9)'; ctx.lineWidth = 1.5; ctx.strokeRect(dx - 0.5, dy - 0.5, dw + 1, dh + 1); ctx.lineWidth = 1;
     }
-
-    // text concept cards stacked on the left
+    // text concept cards stacked on the left: measure each block, then lay out with even gaps
     const TX = 78, TW = 858, headSz = 27, bodySz = 21, lineH = bodySz + 8, pad = 22, innerW = TW - pad * 2;
-    // measure each block, then lay out with even gaps in the available column height
     const blocks = pg.items.map((it) => {
       const lines = TYPE.wrap(ctx, it.text, innerW, bodySz);
-      const h = pad + headSz + 12 + lines.length * lineH + pad - 4;
-      return { it, lines, h };
+      return { it, lines, h: pad + headSz + 12 + lines.length * lineH + pad - 4 };
     });
     const top = PY + 112, colH = PH - 158, used = blocks.reduce((a, b) => a + b.h, 0);
     const gap = blocks.length > 1 ? Math.max(16, Math.min(40, (colH - used) / (blocks.length - 1))) : 0;
     let ty = top;
     for (const blk of blocks) {
-      card(TX, ty, TW, blk.h);
-      TYPE.draw(ctx, blk.it.head, TX + pad, ty + pad - 2, headSz, COL.inkdk, { display: true });
-      // brass rule under the heading (ledger idiom)
-      const ry = ty + pad + headSz + 4;
-      ctx.strokeStyle = 'rgba(150,108,44,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(TX + pad, ry); ctx.lineTo(TX + TW - pad, ry); ctx.stroke();
+      KIT.card(ctx, { x: TX, y: ty, w: TW, h: blk.h });
+      KIT.text(ctx, blk.it.head, { x: TX + pad, y: ty + pad - 4, w: innerW, h: headSz + 6 }, { size: headSz, display: true, color: COL.inkdk, fit: 'shrink' });
+      const ry = ty + pad + headSz + 4; // brass rule under the heading (ledger idiom)
+      ctx.strokeStyle = 'rgba(150,108,44,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(TX + pad, ry); ctx.lineTo(TX + TW - pad, ry); ctx.stroke(); ctx.lineWidth = 1;
       let yy = ry + 10;
-      for (const ln of blk.lines) { TYPE.draw(ctx, ln, TX + pad, yy, bodySz, COL.inkmd); yy += lineH; }
+      for (const ln of blk.lines) { KIT.text(ctx, ln, { x: TX + pad, y: yy, w: innerW, h: lineH }, { size: bodySz, color: COL.inkmd, valign: 'top' }); yy += lineH; }
       ty += blk.h + gap;
     }
-
     // ---- nav buttons + page dots (on the parchment, below the panel) ----
     const B = this._btns();
-    btn(B.prev, '‹  Prev', this.page > 0);
-    btn(B.back, 'Back to Port', true);
-    btn(B.next, 'Next  ›', this.page < N - 1);
-    const dotsY = 968, dotW = 16;
-    const dx0 = 960 - (N * dotW) / 2;
+    KIT.button(ctx, 'help.prev', B.prev, '‹  Prev', { size: 24, disabled: this.page === 0, reason: 'This is the first page.', tip: [{ t: 'Previous page', c: TIP.ink }], onClick: () => this.turn(-1) });
+    KIT.button(ctx, 'help.back', B.back, 'Back to Port', { size: 24, sound: 'back', onClick: () => Game.setScreen('title') });
+    KIT.button(ctx, 'help.next', B.next, 'Next  ›', { size: 24, disabled: this.page === N - 1, reason: 'This is the last page.', tip: [{ t: 'Next page', c: TIP.ink }], onClick: () => this.turn(1) });
+    const dotsY = 968, dotW = 16, dx0 = 960 - (N * dotW) / 2;
     for (let i = 0; i < N; i++) {
       ctx.beginPath(); ctx.arc(dx0 + i * dotW + dotW / 2, dotsY, i === this.page ? 6 : 4, 0, 7);
       ctx.fillStyle = i === this.page ? COL.brasshi : 'rgba(90,60,28,0.5)'; ctx.fill();
-      if (i === this.page) { ctx.strokeStyle = COL.brassdk; ctx.lineWidth = 1.5; ctx.stroke(); }
+      if (i === this.page) { ctx.strokeStyle = COL.brassdk; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1; }
     }
-
-    // topmost: the dark-wood ornate frame (brass knot corners) over every panel + button
-    for (const f of frameLayer) { if (frameImg) draw9(frameImg.img, f[0] - 3, f[1] - 3, f[2] + 6, f[3] + 6, 120, 24); }
-    // footer hint on the parchment
-    TYPE.drawCentered(ctx, '← → turn the page    ·    Esc returns to port', 960, 1058, 17, '#7a5a2c', { italic: true });
+    KIT.flushFrames(ctx);
+    KIT.text(ctx, '← → turn the page    ·    Esc returns to port', { x: 0, y: 1052, w: W, h: 24 }, { size: 17, italic: true, align: 'center', color: '#7a5a2c' });
+    KIT.flushTip(ctx, W, H);
   },
 };
 
-// ============ GAME OVER ============
+// ============ GAME OVER / VICTORY ============
+// HD (1920x1080, Stage 2c): full-bleed painting + gradient scrim, the verdict in display type, the voyage's
+// numbers as a framed stat card, and KIT buttons.
+const EndScreens = {
+  // a wood panel holding one parchment card of big numbers over italic labels (+ an optional footer line)
+  statCard(ctx, r, title, stats, foot) {
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 36; ctx.shadowOffsetY = 10;
+    ctx.fillStyle = 'rgba(20,12,4,0.9)'; ctx.fillRect(r.x + 6, r.y + 6, r.w - 12, r.h - 12); ctx.restore();
+    const c = KIT.panel(ctx, r, { title, wood: true });
+    const ch = foot ? c.h - 46 : c.h;
+    KIT.card(ctx, { x: c.x, y: c.y, w: c.w, h: ch });
+    const cw = c.w / stats.length;
+    stats.forEach((st, i) => {
+      const x = c.x + i * cw;
+      if (i) { ctx.strokeStyle = 'rgba(90,60,28,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, c.y + 18); ctx.lineTo(x, c.y + ch - 18); ctx.stroke(); ctx.lineWidth = 1; }
+      KIT.text(ctx, String(st[0]), { x, y: c.y + 12, w: cw, h: ch * 0.56 }, { size: 52, display: true, align: 'center', color: COL.inkdk, fit: 'shrink' });
+      KIT.text(ctx, st[1], { x, y: c.y + ch * 0.58, w: cw, h: ch * 0.3 }, { size: 20, italic: true, align: 'center', color: COL.inkmd, padX: 8, fit: 'shrink' });
+    });
+    if (foot) KIT.text(ctx, foot.t, { x: c.x, y: c.y + ch + 8, w: c.w, h: 38 }, { size: 21, italic: true, align: 'center', color: foot.c || COL.brasshi, shadow: 'rgba(16,9,3,0.85)', shadowDx: 1, shadowDy: 1, fit: 'ellipsis' });
+  },
+  romanSea(r) { return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'][r] || String(r + 1); },
+};
+
 const GameOverScreen = {
+  designW: 1920, designH: 1080,
   enter(args) {
     this.reason = args.reason || 'THE SEA KEEPS ITS SECRETS.';
     AUDIO.play('gameover');
   },
   update() {},
-  click(x, y) {
-    if (x >= 130 && x < 250 && y >= 220 && y < 238) { Game.setScreen('title'); }
-    if (x >= 262 && x < 382 && y >= 220 && y < 238) { Game.newGame(Game.run ? Game.run.difficulty : 'captain'); Game.setScreen('intro'); }
-  },
-  key(k) { if (k === 'Enter') { Game.newGame(Game.run ? Game.run.difficulty : 'captain'); Game.setScreen('intro'); } },
+  click() {},
+  again() { Game.newGame(Game.run ? Game.run.difficulty : 'captain'); Game.setScreen('intro'); },
+  key(k) { if (k === 'Enter') this.again(); if (k === 'Escape') Game.setScreen('title'); },
   render(ctx) {
-    if (SPR.drawArt(ctx, 'vig_gameover', 0, 0, 512, 288)) {
-      ctx.fillStyle = 'rgba(10,10,20,0.5)'; ctx.fillRect(0, 0, 512, 288);
-    } else {
-      ctx.fillStyle = '#10101e'; ctx.fillRect(0, 0, 512, 288);
-      ctx.fillStyle = COL.sealow; ctx.fillRect(0, 180, 512, 108);
-      ctx.save();
-      ctx.translate(256, 200); ctx.rotate(0.5);
-      ctx.fillStyle = '#2a2a3a'; ctx.fillRect(-40, -8, 80, 14); ctx.fillRect(-6, -50, 4, 44);
-      ctx.restore();
-      ctx.fillStyle = COL.seahi;
-      for (let x = 0; x < 512; x += 12) ctx.fillRect(x, 182 + Math.round(Math.sin(x * 0.2 + Game.time) * 2), 8, 2);
+    const W = 1920, H = 1080;
+    if (!KIT.backdrop(ctx, 'vig_gameover', W, H, { stops: [[0, 0.62], [0.34, 0.36], [0.62, 0.42], [1, 0.82]], tint: '8,8,16', vignette: 0.55 })) {
+      ctx.fillStyle = '#10101e'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = COL.sealow; ctx.fillRect(0, 680, W, 400);
     }
-    TYPE.drawCentered(ctx, 'Lost With All Hands', 256, 52, 30, COL.red, { display: true, shadow: COL.black });
-    TYPE.drawCentered(ctx, this.reason, 256, 92, 13, COL.paperhi, { italic: true, shadow: COL.black });
+    KIT.text(ctx, 'Lost With All Hands', { x: 100, y: 110, w: W - 200, h: 120 }, { size: 104, display: true, align: 'center', color: '#d8503e', shadow: 'rgba(0,0,0,0.92)', shadowDx: 4, shadowDy: 4 });
+    KIT.ornRule(ctx, 960, 252, 700, 'rgba(216,120,96,0.85)');
+    KIT.text(ctx, this.reason, { x: 200, y: 272, w: W - 400, h: 50 }, { size: 30, display: true, align: 'center', color: COL.paperhi, shadow: 'rgba(0,0,0,0.9)', shadowDx: 2, shadowDy: 2, fit: 'shrink' });
     if (Game.run) {
       const s = Game.run.stats;
-      TYPE.drawCentered(ctx, 'Region ' + (Game.run.region + 1) + '  ·  ' + s.jumps + ' islands  ·  ' + s.kills + ' ships sunk  ·  ' + s.shards + ' shards won', 256, 118, 12, '#b6a684', { shadow: COL.black });
+      EndScreens.statCard(ctx, { x: 510, y: 400, w: 900, h: 300 }, 'The Final Reckoning', [
+        ['Sea ' + EndScreens.romanSea(Game.run.region), 'reached'], [s.jumps, 'islands visited'], [s.kills, 'ships sunk'], [s.shards, 'shards won'],
+      ], { t: 'The New World remains a rumor.', c: '#d9c49a' });
     }
-    TYPE.drawCentered(ctx, 'The New World remains a rumor.', 256, 142, 12, COL.inkfade, { italic: true, shadow: COL.black });
-    UI.drawBtn(ctx, 130, 220, 120, 18, 'Title');
-    UI.drawBtn(ctx, 262, 220, 120, 18, 'Sail Again');
+    KIT.button(ctx, 'gameover.title', { x: 650, y: 780, w: 290, h: 72 }, 'Title', { size: 26, sound: 'back', onClick: () => Game.setScreen('title') });
+    KIT.button(ctx, 'gameover.again', { x: 980, y: 780, w: 290, h: 72 }, 'Sail Again', { size: 26, onClick: () => this.again(),
+      tip: [{ t: 'A new voyage', c: TIP.ink }, { t: 'Same seas, a fresh ship and crew (Enter).', c: TIP.body }] });
+    KIT.flushFrames(ctx);
+    KIT.flushTip(ctx, W, H);
   },
 };
 
-// ============ VICTORY ============
 const VictoryScreen = {
+  designW: 1920, designH: 1080,
   enter() {
     AUDIO.play('victory');
     this.t = 0;
   },
   update(dt) { this.t += dt; },
-  click(x, y) {
-    if (y >= 248 && y < 276 && x >= 196 && x < 316) Game.setScreen('title');
-  },
+  click() {},
   key(k) { if (k === 'Enter') Game.setScreen('title'); },
   render(ctx) {
-    // AI city panorama backdrop when available
-    if (SPR.drawArt(ctx, 'vig_city', 0, 0, 512, 288)) {
-      ctx.fillStyle = 'rgba(11,10,22,0.55)';
-      ctx.fillRect(0, 0, 512, 110);
-      ctx.fillRect(0, 222, 512, 66);
-      TYPE.drawCentered(ctx, 'The City of Mythril is Real', 256, 14, 22, COL.mythril, { display: true, shadow: COL.black });
-      TYPE.drawCentered(ctx, 'The Warden lies broken in the harbor mouth.', 256, 50, 12, COL.paperhi, { italic: true, shadow: COL.black });
-      TYPE.drawCentered(ctx, 'The Dawnchaser rides low, holds bursting with mythril.', 256, 64, 12, COL.paperhi, { italic: true, shadow: COL.black });
-      TYPE.drawCentered(ctx, 'You are the richest crew in two worlds.', 256, 78, 12, COL.brasshi, { italic: true, shadow: COL.black });
-      if (Game.run) {
-        const s = Game.run.stats;
-        TYPE.drawCentered(ctx, s.jumps + ' islands  ·  ' + s.kills + ' ships bested  ·  ' + s.shards + ' shards plundered', 256, 230, 12, COL.paperhi, { shadow: COL.black });
-        const names = Game.ship.aliveCrew().map(c => c.name).join(', ');
-        TYPE.drawCentered(ctx, 'Survivors: ' + names.slice(0, 72), 256, 244, 11, COL.gold, { italic: true, shadow: COL.black });
-      }
-      UI.drawBtn(ctx, 196, 256, 120, 18, 'The End');
-      return;
+    const W = 1920, H = 1080;
+    // R14c: one full-frame gradient scrim — dark behind the title + the reckoning, lightest over the city
+    if (!KIT.backdrop(ctx, 'vig_city', W, H, { stops: [[0, 0.70], [0.26, 0.40], [0.5, 0.14], [0.66, 0.40], [1, 0.82]], tint: '11,10,22', vignette: 0.35 })) {
+      ctx.fillStyle = '#1a2a52'; ctx.fillRect(0, 0, W, 560); ctx.fillStyle = COL.sea; ctx.fillRect(0, 560, W, 520);
     }
-    ctx.fillStyle = '#1a2a52'; ctx.fillRect(0, 0, 512, 150);
-    ctx.fillStyle = COL.sea; ctx.fillRect(0, 150, 512, 138);
-    // mythril city skyline
-    ctx.fillStyle = COL.teal;
-    ctx.fillRect(0, 120, 512, 30);
-    ctx.fillStyle = COL.mythril;
-    for (let i = 0; i < 9; i++) {
-      const bx = 30 + i * 55, bh = 16 + (i * 37) % 26;
-      ctx.fillRect(bx, 150 - bh, 18, bh);
-      ctx.fillStyle = COL.white; ctx.fillRect(bx + 6, 150 - bh - 4, 4, 4);
-      ctx.fillStyle = COL.mythril;
-    }
-    // sparkles
-    for (let i = 0; i < 16; i++) {
-      if (Math.floor(this.t * 3 + i) % 3 === 0) {
-        ctx.fillStyle = COL.white;
-        ctx.fillRect((i * 101 + 40) % 500, 40 + (i * 53) % 90, 2, 2);
-      }
-    }
-    // mythril pile on deck
-    ctx.fillStyle = COL.wood; ctx.fillRect(150, 210, 212, 16);
-    ctx.fillStyle = COL.mythril;
-    for (let i = 0; i < 30; i++) {
-      ctx.fillRect(180 + (i * 17) % 150, 196 - (i * 7) % 18, 8, 6);
-    }
-    ctx.fillStyle = COL.white;
-    ctx.fillRect(220, 186, 3, 3); ctx.fillRect(280, 192, 3, 3);
-
-    TYPE.drawCentered(ctx, 'THE CITY OF MYTHRIL', 256, 8, 22, COL.mythril, { display: true, shadow: COL.black });
-    TYPE.drawCentered(ctx, 'IS REAL', 256, 34, 22, COL.gold, { display: true, shadow: COL.black });
-    TYPE.drawCentered(ctx, 'The Warden lies broken in the harbor mouth.', 256, 64, 12, COL.ltgrey, { italic: true, shadow: COL.black });
-    TYPE.drawCentered(ctx, 'The Dawnchaser rides low, holds bursting with mythril.', 256, 78, 12, COL.ltgrey, { italic: true, shadow: COL.black });
-    TYPE.drawCentered(ctx, 'You are the richest crew in two worlds.', 256, 92, 12, COL.gold, { italic: true, shadow: COL.black });
+    KIT.text(ctx, 'The City of Mythril is Real', { x: 100, y: 52, w: W - 200, h: 110 }, { size: 88, display: true, align: 'center', color: COL.mythril, shadow: 'rgba(0,0,0,0.92)', shadowDx: 4, shadowDy: 4 });
+    KIT.ornRule(ctx, 960, 180, 760, 'rgba(240,214,150,0.9)');
+    const lines = [['The Warden lies broken in the harbor mouth.', COL.paperhi], ['The Dawnchaser rides low, holds bursting with mythril.', COL.paperhi], ['You are the richest crew in two worlds.', COL.brasshi]];
+    lines.forEach((l, i) => KIT.text(ctx, l[0], { x: 200, y: 200 + i * 44, w: W - 400, h: 42 }, { size: 30, italic: true, align: 'center', color: l[1], shadow: 'rgba(0,0,0,0.9)', shadowDx: 2, shadowDy: 2 }));
     if (Game.run) {
-      const s = Game.run.stats;
-      TYPE.drawCentered(ctx, s.jumps + ' islands  —  ' + s.kills + ' ships bested  —  ' + s.shards + ' shards plundered', 256, 230, 12, COL.ltgrey, { shadow: COL.black });
-      const names = Game.ship.aliveCrew().map(c => c.name).join(', ');
-      TYPE.drawCentered(ctx, 'Survivors: ' + names, 256, 244, 12, COL.gold, { italic: true, shadow: COL.black });
+      const s = Game.run.stats, names = Game.ship ? Game.ship.aliveCrew().map(c => c.name).join(', ') : '';
+      EndScreens.statCard(ctx, { x: 460, y: 664, w: 1000, h: 262 }, 'The Voyage in Full', [
+        [s.jumps, 'islands visited'], [s.kills, 'ships bested'], [s.shards, 'shards plundered'],
+      ], names ? { t: 'Survivors: ' + names, c: COL.gold } : null); // R14: ellipsis, not a hard cut
     }
-    UI.drawBtn(ctx, 196, 250, 120, 18, 'THE END');
+    KIT.button(ctx, 'victory.end', { x: 815, y: 962, w: 290, h: 72 }, 'The End', { size: 26, onClick: () => Game.setScreen('title') });
+    KIT.flushFrames(ctx);
+    KIT.flushTip(ctx, W, H);
   },
 };
 
@@ -2081,84 +1946,66 @@ const VictoryScreen = {
 // A listening room reachable from the title. Every track aboard, grouped by
 // sea / battle / faction, click to audition. Pure presentation - no game state.
 const JukeboxScreen = {
-  COLS: [32, 184, 336], COLW: 144, ROW_Y: 88, ROW_H: 17, PLATE_H: 15,
+  // HD (1920x1080, Stage 2c): parchment page, three wood "record cabinets" (one per catalogue group),
+  // a parchment record-label card per berth with KIT variant buttons 'jukebox.<kind>:<r|id>.<v>',
+  // an engraved brass now-playing plate, and KIT Back / Stop buttons.
+  designW: 1920, designH: 1080,
+  COLS: [48, 664, 1280], COLW: 592, PANEL_Y: 156, ROW_H: 66, ROW_GAP: 10,
   enter() { AUDIO.stopMusic(); this.nowKey = null; this.nowVar = 0; this.now = null; },
   update() {},
-  // one entry per catalogue item with its name rect + variant-button rects
+  // one entry per catalogue item with its card rect + variant-button rects (shared by render + tests)
   rows() {
     const out = [];
     MUSIC_CATALOG.forEach((grp, ci) => grp.items.forEach((it, ri) => {
-      const x = this.COLS[ci], y = this.ROW_Y + ri * this.ROW_H, n = it.variants;
-      const bw = 12, bg = 2, btot = n * bw + (n - 1) * bg, bx0 = x + this.COLW - btot - 7;
+      const x = this.COLS[ci] + 16, y = this.PANEL_Y + 52 + ri * (this.ROW_H + this.ROW_GAP), w = this.COLW - 32, n = it.variants;
+      const bw = 46, bg = 8, bx0 = x + w - 14 - n * bw - (n - 1) * bg;
       const vb = [];
-      for (let v = 0; v < n; v++) vb.push({ v, x: bx0 + v * (bw + bg), y: y + 1, w: bw, h: 13 });
+      for (let v = 0; v < n; v++) vb.push({ v, x: bx0 + v * (bw + bg), y: y + 13, w: bw, h: this.ROW_H - 26 });
       const key = it.kind === 'solo' ? 'solo:' + it.id : it.kind + ':' + it.r;
-      out.push({ it, key, name: it.name, style: it.style, x, y, w: this.COLW, nameMax: bx0 - x - 12, vb });
+      out.push({ it, key, name: it.name, style: it.style, x, y, w, h: this.ROW_H, nameW: bx0 - x - 28, vb });
     }));
     return out;
   },
   specFor(it, v) { return it.kind === 'solo' ? { kind: 'solo', id: it.id, variant: v } : { kind: it.kind, r: it.r, variant: v }; },
-  inRect(x, y, rx, ry, rw, rh) { return U.inRect(x, y, rx, ry, rw, rh); },
-  click(x, y) {
-    if (this.inRect(x, y, 32, 268, 90, 16)) { AUDIO.stopMusic(); AUDIO.play('title'); Game.setScreen('title'); AUDIO.sfx('back'); return; }
-    if (this.inRect(x, y, 390, 268, 90, 16)) { AUDIO.stopMusic(); this.nowKey = null; this.now = null; AUDIO.sfx('back'); return; }
-    for (const r of this.rows()) for (const b of r.vb) if (this.inRect(x, y, b.x, b.y, b.w, b.h)) {
-      AUDIO.audition(this.specFor(r.it, b.v)); this.nowKey = r.key; this.nowVar = b.v; this.now = r; AUDIO.sfx('click'); return;
-    }
-  },
-  key(k) { if (k === 'Escape') { AUDIO.stopMusic(); AUDIO.play('title'); Game.setScreen('title'); } },
+  play(r, v) { AUDIO.audition(this.specFor(r.it, v)); this.nowKey = r.key; this.nowVar = v; this.now = r; },
+  stop() { AUDIO.stopMusic(); this.nowKey = null; this.now = null; },
+  leave() { AUDIO.stopMusic(); AUDIO.play('title'); Game.setScreen('title'); },
+  click() {},
+  key(k) { if (k === 'Escape') this.leave(); },
   render(ctx) {
-    // a real WALNUT gramophone-cabinet interior (no flat digital void) — tiled wood darkened
-    // so the parchment record-labels pop on it, with a soft vignette; then the brass frame.
-    if (!UI.tileFill(ctx, 'ui_wood', 0, 0, 512, 288, 'rgba(18,11,4,0.58)')) {
-      const g = ctx.createLinearGradient(0, 0, 0, 288);
-      g.addColorStop(0, COL.cabinhi); g.addColorStop(0.5, COL.cabin); g.addColorStop(1, COL.cabinlo);
-      ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 288);
-    }
-    { const vg = ctx.createRadialGradient(256, 150, 80, 256, 150, 300); // gentle cabinet vignette
-      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(8,5,2,0.45)');
-      ctx.fillStyle = vg; ctx.fillRect(0, 0, 512, 288); }
-    UI.woodBorder(ctx, 24);
-    TYPE.label(ctx, 'THE GRAMOPHONE ROOM', 256, 40, 420, 22, COL.gold, { display: true, shadow: COL.black, shadowDx: 1.2, shadowDy: 1.2 });
-    TYPE.drawCentered(ctx, 'three songs per berth - tap 1, 2 or 3 to listen', 256, 58, 11, COL.brasshi, { italic: true, shadow: COL.black });
-    const mx = Game.mouse.x, my = Game.mouse.y;
-    // column headers with the rule placed BELOW the text (no descender clipping)
-    MUSIC_CATALOG.forEach((grp, ci) => {
-      const cx = this.COLS[ci] + this.COLW / 2;
-      TYPE.drawCentered(ctx, grp.group, cx, 70, 12, COL.brasshi, { shadow: COL.black });
-      ctx.strokeStyle = COL.brassdk; ctx.beginPath(); ctx.moveTo(this.COLS[ci] + 6, 84.5); ctx.lineTo(this.COLS[ci] + this.COLW - 6, 84.5); ctx.stroke();
-    });
+    const W = 1920, H = 1080;
+    KIT.page(ctx, W, H);
+    KIT.text(ctx, 'The Gramophone Room', { x: 0, y: 34, w: W, h: 70 }, { size: 56, display: true, align: 'center', color: COL.inkdk, shadow: 'rgba(255,240,205,0.5)', shadowDx: 1, shadowDy: 1 });
+    KIT.ornRule(ctx, 960, 112, 640, 'rgba(120,84,40,0.85)');
+    KIT.text(ctx, 'Three songs to every berth — press 1, 2 or 3 to set the needle down.', { x: 0, y: 118, w: W, h: 32 }, { size: 22, italic: true, align: 'center', color: COL.inkmd });
+    const ph = 52 + 8 * (this.ROW_H + this.ROW_GAP) + 6;
+    MUSIC_CATALOG.forEach((grp, ci) => KIT.panel(ctx, { x: this.COLS[ci], y: this.PANEL_Y, w: this.COLW, h: ph }, { title: grp.group, wood: true }));
     for (const r of this.rows()) {
-      const itemActive = r.key === this.nowKey;
-      const hoverRow = this.inRect(mx, my, r.x, r.y, r.w, this.PLATE_H);
-      // parchment "record label" card (dark ink text), brass keyline when playing
-      ctx.fillStyle = itemActive ? COL.paperhi : (hoverRow ? COL.papermd : COL.paperlo);
-      UI.roundRect(ctx, r.x, r.y, r.w, this.PLATE_H, 3); ctx.fill();
-      ctx.lineWidth = 1; ctx.strokeStyle = itemActive ? COL.gold : COL.brassdk;
-      UI.roundRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, this.PLATE_H - 1, 3); ctx.stroke();
-      const ns = TYPE.fitSize(ctx, r.name, r.nameMax, 11);
-      TYPE.draw(ctx, r.name, r.x + 7, r.y + this.PLATE_H / 2, ns, itemActive ? COL.inkdk : (hoverRow ? COL.inkdk : COL.inkmd), { baseline: 'middle' });
+      const active = r.key === this.nowKey;
+      KIT.card(ctx, r, { tint: active ? 'rgba(202,162,74,0.22)' : null, edge: active ? COL.golddk : null });
+      KIT.text(ctx, r.name, { x: r.x + 22, y: r.y + 6, w: r.nameW, h: 32 }, { size: 22, color: COL.inkdk, fit: 'shrink', display: active });
+      KIT.text(ctx, r.style, { x: r.x + 22, y: r.y + 36, w: r.nameW, h: 22 }, { size: 15, italic: true, color: COL.inkfade, fit: 'ellipsis' });
       for (const b of r.vb) {
-        const on = itemActive && b.v === this.nowVar;
-        const bh = this.inRect(mx, my, b.x, b.y, b.w, b.h);
-        // raised brass selector chip
-        ctx.fillStyle = on ? COL.gold : (bh ? COL.brass : COL.brassdk);
-        UI.roundRect(ctx, b.x, b.y, b.w, b.h, 2); ctx.fill();
-        ctx.fillStyle = 'rgba(255,247,220,0.30)'; ctx.fillRect(b.x + 2, b.y + 1, b.w - 4, 1); // top sheen
-        ctx.strokeStyle = on ? COL.brasshi : (bh ? COL.brasshi : COL.brassdk);
-        UI.roundRect(ctx, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 2); ctx.stroke();
-        TYPE.drawCentered(ctx, String(b.v + 1), b.x + b.w / 2, b.y + b.h / 2 - 0.5, 9, on ? COL.inkdk : (bh ? COL.woodfrdk : COL.ink), { baseline: 'middle' });
+        const on = active && b.v === this.nowVar;
+        KIT.button(ctx, 'jukebox.' + r.key + '.' + b.v, b, String(b.v + 1), { variant: 'recess', live: on, size: 20, onClick: () => this.play(r, b.v),
+          tip: [{ t: r.name + ' — song ' + (b.v + 1), c: TIP.ink }, { t: r.style, c: TIP.body }] });
       }
     }
     // now-playing: an engraved BRASS nameplate (raised plate, dark engraved text)
-    ctx.fillStyle = COL.brassdk; UI.roundRect(ctx, 32, 232, 448, 22, 4); ctx.fill();
-    ctx.fillStyle = COL.brass; UI.roundRect(ctx, 33, 233, 446, 20, 4); ctx.fill();
-    ctx.fillStyle = 'rgba(255,247,220,0.28)'; ctx.fillRect(36, 234, 440, 1); // top sheen
-    ctx.strokeStyle = COL.brasshi; UI.roundRect(ctx, 32.5, 232.5, 447, 21, 4); ctx.stroke();
-    if (this.now) TYPE.draw(ctx, 'Now playing:  ' + this.now.name + '  -  variant ' + (this.nowVar + 1) + '  -  ' + this.now.style, 42, 237, 13, COL.cabinlo, { maxWidth: 432, fit: 'ellipsis', shadow: 'rgba(255,247,220,0.4)', shadowDx: 0.6, shadowDy: 0.6 });
-    else TYPE.draw(ctx, 'The needle rests. Choose a record, Captain.', 42, 237, 13, COL.wooddk, { italic: true, shadow: 'rgba(255,247,220,0.35)', shadowDx: 0.6, shadowDy: 0.6 });
-    UI.drawBtn(ctx, 32, 268, 90, 16, '< BACK');
-    UI.drawBtn(ctx, 390, 268, 90, 16, 'STOP');
+    const np = { x: 312, y: 834, w: 1296, h: 76 };
+    const g = ctx.createLinearGradient(0, np.y, 0, np.y + np.h);
+    g.addColorStop(0, COL.brasshi); g.addColorStop(0.5, COL.brass); g.addColorStop(1, COL.brassdk);
+    ctx.fillStyle = COL.brassdk; UI.roundRect(ctx, np.x - 3, np.y - 3, np.w + 6, np.h + 6, 10); ctx.fill();
+    ctx.fillStyle = g; UI.roundRect(ctx, np.x, np.y, np.w, np.h, 8); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,40,10,0.55)'; ctx.lineWidth = 1.5; UI.roundRect(ctx, np.x + 7.5, np.y + 7.5, np.w - 15, np.h - 15, 5); ctx.stroke(); ctx.lineWidth = 1;
+    for (const [sx, sy] of [[np.x + 18, np.y + np.h / 2], [np.x + np.w - 18, np.y + np.h / 2]]) { ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 7); ctx.fillStyle = COL.brassdk; ctx.fill(); ctx.beginPath(); ctx.arc(sx - 1, sy - 1, 2, 0, 7); ctx.fillStyle = COL.brasshi; ctx.fill(); }
+    const tr = { x: np.x + 40, y: np.y, w: np.w - 80, h: np.h };
+    if (this.now) KIT.text(ctx, 'Now playing:  ' + this.now.name + '  ·  song ' + (this.nowVar + 1) + '  ·  ' + this.now.style, tr, { size: 28, align: 'center', color: COL.cabinlo, fit: 'ellipsis', shadow: 'rgba(255,247,220,0.45)', shadowDx: 1, shadowDy: 1 });
+    else KIT.text(ctx, 'The needle rests. Choose a record, Captain.', tr, { size: 28, italic: true, align: 'center', color: COL.wooddk, shadow: 'rgba(255,247,220,0.4)', shadowDx: 1, shadowDy: 1 });
+    KIT.button(ctx, 'jukebox.back', { x: 48, y: 968, w: 240, h: 72 }, '‹  Back', { size: 26, sound: 'back', onClick: () => this.leave(), tip: [{ t: 'Back to the title', c: TIP.ink }, { t: 'Escape also leaves.', c: TIP.body }] });
+    KIT.button(ctx, 'jukebox.stop', { x: 1632, y: 968, w: 240, h: 72 }, 'Stop', { size: 26, sound: 'back', disabled: !this.now, reason: 'Nothing is playing.', onClick: () => this.stop() });
+    KIT.flushFrames(ctx);
+    KIT.flushTip(ctx, W, H);
   },
 };
 

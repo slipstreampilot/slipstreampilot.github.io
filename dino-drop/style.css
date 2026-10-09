@@ -395,3 +395,13 @@ h2 { margin: 4px 0; font-size: 32px; font-weight: 900; color: var(--leaf-2); }
 #side.compact #mode-badge { display: none; }
 #side.compact #save-egg { width: 26px; height: 30px; }
 #side { overflow: hidden; }
+
+/* ===== Power aiming mode: bottom buttons become  ◀  ▶  [ FIRE! ] ===== */
+.ctl.fire { grid-column: span 2; display: flex; align-items: center; justify-content: center; gap: 6px;
+  color: #fff; font-size: 26px; font-weight: 900; text-shadow: 0 2px 0 rgba(0,0,0,.25); animation: fireglow 0.9s ease-in-out infinite; }
+.ctl.fire[hidden] { display: none; }
+.ctl.fire svg { width: 34px; height: 34px; fill: #ffe082; stroke: none; }
+@keyframes fireglow { 50% { filter: brightness(1.15); box-shadow: 0 6px 0 rgba(0,0,0,.25), 0 0 18px 4px rgba(255,112,67,.8); } }
+#controls.aiming [data-action="rotate"], #controls.aiming [data-action="down"] { display: none; }
+#controls.aiming.no-aim [data-action="left"], #controls.aiming.no-aim [data-action="right"] { opacity: .35; }
+.power.aiming { animation: none; background: #ffe0b2; }

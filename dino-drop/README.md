@@ -42,17 +42,17 @@ Upload the changed files to GitHub. Also open `sw.js` and bump the version, for 
 - **Easy:** slow, with an outline showing where the piece will land and a preview of the next dino. If the blocks reach the top, a T. rex stomps away the bottom rows and play continues.
 - **Medium:** speeds up gradually and shows the next dino.
 - **Hard:** fast, no helpers.
-- On a computer: arrow keys, Space to drop instantly, E to use a power, and P to pause.
+- On a computer: arrow keys, Space to drop instantly, E to use a power (arrows to aim, Enter to fire), and P to pause.
 - **Easy mode's save:** one Dino Stomp per game clears the bottom 5 rows the first time the blocks reach the top. The egg in the side panel cracks once it's used. The next time the blocks reach the top, the game is over.
 
 ## Game options
 
 After picking Easy, Medium or Hard, two switches can be turned on. The choice is remembered between games.
 
-- **Powers:** every 2,000 points you earn one power, holding at most one. Tap the glowing button in the side panel to use it.
-  - *Meteor* smashes every block in the column under the falling piece, marked by a glowing dashed line.
-  - *Volcano* melts the bottom row.
-  - *Egg Bomb* turns the falling piece into an egg that blows up a 3×3 area where it lands.
+- **Powers:** every 2,000 points you earn one power, holding at most one. "Power Available!" appears, along with a glowing button in the side panel, and play carries on until you choose to use it. Tapping the button freezes the falling blocks, and the bottom buttons change to ◀ ▶ and a big **FIRE!** button. Aim with the arrows, then FIRE. Tap the power button again to cancel and keep it for later.
+  - *Meteor* smashes every block in the column you aim at.
+  - *Egg Bomb* drops an egg down the column you aim at. It blows up a 3×3 area centred on the block it lands on.
+  - *Volcano* melts the bottom row. There's nothing to aim, so just tap FIRE.
 - **Cascade:** after rows clear, loose clumps of blocks tumble down. If that completes more rows, they clear as a chain, and each step of the chain multiplies the points.
 
 ## Puzzle mode

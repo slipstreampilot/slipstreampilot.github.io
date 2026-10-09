@@ -255,6 +255,7 @@ let chain = 1;                     // Cascade: 2 = second clear in a chain react
 const POWER_EVERY = 2000;
 const POWERS = { meteor: 'Meteor', volcano: 'Volcano', egg: 'Egg Bomb' };
 let power = null, nextPowerAt = POWER_EVERY, powerAnim = null, lastPower = null;
+let aim = null;                    // while aiming a power: { type, col }
 let gravityAcc = 0, lockTimer = 0, lockResets = 0;
 let clearingRows = [], animTimer = 0;
 let softDrop = false;
@@ -358,8 +359,9 @@ function startGame(m) {
   score = 0; lines = 0; level = 1;
   savesLeft = cfg.rescue ? 1 : 0;
   paintSave();
-  power = null; nextPowerAt = POWER_EVERY; powerAnim = null;
-  $('power-btn').hidden = !gameOpts.powers;
+  power = null; nextPowerAt = POWER_EVERY; powerAnim = null; aim = null;
+  setAimControls(false);
+  $('power-btn').hidden = true;
   ui.side.classList.toggle('compact', !!gameOpts.powers);
   paintPower();
   gravityMs = cfg.gravity;
@@ -517,7 +519,7 @@ function checkPowerEarn() {
     if (!power) {
       const choices = Object.keys(POWERS).filter((k) => k !== lastPower);
       power = lastPower = choices[Math.floor(Math.random() * choices.length)];
-      popup(POWERS[power] + '!', '#ffcc80', 0.9, 0.3);
+      popups.push({ text: 'Power Available!', color: '#ffcc80', scale: 0.85, life: 1, yFrac: 0.3, hold: 1400 });
       Sound.play('power');
     }
   }
@@ -525,44 +527,69 @@ function checkPowerEarn() {
 }
 function paintPower() {
   const btn = $('power-btn');
-  if (btn.hidden) return;
-  btn.classList.toggle('empty', !power);
-  $('power-name').textContent = power ? POWERS[power] : 'Power';
-  btn.setAttribute('aria-label', power ? 'Use ' + POWERS[power] : 'Power charging');
-  const pct = Math.max(0, Math.min(1, ((score || 0) - (nextPowerAt - POWER_EVERY)) / POWER_EVERY));
-  $('power-fill').style.width = Math.round(pct * 100) + '%';
-  const c = $('power-icon');
-  const { ctx, w, h } = fitCanvas(c);
+  const show = !!gameOpts.powers && !puzzle && (!!power || !!aim);
+  btn.hidden = !show;
+  if (!show) return;
+  const kind = aim ? aim.type : power;
+  btn.classList.remove('empty');
+  btn.classList.toggle('aiming', !!aim);
+  $('power-name').textContent = aim ? 'Cancel' : POWERS[kind];
+  btn.setAttribute('aria-label', aim ? 'Cancel ' + POWERS[kind] : 'Use ' + POWERS[kind]);
+  const { ctx, w, h } = fitCanvas($('power-icon'));
   ctx.clearRect(0, 0, w, h);
-  if (w > 4) drawPowerIcon(ctx, power || lastPower || 'meteor', 0, 0, w, h);
+  if (w > 4) drawPowerIcon(ctx, kind, 0, 0, w, h);
 }
 function meteorColumn() {
   const cs = cellsOf(piece);
   return Math.max(0, Math.min(COLS - 1, Math.round(cs.reduce((a, c) => a + c[0], 0) / cs.length)));
 }
+function setAimControls(on, noAim) {
+  const c = $('controls');
+  c.classList.toggle('aiming', on);
+  c.classList.toggle('no-aim', !!noAim);
+  $('fire-btn').hidden = !on;
+}
+// Step 1: tap the power button -> everything freezes, bottom buttons become  ◀ ▶ FIRE!
 function usePower() {
+  if (aim) return cancelAim();                 // tapping it again backs out
   if (!power || state !== 'playing' || !piece || puzzle) return;
-  const kind = power;
-  power = null;
-  if (kind === 'meteor') {
-    powerAnim = { type: 'meteor', col: meteorColumn(), t: 0, dur: 650 };
-    state = 'power';
-    Sound.play('meteor');
-  } else if (kind === 'volcano') {
-    powerAnim = { type: 'volcano', t: 0, dur: 950 };
-    state = 'power';
-    Sound.play('volcano');
-  } else if (kind === 'egg') {
-    // the falling piece turns into an egg bomb where its middle is
-    const cs = cellsOf(piece);
-    const egg = { kind: 'EGG', shape: [[1]], faceMap: [[false]], x: meteorColumn(), y: Math.max(...cs.map((c) => c[1])) };
-    while (!fits(egg) && egg.y > 0) egg.y--;
-    piece = egg;
-    lockTimer = 0; lockResets = 0;
-    popup('Egg Bomb!', '#fff59d', 0.8, 0.3);
-    Sound.play('power');
-  }
+  releaseAllInput();
+  const start = power === 'volcano' ? null : meteorColumn();
+  aim = { type: power, col: start };
+  state = 'aiming';
+  setAimControls(true, power === 'volcano');
   paintPower();
+  Sound.play('click');
+}
+function cancelAim() {
+  aim = null;
+  state = 'playing';
+  setAimControls(false);
+  paintPower();
+  lastTime = performance.now();
+}
+function moveAim(dx) {
+  if (!aim || aim.col == null) return;
+  const nc = Math.max(0, Math.min(COLS - 1, aim.col + dx));
+  if (nc !== aim.col) { aim.col = nc; Sound.play('move'); }
+}
+function eggLandingY(col) {
+  let y = HIDDEN;
+  while (y + 1 < TOTAL_ROWS && !board[y + 1][col]) y++;
+  return board[y][col] ? y - 1 : y;
+}
+// Step 2: FIRE!
+function firePower() {
+  if (!aim) return;
+  const a = aim;
+  aim = null;
+  power = null;
+  setAimControls(false);
+  paintPower();
+  if (a.type === 'meteor') { powerAnim = { type: 'meteor', col: a.col, t: 0, dur: 650 }; Sound.play('meteor'); }
+  else if (a.type === 'volcano') { powerAnim = { type: 'volcano', t: 0, dur: 950 }; Sound.play('volcano'); }
+  else { powerAnim = { type: 'egg', col: a.col, y: eggLandingY(a.col), t: 0, dur: 420 }; Sound.play('move'); }
+  state = 'power';
 }
 function finishPower() {
   const a = powerAnim;
@@ -573,6 +600,16 @@ function finishPower() {
     for (let y = 0; y < TOTAL_ROWS; y++) if (board[y][a.col]) { board[y][a.col] = null; burst(a.col, y, 6); }
     shake = 0.9;
     Sound.play('boom');
+  } else if (a.type === 'egg') {
+    const cy = Math.min(TOTAL_ROWS - 1, a.y + 1);          // blast is centred on the block it lands on
+    for (let y = cy - 1; y <= cy + 1; y++) for (let x = a.col - 1; x <= a.col + 1; x++) {
+      if (x < 0 || x >= COLS || y < 0 || y >= TOTAL_ROWS) continue;
+      if (board[y][x]) { board[y][x] = null; burst(x, y, 5); }
+    }
+    burst(a.col, a.y, 10);
+    shake = 0.8;
+    Sound.play('boom');
+    popup('BOOM!', '#ffcc80', 1.1, 0.42);
   } else if (a.type === 'volcano') {
     for (let x = 0; x < COLS; x++) if (board[TOTAL_ROWS - 1][x]) burst(x, TOTAL_ROWS - 1, 4);
     board.pop(); board.unshift(Array(COLS).fill(null));
@@ -580,6 +617,7 @@ function finishPower() {
     if (piece && !fits(piece)) piece.y = Math.max(0, piece.y - 1);
     shake = 0.7;
   }
+  lastTime = performance.now();
   if (gameOpts.cascade && startCascade()) return;
   resumePlay();
 }
@@ -639,7 +677,7 @@ function gameOver() {
 }
 
 function pauseGame() {
-  if (state !== 'playing' && state !== 'clearing' && state !== 'rescue' && state !== 'cascading' && state !== 'power') return;
+  if (state !== 'playing' && state !== 'clearing' && state !== 'rescue' && state !== 'cascading' && state !== 'power' && state !== 'aiming') return;
   pausedFrom = state;
   state = 'paused';
   releaseAllInput();
@@ -660,6 +698,7 @@ function resumeGame() {
 function toMenu() {
   state = 'menu';
   piece = null;
+  aim = null; setAimControls(false);
   puzzle = null;
   releaseAllInput();
   Wake.off();
@@ -1014,6 +1053,13 @@ const held = {};                  // action -> { t, repeating }
 let lastHorizontal = null;
 
 function press(action) {
+  if (state === 'aiming') {
+    if (action === 'left') moveAim(-1);
+    else if (action === 'right') moveAim(1);
+    else if (action === 'fire' || action === 'harddrop') firePower();
+    else if (action === 'power') cancelAim();
+    return;
+  }
   if (state !== 'playing' || !piece) {
     if (action === 'left' || action === 'right' || action === 'down') held[action] = { t: 0, repeating: false };
     return;
@@ -1159,6 +1205,7 @@ bindTap($('btn-quit'), () => { if (puzzle) openLevels(zoneOf(puzzle.index)); els
 bindTap($('btn-restart'), () => { if (puzzle) startPuzzle(puzzle.index); });
 bindTap($('btn-puzzle'), openZones);
 bindButton($('power-btn'), () => usePower());
+bindButton($('fire-btn'), () => press('fire'));
 bindTap($('zones-back'), toMenu);
 bindTap($('levels-back'), openZones);
 bindTap($('pz-next'), () => { if (puzzle) startPuzzle(puzzle.index + 1); });
@@ -1171,7 +1218,7 @@ bindTap(ui.music, () => {
   settings.music = !settings.music; store.set('settings', settings); Sound.applySettings(); paintToggles();
 });
 
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'rotate', KeyX: 'rotate', KeyA: 'left', KeyD: 'right', KeyS: 'down', KeyW: 'rotate', Space: 'harddrop', KeyE: 'power', Enter: 'power' };
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'rotate', KeyX: 'rotate', KeyA: 'left', KeyD: 'right', KeyS: 'down', KeyW: 'rotate', Space: 'harddrop', KeyE: 'power', Enter: 'fire' };
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyP') { state === 'paused' ? resumeGame() : pauseGame(); return; }
   const a = KEYMAP[e.code];
@@ -1343,7 +1390,7 @@ function render() {
 
   // ghost (Easy) and falling piece
   if (piece && state !== 'over' && state !== 'menu') {
-    if (power === 'meteor' && state === 'playing' && !puzzle) drawMeteorTarget(ctx);
+    if (aim || (state === 'paused' && pausedFrom === 'aiming')) drawAimPreview(ctx);
     if (cfg.ghost) {
       const gy = ghostY();
       if (gy !== piece.y) {
@@ -1401,15 +1448,41 @@ function render() {
   ctx.restore();
 }
 
-function drawMeteorTarget(ctx) {
-  const col = meteorColumn();
-  const top = (Math.max(...cellsOf(piece).map((c) => c[1])) + 1 - HIDDEN) * cell;
+function drawAimPreview(ctx) {
+  if (!aim) return;
   const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
   ctx.save();
-  ctx.fillStyle = 'rgba(255,112,67,' + (0.12 + 0.12 * pulse) + ')';
-  ctx.fillRect(col * cell, top, cell, boardH - top);
-  ctx.strokeStyle = 'rgba(255,171,64,' + (0.5 + 0.4 * pulse) + ')'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-  ctx.strokeRect(col * cell + 1, top, cell - 2, boardH - top - 1);
+  if (aim.type === 'meteor') {
+    const col = aim.col;
+    ctx.fillStyle = 'rgba(255,112,67,' + (0.16 + 0.14 * pulse) + ')';
+    ctx.fillRect(col * cell, 0, cell, boardH);
+    ctx.strokeStyle = 'rgba(255,171,64,' + (0.55 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
+    ctx.strokeRect(col * cell + 1, 1, cell - 2, boardH - 2);
+    ctx.setLineDash([]);
+    drawPowerIcon(ctx, 'meteor', col * cell - cell * 0.4, cell * 0.1, cell * 1.8, cell * 1.6);
+  } else if (aim.type === 'egg') {
+    const gy = Math.min(TOTAL_ROWS - 1, eggLandingY(aim.col) + 1) - HIDDEN;   // blast centre (the block it hits)
+    ctx.fillStyle = 'rgba(255,112,67,' + (0.16 + 0.14 * pulse) + ')';
+    ctx.fillRect((aim.col - 1) * cell, (gy - 1) * cell, cell * 3, cell * 3);
+    ctx.strokeStyle = 'rgba(255,171,64,' + (0.55 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
+    ctx.strokeRect((aim.col - 1) * cell + 1, (gy - 1) * cell + 1, cell * 3 - 2, cell * 3 - 2);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255,224,130,.5)'; ctx.beginPath(); ctx.moveTo((aim.col + 0.5) * cell, cell * 1.3); ctx.lineTo((aim.col + 0.5) * cell, (gy - 1) * cell); ctx.stroke();
+    drawEggBomb(ctx, aim.col * cell, cell * 0.2, cell);
+  } else {
+    ctx.fillStyle = 'rgba(255,87,34,' + (0.2 + 0.2 * pulse) + ')';
+    ctx.fillRect(0, boardH - cell, boardW, cell);
+    ctx.strokeStyle = 'rgba(255,171,64,' + (0.55 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]);
+    ctx.strokeRect(1, boardH - cell + 1, boardW - 2, cell - 2);
+    ctx.setLineDash([]);
+  }
+  // instructions
+  const msg = aim.type === 'volcano' ? 'Tap FIRE!' : 'Aim ◀ ▶ then FIRE!';
+  const size = Math.max(14, Math.round(cell * 0.75));
+  ctx.font = '900 ' + size + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = Math.max(3, size * 0.18); ctx.strokeStyle = '#2b1f3a'; ctx.lineJoin = 'round';
+  const ty = aim.type === 'volcano' ? boardH * 0.45 : boardH * 0.12 + cell * 1.4;
+  ctx.strokeText(msg, boardW / 2, ty); ctx.fillStyle = '#fff59d'; ctx.fillText(msg, boardW / 2, ty);
   ctx.restore();
 }
 function drawPowerAnim(ctx) {
@@ -1421,6 +1494,9 @@ function drawPowerAnim(ctx) {
     const cx = (a.col + 0.5) * cell, cy = -cell + k * (boardH + cell);
     ctx.fillStyle = 'rgba(255,112,67,.25)'; ctx.fillRect(a.col * cell, 0, cell, cy);
     drawPowerIcon(ctx, 'meteor', cx - cell * 1.2, cy - cell * 1.6, cell * 2.4, cell * 2.2, true);
+  } else if (a.type === 'egg') {
+    const ty = (a.y - HIDDEN) * cell, y = -cell + k * k * (ty + cell);
+    drawEggBomb(ctx, a.col * cell, y, cell);
   } else if (a.type === 'volcano') {
     const h = cell * (0.3 + 1.0 * Math.sin(k * Math.PI / 2));
     const g = ctx.createLinearGradient(0, boardH - h, 0, boardH);
@@ -1568,7 +1644,11 @@ function update(dt) {
     p.life -= dt / 1300;
     if (p.life <= 0 || p.y > ROWS + 2) particles.splice(i, 1);
   }
-  for (let i = popups.length - 1; i >= 0; i--) { popups[i].life -= dt / 1100; if (popups[i].life <= 0) popups.splice(i, 1); }
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const pp = popups[i];
+    if (pp.hold > 0) { pp.hold -= dt; continue; }
+    pp.life -= dt / 1100; if (pp.life <= 0) popups.splice(i, 1);
+  }
   if (shake > 0) shake = Math.max(0, shake - dt / 600);
 
   if (state === 'clearing') {
@@ -1665,5 +1745,5 @@ requestAnimationFrame((t) => { lastTime = t; frame(t); });
 
 // small hook for automated tests
 window.__dino = { get state() { return state; }, get score() { return score; }, get lines() { return lines; },
-  get piece() { return piece; }, get board() { return board; }, get puzzle() { return puzzle; }, startPuzzle, get held() { return Object.keys(held); }, get savesLeft() { return savesLeft; }, get chain() { return chain; }, gameOpts, get power() { return power; }, setPower(k) { power = k; paintPower(); }, addScore(n) { score += n; updateHud(); }, testClear(rows) { clearingRows = rows; animTimer = 1; chain = 1; state = 'clearing'; piece = null; }, startGame, press, release, pauseGame, resumeGame };
+  get piece() { return piece; }, get board() { return board; }, get puzzle() { return puzzle; }, startPuzzle, get held() { return Object.keys(held); }, get savesLeft() { return savesLeft; }, get chain() { return chain; }, gameOpts, get power() { return power; }, get aim() { return aim; }, setPower(k) { power = k; paintPower(); }, addScore(n) { score += n; updateHud(); }, testClear(rows) { clearingRows = rows; animTimer = 1; chain = 1; state = 'clearing'; piece = null; }, startGame, press, release, pauseGame, resumeGame };
 })();

@@ -93,6 +93,10 @@ const Game = {
       // a thrown frame must NOT kill the rAF chain (that's a hard freeze needing a browser refresh).
       // Log the first error of an episode, keep looping — the next frame (e.g. cursor moved) may recover.
       try {
+        // hold a short loading card until the title/menu art is in (SPR boot set), so the first
+        // screen never draws half-empty; give up waiting after 15s and show whatever has arrived
+        if (!this._booted) this._booted = SPR.bootReady() || this.time > 15;
+        if (!this._booted) { this.drawLoading(); requestAnimationFrame(loop); return; }
         if (this.screen && this.screen.update) this.screen.update(dt);
         this.render();
         this._frameErr = false;
@@ -102,6 +106,23 @@ const Game = {
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
+  },
+
+  // boot loading card, drawn in raw backing-store pixels (screens/KIT aren't needed yet)
+  drawLoading() {
+    const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height, u = H / 1152;
+    const p = SPR.bootProgress(), f = p.total ? p.done / p.total : 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#07060f'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e8c878'; ctx.font = 'bold ' + Math.round(72 * u) + 'px Cinzel, Georgia, serif';
+    ctx.fillText('MYTHRIL TIDE', W / 2, H * 0.44);
+    const bw = 520 * u, bh = 10 * u, bx = (W - bw) / 2, by = H * 0.53;
+    ctx.fillStyle = 'rgba(232,200,120,0.18)'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = '#e8c878'; ctx.fillRect(bx, by, bw * f, bh);
+    ctx.fillStyle = 'rgba(232,200,120,0.7)'; ctx.font = 'italic ' + Math.round(26 * u) + 'px Spectral, Georgia, serif';
+    ctx.fillText('Raising the sails…', W / 2, by + 50 * u);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   },
 
   resize() {

@@ -9,11 +9,14 @@ const SPR = {
   initAtlas() {
     if (typeof window === 'undefined' || !window.ATLAS) return;
     this.atlas = window.ATLAS;
-    const mk = src => { const im = new Image(); im.src = src; return im; };
+    // the boot set: started at once (ahead of the queue). The web build (dev/build_web.py) swaps the
+    // painted backdrops to WebP and lists them in ATLAS.files; the repo copy keeps the PNGs.
+    const F = this.atlas.files || {}, file = k => 'assets/' + (F[k] || k + '.png');
+    const mk = src => this._load(src, 0, true).img;
     this.imgShips = mk('assets/atlas_ships.png');
     this.imgSprites = mk('assets/atlas_sprites.png');
-    this.imgBg = { day: mk('assets/bg_day.png'), storm: mk('assets/bg_storm.png'), fog: mk('assets/bg_fog.png') };
-    this.imgParchment = mk('assets/parchment.png');
+    this.imgBg = { day: mk(file('bg_day')), storm: mk(file('bg_storm')), fog: mk(file('bg_fog')) };
+    this.imgParchment = mk(file('parchment'));
     // baked ship margins (art px -> logical px)
     this.SHIP_MX = this.atlas.shipMargins.MXL / 2;
     this.SHIP_MY = this.atlas.shipMargins.MYT / 2;
@@ -54,33 +57,114 @@ const SPR = {
     return im && im.complete && im.naturalWidth ? im : null;
   },
 
+  // ============ ASSET LOADER ============
+  // The game used to fire off every image request (1,100+ files) the instant it booted, so the
+  // browser fetched them in arbitrary order and screens drew half-empty while art popped in. Now
+  // every image goes through one queue:
+  //   * at most MAXQ downloads at a time, lowest priority number first (0 = title/menu boot set,
+  //     1 = ships/portraits/icons/standing+walking crew, 2 = event & help art, 3 = other crew cycles);
+  //   * whatever a screen actually tries to draw (artEntry miss) jumps to the front of the queue;
+  //   * Game shows a loading bar until the boot set is in (bootProgress / bootReady).
+  // Headless harnesses (node-canvas) keep the old eager behaviour: every image starts at
+  // once and decodes synchronously, so the test gates and snapshots see exactly what they always did.
+  // The web build packs each race+action's crew frames into ONE sheet; such entries carry `rect` (the
+  // frame's spot on the sheet) and drawCrewPose crops it. Every other image is a whole file.
+  MAXQ: 6,
+  // (the node harnesses stub window without devicePixelRatio — the same headless signal Game.resize uses)
+  _lazy: typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number',
+  _jobs: {}, _queue: [], _qi: 0, _urgent: [], _ui: 0, _active: 0, _boot: [],
+  _load(src, prio, now) {
+    let j = this._jobs[src];
+    if (!j) {
+      j = this._jobs[src] = { src, prio, state: 0, img: null };
+      if (prio === 0) this._boot.push(j);
+      if (now || !this._lazy) this._start(j); else this._queue.push(j);
+    } else if (prio < j.prio) j.prio = prio;
+    return j;
+  },
+  _start(j) {
+    j.state = 1; this._active++;
+    const im = new Image();
+    j.img = im;
+    const fin = st => { if (j.state !== 1) return; j.state = st; this._active--; if (this._lazy) this._pump(); };
+    im.onload = () => fin(2);
+    im.onerror = () => fin(3);
+    im.src = j.src;
+    // node-canvas decodes inside the src setter and may skip onload; settle the job either way
+    if (!this._lazy && im.complete) fin(im.naturalWidth ? 2 : 3);
+  },
+  _pump() {
+    while (this._active < this.MAXQ) {
+      let j = null;
+      while (!j && this._ui < this._urgent.length) { const u = this._urgent[this._ui++]; if (u.state === 0) j = u; }
+      while (!j && this._qi < this._queue.length) { const q = this._queue[this._qi++]; if (q.state === 0) j = q; }
+      if (!j) break;
+      this._start(j);
+    }
+    if (this._ui > 256 && this._ui === this._urgent.length) { this._urgent.length = 0; this._ui = 0; }
+  },
+  _want(j) { if (j && j.state === 0 && !j.urgent) { j.urgent = true; this._urgent.push(j); if (this._lazy) this._pump(); } },
+  bootProgress() {
+    const done = this._boot.filter(j => j.state >= 2).length;
+    return { done, total: this._boot.length };
+  },
+  bootReady() { const p = this.bootProgress(); return p.done >= p.total; },
+  // overall progress (for a status readout): settled jobs / all jobs
+  loadProgress() {
+    const all = Object.values(this._jobs);
+    return { done: all.filter(j => j.state >= 2).length, total: all.length };
+  },
+  _artPrio(key) {
+    if (key === 'title' || key.startsWith('ui_')) return 0;
+    if (/^(ship_|portrait_|icon_|weapon_|parchment_|crew_)/.test(key)) return 1;
+    return 2;
+  },
+  _crewPrio(pose) {
+    const fam = pose.replace(/\d+$/, '');
+    return /^(idle|walk|climb|operate$|down$|attack$)/.test(fam) ? 1 : 3;
+  },
+
   // ============ USER-GENERATED AI ART (assets/art via dev/import_art.js) ============
   _art: {},
   _crewAnchor: {},  // 'crew_<race>_<pose>' -> {ax,ay,w,h} foot/contact anchor
   initArt() {
     if (typeof window === 'undefined') return;
-    for (const [key, meta] of Object.entries((window.ART && window.ART.ships) || {})) {
-      const im = new Image(); im.src = 'assets/' + meta.file;
-      this._art[key] = { img: im, meta };
-    }
-    for (const [key, file] of Object.entries((window.ART && window.ART.images) || {})) {
-      const im = new Image(); im.src = 'assets/' + file;
-      this._art[key] = { img: im, meta: null };
-    }
-    // HD-2D crew pose frames (assets/crew_anim_manifest.js)
+    const add = (key, file, prio, meta, rect) => {
+      const job = this._load('assets/' + file, prio);
+      this._art[key] = { job, meta: meta || null, rect: rect || null, get img() { return job.img; } };
+    };
+    for (const [key, meta] of Object.entries((window.ART && window.ART.ships) || {})) add(key, meta.file, 1, meta);
+    for (const [key, file] of Object.entries((window.ART && window.ART.images) || {})) add(key, file, this._artPrio(key));
+    // HD-2D crew pose frames (assets/crew_anim_manifest.js); sx/sy = packed onto a sheet (web build)
     for (const [race, poses] of Object.entries(window.CREW_ART || {})) {
       for (const [pose, m] of Object.entries(poses)) {
         const k = 'crew_' + race + '_' + pose;
-        const im = new Image(); im.src = 'assets/' + m.file;
-        this._art[k] = { img: im, meta: null };
+        add(k, m.file, this._crewPrio(pose), null, m.sx != null ? { x: m.sx, y: m.sy, w: m.w, h: m.h } : null);
         this._crewAnchor[k] = m;
       }
     }
+    if (this._lazy) {
+      this._queue.sort((a, b) => a.prio - b.prio);   // stable: manifest order within a priority
+      this._pump();
+    }
   },
+  // the loaded entry, or null. A miss on an image still waiting in the queue moves it to the front:
+  // whatever is on screen right now downloads next.
   artEntry(name) {
     const e = this._art[name];
-    return e && e.img.complete && e.img.naturalWidth ? e : null;
+    if (!e) return null;
+    const im = e.job.img;
+    if (im && im.complete && im.naturalWidth) return e;
+    this._want(e.job);
+    return null;
   },
+  // same test without the queue bump (for "is any pose loaded?" probes that must not pull a whole kit)
+  artReady(name) {
+    const e = this._art[name], im = e && e.job.img;
+    return im && im.complete && im.naturalWidth ? e : null;
+  },
+  // is this art still on its way? (false once loaded, failed, or never listed)
+  artPending(name) { const e = this._art[name]; return !!(e && e.job.state < 2); },
   artShip(layout, style) {
     return this.artEntry('ship_' + layout + '_' + style) || this.artEntry('ship_' + layout);
   },
@@ -139,12 +223,13 @@ const SPR = {
     if (!e && window.CREW_ART && window.CREW_ART[race]) {
       const poses = window.CREW_ART[race];
       const order = ['idle_side1', 'idle_side2', 'walk1', 'idle_front', 'idle_side', 'operate', 'attack1']; // same-design (video) kit first
-      for (const alt of order) { if (poses[alt]) { const ae = this.artEntry('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } } }
-      if (!e) for (const alt of Object.keys(poses)) { const ae = this.artEntry('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } }
+      for (const alt of order) { if (poses[alt]) { const ae = this.artReady('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } } }
+      if (!e) for (const alt of Object.keys(poses)) { const ae = this.artReady('crew_' + race + '_' + alt); if (ae) { e = ae; k = 'crew_' + race + '_' + alt; break; } }
     }
     if (!e) return false; // no pose for this race has loaded at all -> legacy fallback
     const a = this._crewAnchor[k] || {};
-    const nW = e.img.naturalWidth, nH = e.img.naturalHeight;
+    const R = e.rect;   // web build: this frame's spot on its race+action sheet
+    const nW = R ? R.w : e.img.naturalWidth, nH = R ? R.h : e.img.naturalHeight;
     const poseK = k.slice(('crew_' + race + '_').length);
     const ref = this._kitRef(race, poseK) || nH;   // scale by this frame's KIT idle height (manifest), not this frame's own height
     let scale = (targetH || ref) / ref;
@@ -162,14 +247,15 @@ const SPR = {
     const ax = (a.ax != null ? a.ax : nW / 2) * scale;
     const ay = (a.ay != null ? a.ay : nH) * scale;
     const dy = footY - ay;   // unrounded: the scene renders at ~3.1x, logical rounding read as stepping
+    const blit = (x, y) => R ? ctx.drawImage(e.img, R.x, R.y, R.w, R.h, x, y, w, h) : ctx.drawImage(e.img, x, y, w, h);
     if (!flip) {
-      ctx.drawImage(e.img, footX - ax, dy, w, h);
+      blit(footX - ax, dy);
     } else {
       const dxf = footX - (w - ax);
       ctx.save();
       ctx.translate(dxf + w, dy);
       ctx.scale(-1, 1);
-      ctx.drawImage(e.img, 0, 0, w, h);
+      blit(0, 0);
       ctx.restore();
     }
     return true;

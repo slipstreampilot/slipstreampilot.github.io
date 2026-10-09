@@ -207,7 +207,14 @@ const ShipyardScreen = {
     ctx.save(); ctx.translate(x, footY); ctx.scale(s, s);
     ctx.fillStyle = 'rgba(20,12,6,0.30)'; ctx.beginPath(); ctx.ellipse(0, 0.6, 6.5, 1.7, 0, 0, 7); ctx.fill();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    SPR.drawCrewPose(ctx, race, pose, flip !== facesLeft, 0, dy || 0, TUNING.crewDrawH);
+    if (!SPR.drawCrewPose(ctx, race, pose, flip !== facesLeft, 0, dy || 0, TUNING.crewDrawH) && SPR.artPending('crew_' + race + '_' + pose)) {
+      // art still downloading: three pulsing dots where the sailor will stand (instead of an empty shadow)
+      const t = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = 'rgba(255,246,224,' + (0.35 + 0.55 * Math.max(0, Math.sin(t * 5 - i * 0.9))).toFixed(2) + ')';
+        ctx.beginPath(); ctx.arc((i - 1) * 3.2, -10, 1.1, 0, 7); ctx.fill();
+      }
+    }
     ctx.restore();
   },
   gameScale() { return CombatScreen.hdScale(); },

@@ -46,6 +46,19 @@
         <div class="panel small"><span class="label">Level</span><span id="level">1</span></div>
         <div class="panel small"><span class="label">Rows</span><span id="lines">0</span></div>
         <div class="panel small" id="mode-badge"></div>
+        <button class="panel power empty" id="power-btn" hidden aria-label="Power">
+          <canvas id="power-icon" aria-hidden="true"></canvas>
+          <span class="p-name" id="power-name">Power</span>
+          <span class="p-bar" aria-hidden="true"><i id="power-fill"></i></span>
+        </button>
+        <div class="panel small" id="save-panel" hidden aria-live="polite">
+          <span class="label">Save</span>
+          <svg id="save-egg" viewBox="0 0 40 48" aria-hidden="true">
+            <path class="shell" d="M20 3C10 3 4 18 4 29c0 9 7 16 16 16s16-7 16-16C36 18 30 3 20 3z"/>
+            <path class="crack" d="M5 26 L12 21 L17 28 L23 20 L28 27 L35 22"/>
+            <circle class="spot" cx="14" cy="16" r="2.6"/><circle class="spot" cx="25" cy="12" r="2"/><circle class="spot" cx="27" cy="33" r="2.4"/>
+          </svg>
+        </div>
       </aside>
     </section>
 
@@ -87,6 +100,11 @@
           <span class="mode-name">Hard</span>
           <span class="mode-best" data-best="hard"></span>
         </button>
+        <button class="mode puzzle" id="btn-puzzle" style="--c:#26a69a">
+          <canvas data-pip="1"></canvas>
+          <span class="mode-name">Puzzles</span>
+          <span class="mode-best" id="puzzle-progress"></span>
+        </button>
       </div>
       <p class="hint" id="install-hint"></p>
       <button class="text-btn" id="btn-install" hidden>Install on this phone</button>
@@ -99,6 +117,7 @@
     <div class="card">
       <h2>Paused</h2>
       <button class="big-btn go" id="btn-resume">Keep playing</button>
+      <button class="big-btn" id="btn-restart" hidden>Start level again</button>
       <button class="big-btn" id="btn-quit">Main menu</button>
     </div>
   </section>
@@ -115,6 +134,71 @@
     </div>
   </section>
 
+  <!-- ===== Game options (before Easy / Medium / Hard) ===== -->
+  <section id="options" class="overlay">
+    <div class="card">
+      <div class="card-head">
+        <button class="back-btn" id="opt-back" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M15 4 L7 12 L15 20" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2 id="opt-title">Easy</h2>
+      </div>
+      <canvas id="opt-art" aria-hidden="true"></canvas>
+      <button class="toggle" id="opt-powers" role="switch" aria-checked="false">
+        <svg class="t-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M40 6 L22 22" stroke="#ffb74d" stroke-width="7" stroke-linecap="round"/><path d="M34 4 L18 18" stroke="#ffe082" stroke-width="4" stroke-linecap="round"/><circle cx="16" cy="30" r="12" fill="#8d6e63" stroke="#2b1f3a" stroke-width="3"/><circle cx="12" cy="27" r="3" fill="#6d4c41"/><circle cx="20" cy="34" r="2.4" fill="#6d4c41"/></svg>
+        <span class="t-text"><b>Powers</b><small>Earn a Meteor, Volcano or Egg Bomb every 2,000 points</small></span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
+      <button class="toggle" id="opt-cascade" role="switch" aria-checked="false">
+        <svg class="t-icon" viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="4" width="14" height="14" rx="4" fill="#4fc3f7" stroke="#2b1f3a" stroke-width="3"/><path d="M13 22 v8 m-4 -4 l4 4 4 -4" stroke="#2b1f3a" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="6" y="32" width="14" height="12" rx="4" fill="#4fc3f7" stroke="#2b1f3a" stroke-width="3"/><rect x="22" y="32" width="20" height="12" rx="4" fill="#ffa726" stroke="#2b1f3a" stroke-width="3"/></svg>
+        <span class="t-text"><b>Cascade</b><small>After a row clears, loose blocks tumble down. Chain reactions!</small></span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
+      <button class="big-btn go" id="opt-play">Play!</button>
+    </div>
+  </section>
+
+  <!-- ===== Puzzle: zone map ===== -->
+  <section id="zones" class="overlay">
+    <div class="card wide">
+      <div class="card-head">
+        <button class="back-btn" id="zones-back" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M15 4 L7 12 L15 20" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2>Puzzles</h2>
+      </div>
+      <p class="sub small">Help Pip get home to the nest!</p>
+      <div id="zone-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== Puzzle: level picker ===== -->
+  <section id="levels" class="overlay">
+    <div class="card wide">
+      <div class="card-head">
+        <button class="back-btn" id="levels-back" aria-label="Back to zones">
+          <svg viewBox="0 0 24 24"><path d="M15 4 L7 12 L15 20" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <h2 id="levels-title">Zone</h2>
+      </div>
+      <div id="level-grid"></div>
+    </div>
+  </section>
+
+  <!-- ===== Puzzle: result ===== -->
+  <section id="pz-over" class="overlay">
+    <div class="card">
+      <canvas id="pz-art" aria-hidden="true"></canvas>
+      <h2 id="pz-title">Home!</h2>
+      <p class="sub" id="pz-sub"></p>
+      <div class="stars" id="pz-stars"></div>
+      <p class="final" id="pz-bonus"></p>
+      <button class="big-btn go" id="pz-next">Next level</button>
+      <button class="big-btn go" id="pz-retry">Try again</button>
+      <button class="big-btn" id="pz-map">Level map</button>
+    </div>
+  </section>
+
   <!-- shown when a phone is turned sideways and there isn't room to play -->
   <section id="rotate-hint" class="overlay">
     <div class="card"><h2>Turn the phone upright</h2><p class="sub">Dino Drop plays best standing tall.</p></div>
@@ -122,6 +206,8 @@
 </div>
 
 <script src="dinos.js"></script>
+<script src="puzzle-core.js"></script>
+<script src="puzzle-levels.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

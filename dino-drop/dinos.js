@@ -178,3 +178,78 @@ if (window.CanvasRenderingContext2D && !CanvasRenderingContext2D.prototype.round
     this.closePath();
   };
 }
+
+/* Pip: the baby dino of puzzle mode, still wearing half an eggshell.
+   Drawn in a w x h box (2 x 2 board cells). o = { dir: 1|-1, mode: walk|fall|stun|happy, t: ms } */
+window.drawPip = function drawPip(ctx, x, y, w, h, o) {
+  o = o || {};
+  const s = Math.min(w, h) / 100;
+  const t = o.t || 0;
+  const walking = o.mode === 'walk';
+  const step = walking ? Math.sin(t / 110) : 0;
+  const bob = walking ? Math.abs(step) * 2.5 : 0;
+  ctx.save();
+  ctx.translate(x + (w - 100 * s) / 2, y + (h - 100 * s) / 2);
+  ctx.scale(s, s);
+  if ((o.dir || 1) < 0) { ctx.translate(100, 0); ctx.scale(-1, 1); }
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.lineWidth = 3.4; ctx.strokeStyle = '#2b1f3a';
+  const green = '#8bc34a', belly = '#f1f8e9';
+  const fill = (c) => { ctx.fillStyle = c; ctx.fill(); ctx.stroke(); };
+  // tail
+  ctx.beginPath(); ctx.moveTo(26, 66); ctx.quadraticCurveTo(6, 72, 4, 86); ctx.quadraticCurveTo(18, 84, 30, 80); ctx.closePath(); fill(green);
+  // legs
+  ctx.beginPath(); ctx.roundRect(30, 78 - step * 3, 14, 18, 6); fill(green);
+  ctx.beginPath(); ctx.roundRect(52, 78 + step * 3, 14, 18, 6); fill(green);
+  ctx.translate(0, -bob);
+  // body
+  ctx.beginPath(); ctx.ellipse(46, 68, 26, 20, 0, 0, Math.PI * 2); fill(green);
+  ctx.beginPath(); ctx.ellipse(50, 72, 14, 11, 0, 0, Math.PI * 2); ctx.fillStyle = belly; ctx.fill();
+  // arm
+  ctx.beginPath(); ctx.moveTo(62, 66); ctx.lineTo(70, 70); ctx.stroke();
+  // head
+  ctx.beginPath(); ctx.arc(64, 38, 25, 0, Math.PI * 2); fill(green);
+  // spots
+  ctx.fillStyle = 'rgba(51,105,30,.35)';
+  [[40, 58, 4], [50, 52, 3], [52, 24, 3.5]].forEach(([a, b, r]) => { ctx.beginPath(); ctx.arc(a, b, r, 0, 7); ctx.fill(); });
+  // eggshell cap
+  ctx.beginPath();
+  ctx.moveTo(42, 26);
+  ctx.quadraticCurveTo(46, 6, 66, 6);
+  ctx.quadraticCurveTo(86, 6, 88, 26);
+  ctx.lineTo(82, 21); ctx.lineTo(77, 28); ctx.lineTo(71, 20); ctx.lineTo(65, 28); ctx.lineTo(59, 20); ctx.lineTo(53, 28); ctx.lineTo(47, 21);
+  ctx.closePath(); fill('#fffde7');
+  ctx.fillStyle = 'rgba(255,183,77,.6)';
+  ctx.beginPath(); ctx.arc(60, 13, 2.4, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(74, 15, 2, 0, 7); ctx.fill();
+  // face
+  const ink = '#2b1f3a';
+  if (o.mode === 'stun') {
+    ctx.lineWidth = 2.6;
+    for (const [ex, r] of [[72, 7]]) {
+      ctx.beginPath();
+      for (let a = 0; a < 12; a += 0.4) { const rr = r * a / 12; const px = ex + Math.cos(a + t / 120) * rr, py = 38 + Math.sin(a + t / 120) * rr; a === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.ellipse(80, 52, 4, 3, 0, 0, 7); ctx.fillStyle = ink; ctx.fill();
+    // dizzy stars
+    ctx.fillStyle = '#ffd54f';
+    for (let i = 0; i < 3; i++) {
+      const a = t / 300 + i * 2.1;
+      const sx = 64 + Math.cos(a) * 26, sy = 2 + Math.sin(a) * 5;
+      ctx.beginPath();
+      for (let k = 0; k < 10; k++) { const rr = k % 2 ? 2.5 : 6; const aa = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(sx + Math.cos(aa) * rr, sy + Math.sin(aa) * rr); }
+      ctx.closePath(); ctx.fill(); ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  } else if (o.mode === 'happy') {
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(72, 40, 6, 1.1 * Math.PI, 1.9 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(76, 48, 8, 0.1 * Math.PI, 0.9 * Math.PI); ctx.fillStyle = '#e57373'; ctx.fill(); ctx.stroke();
+  } else {
+    ctx.beginPath(); ctx.arc(72, 36, 9, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(75, 37, 5, 0, 7); ctx.fillStyle = ink; ctx.fill();
+    ctx.beginPath(); ctx.arc(77, 34, 1.8, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(78, 48, 6, 0.15 * Math.PI, 0.75 * Math.PI); ctx.lineWidth = 2.8; ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(64, 50, 4, 0, 7); ctx.fillStyle = 'rgba(255,105,135,.5)'; ctx.fill();
+  ctx.restore();
+};

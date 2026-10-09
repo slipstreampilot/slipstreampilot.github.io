@@ -9,7 +9,9 @@ A falling-blocks puzzle game for kids, with dinosaurs. It is plain HTML and Java
 | `index.html` | The page |
 | `style.css` | Look and layout |
 | `game.js` | The game, controls, sound and music |
-| `dinos.js` | The dinosaur drawings |
+| `dinos.js` | The dinosaur drawings, including Pip |
+| `puzzle-core.js` | Puzzle-mode rules (Pip, the spiked ceiling, scoring) |
+| `puzzle-levels.js` | The 100 puzzle levels |
 | `manifest.webmanifest`, `icons/` | Home-screen app name and icon |
 | `sw.js` | Offline support |
 
@@ -40,4 +42,25 @@ Upload the changed files to GitHub. Also open `sw.js` and bump the version, for 
 - **Easy:** slow, with an outline showing where the piece will land and a preview of the next dino. If the blocks reach the top, a T. rex stomps away the bottom rows and play continues.
 - **Medium:** speeds up gradually and shows the next dino.
 - **Hard:** fast, no helpers.
-- On a computer: arrow keys, Space to drop instantly, and P to pause.
+- On a computer: arrow keys, Space to drop instantly, E to use a power, and P to pause.
+- **Easy mode's save:** one Dino Stomp per game clears the bottom 5 rows the first time the blocks reach the top. The egg in the side panel cracks once it's used. The next time the blocks reach the top, the game is over.
+
+## Game options
+
+After picking Easy, Medium or Hard, two switches can be turned on. The choice is remembered between games.
+
+- **Powers:** every 2,000 points you earn one power, holding at most one. Tap the glowing button in the side panel to use it.
+  - *Meteor* smashes every block in the column under the falling piece, marked by a glowing dashed line.
+  - *Volcano* melts the bottom row.
+  - *Egg Bomb* turns the falling piece into an egg that blows up a 3×3 area where it lands.
+- **Cascade:** after rows clear, loose clumps of blocks tumble down. If that completes more rows, they clear as a chain, and each step of the chain multiplies the points.
+
+## Puzzle mode
+
+Inspired by the Puzzle Mode in Tetris Plus. Each level starts with a pile of blocks. Pip, a baby dino, walks back and forth on top of it. Get him down to the nest at the bottom of the well by clearing rows.
+
+- Pip is 2×2 blocks. He walks until he bumps into something, then turns around. He drops through gaps at least 2 wide, gets dizzy after long falls, and climbs onto any block that lands on his head.
+- A spiked ceiling comes down one row every 18 seconds, destroying blocks in its way. After 125 seconds it speeds up. Clearing 3 or more rows at once pushes it back up. If it reaches Pip, the level is lost.
+- Score: time bonus of 20,000 for finishing in 10 seconds or less, minus 100 for every extra quarter-second. Stars: 3 for beating the level's par time, 2 for under twice par, 1 otherwise.
+- 5 zones × 20 levels. Fern Forest, Volcano Valley, Tar Pit Swamp and Crystal Ice Cave are open from the start, and levels unlock one at a time. Secret Egg Island, the hardest zone, unlocks after the other 80 are beaten.
+- Every level was generated and then play-tested 16 times by a computer player using the same rules as the game. All 100 were beaten at least once, and they are ordered by how often the computer player won and how long it took.

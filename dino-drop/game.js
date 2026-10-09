@@ -7,9 +7,9 @@
 // Settings
 // ---------------------------------------------------------------------------
 const COLS = 10;
-const ROWS = 20;
+let ROWS = 20;                      // 15 in puzzle mode
 const HIDDEN = 2;                 // invisible rows above the board where pieces spawn
-const TOTAL_ROWS = ROWS + HIDDEN;
+let TOTAL_ROWS = ROWS + HIDDEN;
 
 const MODES = {
   // gravity: ms per row at level 1; speedup: multiplier per level; linesPerLevel; lockDelay ms
@@ -20,8 +20,9 @@ const MODES = {
 const SOFT_DROP_MS = 35;          // speed while the down button is held
 const MAX_LOCK_RESETS = 15;       // moves allowed after landing before the piece locks anyway
 const CLEAR_ANIM_MS = 380;
+const CASCADE_MS = 320;            // how long loose blocks take to tumble down (Cascade option)
 const RESCUE_ANIM_MS = 1100;
-const RESCUE_ROWS = 8;
+const RESCUE_ROWS = 5;            // Easy mode's one Dino Stomp clears this many bottom rows
 const LINE_POINTS = [0, 100, 300, 500, 800];
 const PIECE_POINTS = 10;
 
@@ -68,6 +69,7 @@ const store = {
 };
 const bests = Object.assign({ easy: 0, medium: 0, hard: 0 }, store.get('best', {}));
 const settings = Object.assign({ sound: true, music: true }, store.get('settings', {}));
+const gameOpts = Object.assign({ powers: false, cascade: false }, store.get('options', {}));   // remembered between games
 
 // ---------------------------------------------------------------------------
 // Sound: everything is synthesised with the Web Audio API (no audio files).
@@ -160,6 +162,10 @@ const Sound = (() => {
     levelUp() { const t = ctx.currentTime; [67, 71, 74, 79].forEach((n, i) => tone(midi(n), t + i * 0.09, 0.16, 'square', 0.18)); },
     gameOver() { const t = ctx.currentTime; [72, 67, 64, 60].forEach((n, i) => tone(midi(n), t + i * 0.2, 0.3, 'triangle', 0.4)); },
     click()  { tone(700, ctx.currentTime, 0.06, 'triangle', 0.3, null, 500); },
+    meteor() { const t = ctx.currentTime; noise(t, 0.6, 0.35, 4000, 300); tone(900, t, 0.6, 'sawtooth', 0.12, null, 120); },
+    boom()   { const t = ctx.currentTime; noise(t, 0.7, 0.6, 2000, 80); tone(120, t, 0.5, 'sine', 0.9, null, 35); },
+    volcano(){ const t = ctx.currentTime; noise(t, 1.0, 0.4, 400, 90); tone(70, t, 1.0, 'sine', 0.7, null, 40); for (let i = 0; i < 5; i++) tone(300 + Math.random() * 300, t + 0.15 * i, 0.08, 'sine', 0.2, null, 600); },
+    power()  { const t = ctx.currentTime; [72, 76, 79, 84, 88].forEach((n, i) => tone(midi(n), t + i * 0.06, 0.14, 'square', 0.16)); },
   };
   function play(name, arg) {
     if (!ready() || !settings.sound) return;
@@ -243,12 +249,31 @@ let pausedFrom = 'playing';
 let mode = 'easy', cfg = MODES.easy;
 let board, piece, nextKind, bag;
 let score, lines, level, gravityMs, startBest = 0;
+let savesLeft = 0;                 // Easy mode: one Dino Stomp per game
+let chain = 1;                     // Cascade: 2 = second clear in a chain reaction, etc.
+// Powers option: earn one every POWER_EVERY points, hold at most one
+const POWER_EVERY = 2000;
+const POWERS = { meteor: 'Meteor', volcano: 'Volcano', egg: 'Egg Bomb' };
+let power = null, nextPowerAt = POWER_EVERY, powerAnim = null, lastPower = null;
 let gravityAcc = 0, lockTimer = 0, lockResets = 0;
 let clearingRows = [], animTimer = 0;
 let softDrop = false;
 let shake = 0;
 const particles = [];
 const popups = [];
+
+// ----- Puzzle mode -----
+const PC = window.PuzzleCore;
+const PZ = window.PUZZLE_LEVELS || [];
+const ZONES = [
+  { name: 'Fern Forest',       color: '#43a047', bg: '#183826', art: 'S' },
+  { name: 'Volcano Valley',    color: '#f4511e', bg: '#3b1a16', art: 'L' },
+  { name: 'Tar Pit Swamp',     color: '#7e57c2', bg: '#261b38', art: 'T' },
+  { name: 'Crystal Ice Cave',  color: '#039be5', bg: '#122c46', art: 'I' },
+  { name: 'Secret Egg Island', color: '#f9a825', bg: '#352d12', art: 'J' },
+];
+let puzzle = null;               // { index, def, st, pipX, pipY, hudTimer }
+const pzProgress = store.get('puzzle', {});   // index -> { t: best ms, s: stars }
 
 function newBoard() {
   return Array.from({ length: TOTAL_ROWS }, () => Array(COLS).fill(null));
@@ -279,6 +304,7 @@ function cellsOf(p, shape, px, py) {
   return out;
 }
 function fits(p, shape, px, py) {
+  if (puzzle) return PC.fits(puzzle.st, shape || p.shape, px == null ? p.x : px, py == null ? p.y : py);
   for (const [x, y] of cellsOf(p, shape, px, py)) {
     if (x < 0 || x >= COLS || y >= TOTAL_ROWS) return false;
     if (y >= 0 && board[y][x]) return false;
@@ -299,7 +325,7 @@ function onPieceAdjusted() {
   if (!fits(piece, null, piece.x, piece.y + 1) && lockResets < MAX_LOCK_RESETS) { lockTimer = 0; lockResets++; }
 }
 function tryRotate() {
-  if (piece.kind === 'O') { Sound.play('rotate'); return; }
+  if (piece.kind === 'O' || piece.kind === 'EGG') { Sound.play('rotate'); return; }
   const shape = rotateCW(piece.shape);
   const face = rotateCW(piece.faceMap);
   // simple "wall kicks": if the turned piece bumps something, try nudging it
@@ -323,10 +349,19 @@ function ghostY() {
 
 function startGame(m) {
   mode = m; cfg = MODES[m];
+  puzzle = null;
+  ROWS = 20; TOTAL_ROWS = ROWS + HIDDEN;
+  setHudLabels(false);
   startBest = bests[m];
   board = newBoard();
   bag = null;
   score = 0; lines = 0; level = 1;
+  savesLeft = cfg.rescue ? 1 : 0;
+  paintSave();
+  power = null; nextPowerAt = POWER_EVERY; powerAnim = null;
+  $('power-btn').hidden = !gameOpts.powers;
+  ui.side.classList.toggle('compact', !!gameOpts.powers);
+  paintPower();
   gravityMs = cfg.gravity;
   particles.length = 0; popups.length = 0;
   nextKind = takeFromBag();
@@ -349,19 +384,28 @@ function spawn() {
   gravityAcc = 0; lockTimer = 0; lockResets = 0;
   softDrop = false;               // a new piece never inherits a held "down": little fingers get a fresh start
   drawNext();
+  if (puzzle) {
+    const sp = PC.spawnPos(puzzle.st, piece.shape);
+    piece.x = sp.x; piece.y = sp.y;
+    if (!fits(piece)) puzzleLose('full');
+    return;
+  }
   if (!fits(piece)) {
-    if (cfg.rescue) startRescue();
+    if (savesLeft > 0) startRescue();
     else gameOver();
   }
 }
 
 function lockPiece() {
+  if (puzzle) return puzzleLock();
+  if (piece.kind === 'EGG') return eggExplode();
   let above = true;
   for (const [x, y, r, c] of cellsOf(piece)) {
     if (y >= 0) board[y][x] = { k: piece.kind, face: piece.faceMap[r][c] };
     if (y >= HIDDEN) above = false;
   }
   score += PIECE_POINTS;
+  chain = 1;
   Sound.play('land');
   const full = [];
   for (let y = 0; y < TOTAL_ROWS; y++) if (board[y].every(Boolean)) full.push(y);
@@ -375,7 +419,7 @@ function lockPiece() {
   } else if (above) {
     // landed entirely in the hidden rows above the board: the stack has reached the top
     piece = null;
-    if (cfg.rescue) startRescue(); else gameOver();
+    if (savesLeft > 0) startRescue(); else gameOver();
   } else {
     spawn();
   }
@@ -383,11 +427,12 @@ function lockPiece() {
 }
 
 function finishClear() {
+  if (puzzle) return puzzleFinishClear();
   for (const y of clearingRows) { board.splice(y, 1); board.unshift(Array(COLS).fill(null)); }
   const n = clearingRows.length;
   clearingRows = [];
   lines += n;
-  score += LINE_POINTS[Math.min(n, 4)] * level;
+  score += LINE_POINTS[Math.min(n, 4)] * level * chain;
   const newLevel = Math.floor(lines / cfg.linesPerLevel) + 1;
   if (newLevel > level) {
     level = newLevel;
@@ -396,18 +441,181 @@ function finishClear() {
     Sound.play('levelUp');
   }
   updateHud();
+  if (gameOpts.cascade && startCascade()) return;
+  resumePlay();
+}
+function resumePlay() {
   state = 'playing';
-  spawn();
+  if (!piece) spawn();
+}
+
+// ----- Cascade: loose clumps of blocks fall after a clear, possibly completing more rows -----
+function startCascade() {
+  // find clumps of touching blocks (4-neighbour)
+  const seen = board.map((r) => r.map(() => false));
+  const clumps = [];
+  for (let y = 0; y < TOTAL_ROWS; y++) for (let x = 0; x < COLS; x++) {
+    if (!board[y][x] || seen[y][x]) continue;
+    const cells = [], stack = [[x, y]]; seen[y][x] = true;
+    while (stack.length) {
+      const [cx, cy] = stack.pop(); cells.push([cx, cy]);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx >= 0 && nx < COLS && ny >= 0 && ny < TOTAL_ROWS && board[ny][nx] && !seen[ny][nx]) { seen[ny][nx] = true; stack.push([nx, ny]); }
+      }
+    }
+    clumps.push(cells);
+  }
+  // drop clumps, lowest first, until nothing moves
+  let movedAny = false;
+  const fromY = new Map();                  // cell object -> original row (for the animation)
+  for (let pass = 0; pass < 30; pass++) {
+    let moved = false;
+    clumps.sort((a, b) => Math.max(...b.map((c) => c[1])) - Math.max(...a.map((c) => c[1])));
+    for (const cl of clumps) {
+      const objs = cl.map(([x, y]) => board[y][x]);
+      for (const [x, y] of cl) board[y][x] = null;
+      let d = 0;
+      while (cl.every(([x, y]) => y + d + 1 < TOTAL_ROWS && !board[y + d + 1][x])) d++;
+      cl.forEach(([x, y], i) => { if (!fromY.has(objs[i])) fromY.set(objs[i], y); board[y + d][x] = objs[i]; cl[i] = [x, y + d]; });
+      if (d > 0) moved = movedAny = true;
+    }
+    if (!moved) break;
+  }
+  if (!movedAny) return false;
+  for (let y = 0; y < TOTAL_ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const b = board[y][x];
+    if (b && fromY.has(b) && fromY.get(b) !== y) b.fall = y - fromY.get(b); else if (b) delete b.fall;
+  }
+  state = 'cascading';
+  animTimer = CASCADE_MS;
+  return true;
+}
+function finishCascade() {
+  for (const row of board) for (const b of row) if (b) delete b.fall;
+  const full = [];
+  for (let y = 0; y < TOTAL_ROWS; y++) if (board[y].every(Boolean)) full.push(y);
+  if (full.length) {
+    chain++;
+    clearingRows = full;
+    animTimer = CLEAR_ANIM_MS;
+    state = 'clearing';
+    Sound.play('clear', Math.min(4, full.length + 1));
+    celebrate(full);
+    popup('Chain x' + chain + '!', '#80deea', 0.9, 0.62);
+    return;
+  }
+  Sound.play('land');
+  resumePlay();
+}
+
+// ----- Powers -----
+function checkPowerEarn() {
+  if (!gameOpts.powers || puzzle) return;
+  while (score >= nextPowerAt) {
+    nextPowerAt += POWER_EVERY;
+    if (!power) {
+      const choices = Object.keys(POWERS).filter((k) => k !== lastPower);
+      power = lastPower = choices[Math.floor(Math.random() * choices.length)];
+      popup(POWERS[power] + '!', '#ffcc80', 0.9, 0.3);
+      Sound.play('power');
+    }
+  }
+  paintPower();
+}
+function paintPower() {
+  const btn = $('power-btn');
+  if (btn.hidden) return;
+  btn.classList.toggle('empty', !power);
+  $('power-name').textContent = power ? POWERS[power] : 'Power';
+  btn.setAttribute('aria-label', power ? 'Use ' + POWERS[power] : 'Power charging');
+  const pct = Math.max(0, Math.min(1, ((score || 0) - (nextPowerAt - POWER_EVERY)) / POWER_EVERY));
+  $('power-fill').style.width = Math.round(pct * 100) + '%';
+  const c = $('power-icon');
+  const { ctx, w, h } = fitCanvas(c);
+  ctx.clearRect(0, 0, w, h);
+  if (w > 4) drawPowerIcon(ctx, power || lastPower || 'meteor', 0, 0, w, h);
+}
+function meteorColumn() {
+  const cs = cellsOf(piece);
+  return Math.max(0, Math.min(COLS - 1, Math.round(cs.reduce((a, c) => a + c[0], 0) / cs.length)));
+}
+function usePower() {
+  if (!power || state !== 'playing' || !piece || puzzle) return;
+  const kind = power;
+  power = null;
+  if (kind === 'meteor') {
+    powerAnim = { type: 'meteor', col: meteorColumn(), t: 0, dur: 650 };
+    state = 'power';
+    Sound.play('meteor');
+  } else if (kind === 'volcano') {
+    powerAnim = { type: 'volcano', t: 0, dur: 950 };
+    state = 'power';
+    Sound.play('volcano');
+  } else if (kind === 'egg') {
+    // the falling piece turns into an egg bomb where its middle is
+    const cs = cellsOf(piece);
+    const egg = { kind: 'EGG', shape: [[1]], faceMap: [[false]], x: meteorColumn(), y: Math.max(...cs.map((c) => c[1])) };
+    while (!fits(egg) && egg.y > 0) egg.y--;
+    piece = egg;
+    lockTimer = 0; lockResets = 0;
+    popup('Egg Bomb!', '#fff59d', 0.8, 0.3);
+    Sound.play('power');
+  }
+  paintPower();
+}
+function finishPower() {
+  const a = powerAnim;
+  powerAnim = null;
+  const colors = ['#ff7043', '#ffca28', '#8d6e63', '#ffab40'];
+  const burst = (x, y, n) => { for (let i = 0; i < n; i++) particles.push({ x: x + 0.5, y: y - HIDDEN + 0.5, vx: (Math.random() - 0.5) * 16, vy: -Math.random() * 12 - 2, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 12, life: 1, color: colors[(Math.random() * colors.length) | 0] }); };
+  if (a.type === 'meteor') {
+    for (let y = 0; y < TOTAL_ROWS; y++) if (board[y][a.col]) { board[y][a.col] = null; burst(a.col, y, 6); }
+    shake = 0.9;
+    Sound.play('boom');
+  } else if (a.type === 'volcano') {
+    for (let x = 0; x < COLS; x++) if (board[TOTAL_ROWS - 1][x]) burst(x, TOTAL_ROWS - 1, 4);
+    board.pop(); board.unshift(Array(COLS).fill(null));
+    // keep the falling piece where it is unless it now overlaps something
+    if (piece && !fits(piece)) piece.y = Math.max(0, piece.y - 1);
+    shake = 0.7;
+  }
+  if (gameOpts.cascade && startCascade()) return;
+  resumePlay();
+}
+function eggExplode() {
+  const ex = piece.x, ey = piece.y;
+  piece = null;
+  const colors = ['#fffde7', '#ffca28', '#ff7043', '#81c784'];
+  for (let y = ey - 1; y <= ey + 1; y++) for (let x = ex - 1; x <= ex + 1; x++) {
+    if (x < 0 || x >= COLS || y < 0 || y >= TOTAL_ROWS) continue;
+    board[y][x] = null;
+    for (let i = 0; i < 4; i++) particles.push({ x: x + 0.5, y: y - HIDDEN + 0.5, vx: (Math.random() - 0.5) * 18, vy: -Math.random() * 14 - 2, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 12, life: 1, color: colors[(Math.random() * colors.length) | 0] });
+  }
+  shake = 0.8;
+  Sound.play('boom');
+  popup('BOOM!', '#ffcc80', 1.1, 0.42);
+  updateHud();
+  if (gameOpts.cascade && startCascade()) return;
+  resumePlay();
 }
 
 // Easy mode: when the blocks reach the top, a dino stomps away the bottom rows.
 function startRescue() {
+  savesLeft--;
+  paintSave();
   state = 'rescue';
   piece = null;
   animTimer = RESCUE_ANIM_MS;
   shake = 1;
   popup('DINO STOMP!', '#ffcc80', 1.4);
   Sound.play('stomp');
+}
+function paintSave() {
+  const panel = $('save-panel');
+  panel.hidden = !(cfg && cfg.rescue) || !!puzzle;
+  panel.classList.toggle('used', savesLeft <= 0);
+  panel.setAttribute('aria-label', savesLeft > 0 ? 'Dino Stomp save ready' : 'Dino Stomp save used');
 }
 function finishRescue() {
   for (let i = 0; i < RESCUE_ROWS; i++) { board.pop(); board.unshift(Array(COLS).fill(null)); }
@@ -431,12 +639,14 @@ function gameOver() {
 }
 
 function pauseGame() {
-  if (state !== 'playing' && state !== 'clearing' && state !== 'rescue') return;
+  if (state !== 'playing' && state !== 'clearing' && state !== 'rescue' && state !== 'cascading' && state !== 'power') return;
   pausedFrom = state;
   state = 'paused';
   releaseAllInput();
   Wake.off();
   Sound.stopMusic();
+  $('btn-restart').hidden = !puzzle;
+  $('btn-quit').textContent = puzzle ? 'Level map' : 'Main menu';
   show(ui.pause);
 }
 function resumeGame() {
@@ -450,11 +660,327 @@ function resumeGame() {
 function toMenu() {
   state = 'menu';
   piece = null;
+  puzzle = null;
   releaseAllInput();
   Wake.off();
   Sound.stopMusic();
   show(ui.menu);
   refreshMenu();
+}
+
+// ---------------------------------------------------------------------------
+// Puzzle mode (Tetris Plus style): get Pip down to the nest before the spikes
+// ---------------------------------------------------------------------------
+const zoneOf = (i) => Math.floor(i / 20);
+const levelLabel = (i) => (zoneOf(i) + 1) + '-' + ((i % 20) + 1);
+const fmtTime = (ms) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+function puzzleCleared(i) { return !!pzProgress[i]; }
+function first80Done() { for (let i = 0; i < 80; i++) if (!pzProgress[i]) return false; return true; }
+function zoneUnlocked(z) { return z < 4 || first80Done(); }
+function levelUnlocked(i) {
+  if (!PZ[i] || !zoneUnlocked(zoneOf(i))) return false;
+  return i % 20 === 0 || puzzleCleared(i - 1);
+}
+
+function setHudLabels(isPuzzle) {
+  const lab = (el, t) => { const l = el.parentElement.querySelector('.label'); if (l) l.textContent = t; };
+  lab(ui.score, isPuzzle ? 'Time' : 'Score');
+  lab(ui.best, 'Best');
+  lab(ui.level, 'Level');
+  lab(ui.lines, isPuzzle ? 'Spikes' : 'Rows');
+}
+
+function startPuzzle(index) {
+  const def = PZ[index];
+  if (!def) return;
+  mode = 'puzzle';
+  cfg = { label: ZONES[def.zone].name, gravity: def.g, lockDelay: 500, ghost: false, next: true, rescue: false, das: 200, arr: 70 };
+  ROWS = PC.ROWS; TOTAL_ROWS = PC.TOTAL;
+  const st = PC.newState(def);
+  puzzle = { index, def, st, pipX: st.walker.x, pipY: st.walker.y, ceilDraw: 0, hudTimer: 0, warned: -1, step: 0 };
+  board = st.board;
+  bag = null;
+  score = 0; lines = 0; level = 1;
+  gravityMs = def.g;
+  particles.length = 0; popups.length = 0;
+  nextKind = takeFromBag();
+  ui.side.classList.remove('no-next');
+  ui.modeBadge.textContent = ZONES[def.zone].name;
+  $('save-panel').hidden = true;
+  $('power-btn').hidden = true;
+  ui.side.classList.remove('compact');
+  setHudLabels(true);
+  show(null);
+  state = 'playing';
+  releaseAllInput();
+  layout();
+  piece = null;
+  puzzle.firstSpawn = true;        // first piece appears once Pip has dropped in from the top
+  drawNext();
+  puzzleHud();
+  popup('Get Pip home!', '#fff59d', 0.8, 0.3);
+  Wake.on();
+  Sound.restartMusic();
+}
+
+function puzzleLock() {
+  const st = puzzle.st;
+  const cells = [];
+  for (const [x, y, r, c] of cellsOf(piece)) {
+    if (y >= 0) board[y][x] = { k: piece.kind, face: piece.faceMap[r][c] };
+    cells.push([x, y]);
+  }
+  piece = null;
+  Sound.play('land');
+  const wy = st.walker.y;
+  PC.afterLock(st, cells);
+  if (st.status === 'lost') return puzzleLose('squished');
+  if (st.walker.y < wy) popup('Climb!', '#fff', 0.7, 0.3);
+  const full = [];
+  for (let y = 0; y < TOTAL_ROWS; y++) if (board[y].every(Boolean)) full.push(y);
+  if (full.length) {
+    clearingRows = full;
+    animTimer = CLEAR_ANIM_MS;
+    state = 'clearing';
+    Sound.play('clear', full.length);
+    celebrate(full);
+  } else spawn();
+  puzzleHud();
+}
+
+function puzzleFinishClear() {
+  const st = puzzle.st;
+  const n = clearingRows.length;
+  const ceilBefore = st.ceil;
+  PC.removeRows(st, clearingRows);
+  clearingRows = [];
+  lines += n;
+  if (st.ceil < ceilBefore) popup('Spikes pushed up!', '#80deea', 0.75, 0.62);
+  state = 'playing';
+  if (st.status === 'won') return puzzleWin();
+  spawn();
+  puzzleHud();
+}
+
+function ceilingInterval(st) { return st.time >= PC.FAST_AFTER_MS ? PC.FAST_CEIL_MS : PC.CEIL_MS; }
+
+function puzzleTick(dt) {
+  const st = puzzle.st;
+  const cells = piece ? cellsOf(piece).map((c) => [c[0], c[1]]) : null;
+  const before = st.walker.mode;
+  PC.stepWalker(st, dt, cells);
+  if (st.walker.mode === 'stun' && before !== 'stun') Sound.play('land');
+  if (PC.stepCeiling(st, dt)) {
+    Sound.play('stomp');
+    shake = Math.max(shake, 0.35);
+    if (piece && !fits(piece)) {
+      if (fits(piece, null, piece.x, piece.y + 1)) piece.y++;
+      else { piece = null; if (st.status === 'play') spawn(); }   // crushed by the spikes
+    }
+  }
+  if (puzzle.firstSpawn && st.status === 'play' && (st.walker.mode !== 'fall' || st.time > 1500)) { puzzle.firstSpawn = false; spawn(); }
+  // smooth movement for drawing
+  const w = st.walker;
+  puzzle.pipX += (w.x - puzzle.pipX) * Math.min(1, dt / 120);
+  puzzle.pipY += (w.y - puzzle.pipY) * Math.min(1, dt / (w.mode === 'fall' ? 40 : 110));
+  puzzle.ceilDraw += (st.ceil - puzzle.ceilDraw) * Math.min(1, dt / 160);
+  puzzle.step += dt;
+  // countdown blips for the last 3 seconds before the spikes drop
+  const left = Math.ceil((ceilingInterval(st) - st.ceilTimer) / 1000);
+  if (left <= 3 && left !== puzzle.warned && st.status === 'play') { puzzle.warned = left; Sound.play('move'); }
+  if (left > 3) puzzle.warned = -1;
+  puzzle.hudTimer -= dt;
+  if (puzzle.hudTimer <= 0) { puzzle.hudTimer = 200; puzzleHud(); }
+  if (st.status === 'won') puzzleWin();
+  else if (st.status === 'lost') puzzleLose(st.lostWhy);
+}
+
+function puzzleHud() {
+  if (!puzzle) return;
+  const st = puzzle.st;
+  ui.score.textContent = fmtTime(st.time);
+  const p = pzProgress[puzzle.index];
+  ui.best.textContent = p ? fmtTime(p.t) : '–';
+  ui.level.textContent = levelLabel(puzzle.index);
+  ui.lines.textContent = Math.max(0, Math.ceil((ceilingInterval(st) - st.ceilTimer) / 1000)) + 's';
+}
+
+function puzzleWin() {
+  if (state === 'over') return;
+  const st = puzzle.st;
+  state = 'over';
+  piece = null;
+  releaseAllInput();
+  Wake.off();
+  Sound.stopMusic();
+  Sound.play('clear', 4);
+  const t = st.time, bonus = PC.timeBonus(t);
+  const par = puzzle.def.par || 30000;
+  const stars = t <= par ? 3 : t <= par * 2 ? 2 : 1;
+  const prev = pzProgress[puzzle.index];
+  const isBest = !prev || t < prev.t;
+  pzProgress[puzzle.index] = { t: prev ? Math.min(prev.t, t) : t, s: Math.max(prev ? prev.s : 0, stars) };
+  store.set('puzzle', pzProgress);
+  celebrate([TOTAL_ROWS - 1, TOTAL_ROWS - 2]);
+  popups.length = 0;
+  popup('HOME!', '#fff59d', 1.3, 0.4);
+  const idx = puzzle.index;
+  setTimeout(() => { if (state === 'over' && puzzle && puzzle.index === idx) showPuzzleResult(true, { t, bonus, stars, isBest }); }, 1100);
+}
+
+function puzzleLose(why) {
+  if (state === 'over') return;
+  state = 'over';
+  piece = null;
+  releaseAllInput();
+  Wake.off();
+  Sound.stopMusic();
+  Sound.play('gameOver');
+  shake = 0.6;
+  const idx = puzzle.index;
+  setTimeout(() => { if (state === 'over' && puzzle && puzzle.index === idx) showPuzzleResult(false, { why }); }, 1000);
+}
+
+function showPuzzleResult(won, info) {
+  const i = puzzle.index;
+  $('pz-title').textContent = won ? 'Home!' : 'Oh no!';
+  $('pz-sub').textContent = won ? 'Pip made it to the nest.'
+    : info.why === 'ceiling' ? 'The spiky rocks got Pip.'
+    : info.why === 'squished' ? 'Pip got squished!'
+    : 'No room for more blocks.';
+  const starsEl = $('pz-stars');
+  starsEl.innerHTML = won ? [1, 2, 3].map((n) => '<span class="' + (n <= info.stars ? '' : 'off') + '">★</span>').join('') : '';
+  starsEl.hidden = !won;
+  $('pz-bonus').innerHTML = won ? 'Time ' + fmtTime(info.t) + ' · Bonus <strong>' + info.bonus.toLocaleString() + '</strong>' + (info.isBest ? '<br>New best time!' : '') : '';
+  const hasNext = won && (i % 20) < 19 && levelUnlocked(i + 1);
+  $('pz-next').hidden = !hasNext;
+  $('pz-retry').hidden = false;
+  $('pz-retry').textContent = won ? 'Play again' : 'Try again';
+  $('pz-retry').classList.toggle('go', !won);
+  show($('pz-over'));
+  const { ctx, w, h } = fitCanvas($('pz-art'));
+  ctx.clearRect(0, 0, w, h);
+  drawPip(ctx, (w - h) / 2, 0, h, h, { dir: 1, mode: won ? 'happy' : 'stun', t: 400 });
+}
+
+// ----- zone map & level picker -----
+let zoneShown = 0;
+function openZones() {
+  state = 'menu';
+  puzzle = null;
+  piece = null;
+  Wake.off();
+  Sound.stopMusic();
+  show($('zones'));
+  const list = $('zone-list');
+  if (!list.children.length) {
+    ZONES.forEach((z, zi) => {
+      const b = document.createElement('button');
+      b.className = 'zone';
+      b.style.setProperty('--c', z.color);
+      b.innerHTML = '<canvas></canvas><span class="zone-name"></span><span class="zone-count"></span>';
+      list.appendChild(b);
+      bindTap(b, () => { if (zoneUnlocked(zi)) openLevels(zi); else popupToast(b); });
+    });
+  }
+  ZONES.forEach((z, zi) => {
+    const b = list.children[zi];
+    const done = Array.from({ length: 20 }, (_, k) => pzProgress[zi * 20 + k]).filter(Boolean);
+    const stars = done.reduce((a, p) => a + p.s, 0);
+    const open = zoneUnlocked(zi);
+    b.classList.toggle('locked', !open);
+    b.querySelector('.zone-name').textContent = z.name;
+    b.querySelector('.zone-count').textContent = open ? done.length + '/20  ★' + stars : '🔒 Finish 80';
+    drawArt(b.querySelector('canvas'), z.art);
+  });
+}
+function popupToast(el) {
+  el.querySelector('.zone-count').textContent = 'Beat the other 4 zones first!';
+}
+function openLevels(zi) {
+  zoneShown = zi;
+  state = 'menu';
+  puzzle = null;
+  piece = null;
+  Wake.off();
+  Sound.stopMusic();
+  show($('levels'));
+  $('levels-title').textContent = ZONES[zi].name;
+  const grid = $('level-grid');
+  if (!grid.children.length) {
+    for (let k = 0; k < 20; k++) {
+      const b = document.createElement('button');
+      b.className = 'lvl';
+      b.innerHTML = '<span class="num"></span><span class="st"></span>';
+      grid.appendChild(b);
+      bindTap(b, () => { const i = zoneShown * 20 + k; if (levelUnlocked(i)) startPuzzle(i); });
+    }
+  }
+  let currentMarked = false;
+  for (let k = 0; k < 20; k++) {
+    const i = zi * 20 + k, b = grid.children[k];
+    const p = pzProgress[i], open = levelUnlocked(i);
+    b.style.setProperty('--c', ZONES[zi].color);
+    b.classList.toggle('locked', !open);
+    const cur = open && !p && !currentMarked;
+    if (cur) currentMarked = true;
+    b.classList.toggle('current', cur);
+    b.querySelector('.num').textContent = open ? String(k + 1) : '🔒';
+    b.querySelector('.st').textContent = p ? '★'.repeat(p.s) : '';
+    b.setAttribute('aria-label', 'Level ' + (k + 1) + (open ? '' : ', locked'));
+  }
+}
+
+// ----- puzzle drawing -----
+function drawNest(ctx) {
+  const y = boardH - cell * 0.55;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,236,179,.10)';
+  ctx.fillRect(0, boardH - cell * 2, boardW, cell * 2);
+  ctx.fillStyle = '#8d6e4a'; ctx.strokeStyle = '#5d4037'; ctx.lineWidth = Math.max(1.5, cell * 0.06);
+  ctx.beginPath(); ctx.ellipse(boardW / 2, y + cell * 0.2, boardW * 0.42, cell * 0.42, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(93,64,55,.7)';
+  for (let i = 0; i < 9; i++) { const x = boardW * (0.12 + i * 0.095); ctx.beginPath(); ctx.moveTo(x, y - cell * 0.05); ctx.lineTo(x + cell * 0.5, y + cell * 0.4); ctx.stroke(); }
+  const eggs = ['#fff3e0', '#e1f5fe', '#fce4ec'];
+  eggs.forEach((c, i) => {
+    ctx.fillStyle = c; ctx.strokeStyle = '#5d4037';
+    ctx.beginPath(); ctx.ellipse(boardW * (0.36 + i * 0.14), y - cell * 0.05, cell * 0.24, cell * 0.32, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawCeiling(ctx) {
+  const st = puzzle.st;
+  const left = (ceilingInterval(st) - st.ceilTimer) / 1000;
+  const warn = st.status === 'play' && left <= 3;
+  const jitter = warn ? Math.sin(performance.now() / 40) * cell * 0.05 : 0;
+  const h = Math.max(cell * 0.12, puzzle.ceilDraw * cell) + jitter;
+  ctx.save();
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#4e4038'); g.addColorStop(1, '#7a6658');
+  ctx.fillStyle = g; ctx.fillRect(-10, -10, boardW + 20, h + 10);
+  // rock speckles
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  for (let i = 0; i < puzzle.ceilDraw * 6; i++) {
+    const rx = (i * 37 % 100) / 100 * boardW, ry = ((i * 53) % 100) / 100 * h;
+    ctx.beginPath(); ctx.arc(rx, ry, cell * 0.12, 0, 7); ctx.fill();
+  }
+  // spikes
+  const n = COLS * 2, sw = boardW / n, sh = cell * 0.36;
+  ctx.fillStyle = warn ? '#ef5350' : '#cfd8dc';
+  ctx.strokeStyle = '#37474f'; ctx.lineWidth = Math.max(1, cell * 0.05);
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath(); ctx.moveTo(i * sw, h); ctx.lineTo(i * sw + sw / 2, h + sh); ctx.lineTo(i * sw + sw, h); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPipOnBoard(ctx) {
+  const st = puzzle.st, w = st.walker;
+  const won = st.status === 'won';
+  const px = puzzle.pipX * cell, py = (puzzle.pipY - HIDDEN) * cell;
+  const mode = won ? 'happy' : st.status === 'lost' ? 'stun' : w.mode;
+  drawPip(ctx, px, py, cell * 2, cell * 2, { dir: w.dir, mode, t: puzzle.step });
 }
 
 // ---------------------------------------------------------------------------
@@ -508,6 +1034,9 @@ function press(action) {
       softDrop = true;
       gravityAcc = SOFT_DROP_MS; // react immediately
       break;
+    case 'power':
+      usePower();
+      break;
     case 'harddrop': {
       const gy = ghostY();
       score += (gy - piece.y);
@@ -523,6 +1052,7 @@ function release(action) {
   if (lastHorizontal === action) lastHorizontal = held.left ? 'left' : held.right ? 'right' : null;
 }
 function releaseAllInput() {
+  activePresses.clear();
   for (const k of Object.keys(held)) delete held[k];
   softDrop = false; lastHorizontal = null;
   document.querySelectorAll('.down').forEach((el) => el.classList.remove('down'));
@@ -540,29 +1070,41 @@ function handleRepeat(dt) {
 }
 
 // Makes any element behave like a responsive game button:
-// fires on finger-down (no 300 ms delay), and always "lets go" even if
-// the system steals the touch (pointercancel) or the finger slides off.
+// fires on finger-down (no 300 ms delay) and ALWAYS lets go when that finger lifts,
+// wherever it lifts. Every press is tracked in one place (activePresses), and lifts are
+// caught on the whole page, so a lift that lands somewhere else, a touch the system
+// cancels, a touch that couldn't be locked to the button, or an app switch mid-press
+// can no longer leave a button stuck "on" or "busy".
+const activePresses = new Map();          // pointerId -> { el, onUp }
+function endPress(pointerId, e) {
+  const pr = activePresses.get(pointerId);
+  if (!pr) return;
+  activePresses.delete(pointerId);
+  pr.el.classList.remove('down');
+  pr.onUp && pr.onUp(e);
+}
+function endAllPresses() {
+  for (const id of [...activePresses.keys()]) endPress(id);
+}
 function bindButton(el, onDown, onUp) {
-  let activePointer = null;
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    if (activePointer !== null) return;
-    activePointer = e.pointerId;
+    // a new press always wins: drop any older press still registered on this button
+    for (const [id, pr] of activePresses) if (pr.el === el) endPress(id, e);
+    activePresses.set(e.pointerId, { el, onUp });
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
     el.classList.add('down');
     Sound.unlock();
     onDown && onDown(e);
   });
-  const end = (e) => {
-    if (activePointer === null || (e && e.pointerId !== activePointer)) return;
-    activePointer = null;
-    el.classList.remove('down');
-    onUp && onUp(e);
-  };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('lostpointercapture', end);
 }
+// lifts and cancels are caught for the whole page, before anything else sees them
+window.addEventListener('pointerup', (e) => endPress(e.pointerId, e), true);
+window.addEventListener('pointercancel', (e) => endPress(e.pointerId, e), true);
+// last finger off the screen = nothing can still be held (covers lifts the browser never reports as pointer events)
+const allFingersUp = (e) => { if (!e.touches || e.touches.length === 0) endAllPresses(); };
+document.addEventListener('touchend', allFingersUp, true);
+document.addEventListener('touchcancel', allFingersUp, true);
 
 // Menu-style buttons act on finger-up, so a child resting a thumb on one
 // and sliding away doesn't accidentally start or quit a game.
@@ -593,10 +1135,35 @@ document.querySelectorAll('.ctl').forEach((el) => {
   const action = el.dataset.action;
   bindButton(el, () => press(action), () => release(action));
 });
-document.querySelectorAll('.mode').forEach((el) => bindTap(el, () => startGame(el.dataset.mode)));
+document.querySelectorAll('.mode[data-mode]').forEach((el) => bindTap(el, () => openOptions(el.dataset.mode)));
+let optMode = 'easy';
+const OPT_ART = { easy: 'I', medium: 'T', hard: 'L' };
+function paintOptions() {
+  $('opt-powers').setAttribute('aria-checked', String(gameOpts.powers));
+  $('opt-cascade').setAttribute('aria-checked', String(gameOpts.cascade));
+}
+function openOptions(m) {
+  optMode = m;
+  $('opt-title').textContent = MODES[m].label;
+  paintOptions();
+  show($('options'));
+  drawArt($('opt-art'), OPT_ART[m]);
+}
+bindTap($('opt-powers'), () => { gameOpts.powers = !gameOpts.powers; store.set('options', gameOpts); paintOptions(); });
+bindTap($('opt-cascade'), () => { gameOpts.cascade = !gameOpts.cascade; store.set('options', gameOpts); paintOptions(); });
+bindTap($('opt-play'), () => startGame(optMode));
+bindTap($('opt-back'), toMenu);
 bindTap($('btn-pause'), pauseGame);
 bindTap($('btn-resume'), resumeGame);
-bindTap($('btn-quit'), toMenu);
+bindTap($('btn-quit'), () => { if (puzzle) openLevels(zoneOf(puzzle.index)); else toMenu(); });
+bindTap($('btn-restart'), () => { if (puzzle) startPuzzle(puzzle.index); });
+bindTap($('btn-puzzle'), openZones);
+bindButton($('power-btn'), () => usePower());
+bindTap($('zones-back'), toMenu);
+bindTap($('levels-back'), openZones);
+bindTap($('pz-next'), () => { if (puzzle) startPuzzle(puzzle.index + 1); });
+bindTap($('pz-retry'), () => { if (puzzle) startPuzzle(puzzle.index); });
+bindTap($('pz-map'), () => { const z = puzzle ? zoneOf(puzzle.index) : 0; openLevels(z); });
 bindTap($('btn-again'), () => startGame(mode));
 bindTap($('btn-menu'), toMenu);
 bindTap(ui.sound, () => { settings.sound = !settings.sound; store.set('settings', settings); Sound.applySettings(); paintToggles(); });
@@ -604,7 +1171,7 @@ bindTap(ui.music, () => {
   settings.music = !settings.music; store.set('settings', settings); Sound.applySettings(); paintToggles();
 });
 
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'rotate', KeyX: 'rotate', KeyA: 'left', KeyD: 'right', KeyS: 'down', KeyW: 'rotate', Space: 'harddrop' };
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'rotate', KeyX: 'rotate', KeyA: 'left', KeyD: 'right', KeyS: 'down', KeyW: 'rotate', Space: 'harddrop', KeyE: 'power', Enter: 'power' };
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyP') { state === 'paused' ? resumeGame() : pauseGame(); return; }
   const a = KEYMAP[e.code];
@@ -633,10 +1200,10 @@ document.addEventListener('pointerdown', () => Sound.unlock(), true);
 
 // --- Pause automatically when the game isn't visible ---
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { pauseGame(); Sound.suspend(); }
+  if (document.visibilityState === 'hidden') { pauseGame(); releaseAllInput(); Sound.suspend(); }
 });
 window.addEventListener('pagehide', () => { pauseGame(); Sound.suspend(); });
-window.addEventListener('blur', () => pauseGame());   // e.g. Control Centre pulled down, incoming call
+window.addEventListener('blur', () => { pauseGame(); releaseAllInput(); });   // e.g. Control Centre pulled down, incoming call
 
 // ---------------------------------------------------------------------------
 // Layout: size the board to fill the available space with whole-pixel cells.
@@ -662,6 +1229,7 @@ function layout() {
   bctx = fitCanvas(boardCanvas, boardW, boardH).ctx;
   // centre the board when the side panel is hidden (Hard mode) or space is wide
   wrap.style.justifyContent = 'center';
+  wrap.style.alignItems = puzzle ? 'center' : 'flex-start';
   const nextSize = Math.min(80, $('next-panel').clientWidth - 8, Math.max(56, Math.floor(cell * 3)));
   fitCanvas(nextCanvas, nextSize, Math.round(nextSize * 1.25));   // dino on top, block shape below
   drawNext();
@@ -730,6 +1298,7 @@ function cellSprite(kind, size, face, awake) {
   return c;
 }
 function drawCell(ctx, kind, cx, cy, size, face, awake, alpha) {
+  if (!(size >= 2)) return;
   if (alpha != null) ctx.globalAlpha = alpha;
   ctx.drawImage(cellSprite(kind, size, face, awake), cx, cy, size, size);
   ctx.globalAlpha = 1;
@@ -744,7 +1313,8 @@ function render() {
   if (shake > 0) ctx.translate((Math.random() - 0.5) * 10 * shake, (Math.random() - 0.5) * 8 * shake);
 
   // background grid
-  ctx.fillStyle = '#1c2a48'; ctx.fillRect(-10, -10, boardW + 20, boardH + 20);
+  ctx.fillStyle = puzzle ? ZONES[puzzle.def.zone].bg : '#1c2a48'; ctx.fillRect(-10, -10, boardW + 20, boardH + 20);
+  if (puzzle) drawNest(ctx);
   ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1;
   ctx.beginPath();
   for (let c = 1; c < COLS; c++) { ctx.moveTo(c * cell + 0.5, 0); ctx.lineTo(c * cell + 0.5, boardH); }
@@ -765,12 +1335,15 @@ function render() {
       let a = null;
       if (isFlash) a = Math.max(0.15, animTimer / CLEAR_ANIM_MS);
       if (rescueRows && y >= TOTAL_ROWS - RESCUE_ROWS) a = Math.max(0.1, animTimer / RESCUE_ANIM_MS);
-      drawCell(ctx, b.k, px, py, cell, b.face, false, a);
+      const off = (state === 'cascading' || (state === 'paused' && pausedFrom === 'cascading')) && b.fall
+        ? -b.fall * cell * Math.max(0, Math.min(1, animTimer / CASCADE_MS)) : 0;
+      drawCell(ctx, b.k, px, py + off, cell, b.face, false, a);
     }
   }
 
   // ghost (Easy) and falling piece
-  if (piece && (state === 'playing' || state === 'paused')) {
+  if (piece && state !== 'over' && state !== 'menu') {
+    if (power === 'meteor' && state === 'playing' && !puzzle) drawMeteorTarget(ctx);
     if (cfg.ghost) {
       const gy = ghostY();
       if (gy !== piece.y) {
@@ -786,9 +1359,13 @@ function render() {
     }
     for (const [x, y, r, c] of cellsOf(piece)) {
       if (y < HIDDEN) continue;
-      drawCell(ctx, piece.kind, x * cell, (y - HIDDEN) * cell, cell, piece.faceMap[r][c], true);
+      if (piece.kind === 'EGG') drawEggBomb(ctx, x * cell, (y - HIDDEN) * cell, cell);
+      else drawCell(ctx, piece.kind, x * cell, (y - HIDDEN) * cell, cell, piece.faceMap[r][c], true);
     }
   }
+  if (state === 'power' || (state === 'paused' && pausedFrom === 'power')) drawPowerAnim(ctx);
+
+  if (puzzle) { drawPipOnBoard(ctx); drawCeiling(ctx); }
 
   // confetti
   for (const p of particles) {
@@ -824,10 +1401,84 @@ function render() {
   ctx.restore();
 }
 
+function drawMeteorTarget(ctx) {
+  const col = meteorColumn();
+  const top = (Math.max(...cellsOf(piece).map((c) => c[1])) + 1 - HIDDEN) * cell;
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,112,67,' + (0.12 + 0.12 * pulse) + ')';
+  ctx.fillRect(col * cell, top, cell, boardH - top);
+  ctx.strokeStyle = 'rgba(255,171,64,' + (0.5 + 0.4 * pulse) + ')'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+  ctx.strokeRect(col * cell + 1, top, cell - 2, boardH - top - 1);
+  ctx.restore();
+}
+function drawPowerAnim(ctx) {
+  const a = powerAnim;
+  if (!a) return;
+  const k = Math.min(1, a.t / a.dur);
+  ctx.save();
+  if (a.type === 'meteor') {
+    const cx = (a.col + 0.5) * cell, cy = -cell + k * (boardH + cell);
+    ctx.fillStyle = 'rgba(255,112,67,.25)'; ctx.fillRect(a.col * cell, 0, cell, cy);
+    drawPowerIcon(ctx, 'meteor', cx - cell * 1.2, cy - cell * 1.6, cell * 2.4, cell * 2.2, true);
+  } else if (a.type === 'volcano') {
+    const h = cell * (0.3 + 1.0 * Math.sin(k * Math.PI / 2));
+    const g = ctx.createLinearGradient(0, boardH - h, 0, boardH);
+    g.addColorStop(0, '#ffca28'); g.addColorStop(0.4, '#ff7043'); g.addColorStop(1, '#bf360c');
+    ctx.fillStyle = 'rgba(255,87,34,' + (0.25 * k) + ')'; ctx.fillRect(0, 0, boardW, boardH);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(0, boardH);
+    for (let x = 0; x <= boardW; x += cell / 2) ctx.lineTo(x, boardH - h - Math.sin(x / cell * 2 + a.t / 90) * cell * 0.15);
+    ctx.lineTo(boardW, boardH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffe082';
+    for (let i = 0; i < 6; i++) { const bx = ((i * 97 + a.t / 4) % boardW), by = boardH - h * (0.3 + 0.5 * ((i * 37 + a.t / 7) % 100) / 100); ctx.beginPath(); ctx.arc(bx, by, cell * 0.12, 0, 7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawEggBomb(ctx, x, y, size) {
+  ctx.save();
+  ctx.translate(x + size / 2, y + size / 2);
+  const s = size / 40;
+  ctx.scale(s, s);
+  ctx.lineWidth = 2.6; ctx.strokeStyle = '#2b1f3a';
+  ctx.beginPath(); ctx.moveTo(0, -17); ctx.bezierCurveTo(12, -17, 16, 2, 16, 6); ctx.bezierCurveTo(16, 15, 9, 18, 0, 18); ctx.bezierCurveTo(-9, 18, -16, 15, -16, 6); ctx.bezierCurveTo(-16, 2, -12, -17, 0, -17); ctx.closePath();
+  ctx.fillStyle = '#fffde7'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#e57373'; [[-6, -2, 3], [6, 6, 3.4], [-3, 10, 2.4]].forEach(([a, b, r]) => { ctx.beginPath(); ctx.arc(a, b, r, 0, 7); ctx.fill(); });
+  // fuse + spark
+  ctx.beginPath(); ctx.moveTo(0, -17); ctx.quadraticCurveTo(4, -22, 8, -21); ctx.stroke();
+  const f = 3 + Math.sin(performance.now() / 60) * 1.5;
+  ctx.fillStyle = '#ffca28'; ctx.beginPath(); ctx.arc(9, -21, f, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawPowerIcon(ctx, type, x, y, w, h, flying) {
+  ctx.save();
+  const s = Math.min(w, h) / 48;
+  ctx.translate(x + (w - 48 * s) / 2, y + (h - 48 * s) / 2);
+  ctx.scale(s, s);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#2b1f3a'; ctx.lineWidth = 2.6;
+  if (type === 'meteor') {
+    if (flying) { ctx.rotate(Math.PI * 0.75); ctx.translate(-10, -40); }
+    ctx.strokeStyle = '#ff7043'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(42, 4); ctx.lineTo(24, 22); ctx.stroke();
+    ctx.strokeStyle = '#ffe082'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(38, 4); ctx.lineTo(22, 20); ctx.stroke();
+    ctx.strokeStyle = '#2b1f3a'; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(18, 30, 13, 0, 7); ctx.fillStyle = '#8d6e63'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6d4c41'; [[13, 26, 3.2], [22, 35, 2.6], [22, 25, 2]].forEach(([a, b, r]) => { ctx.beginPath(); ctx.arc(a, b, r, 0, 7); ctx.fill(); });
+  } else if (type === 'volcano') {
+    ctx.fillStyle = 'rgba(158,158,158,.8)'; [[20, 8, 5], [28, 5, 4], [34, 9, 3]].forEach(([a, b, r]) => { ctx.beginPath(); ctx.arc(a, b, r, 0, 7); ctx.fill(); });
+    ctx.beginPath(); ctx.moveTo(4, 44); ctx.lineTo(18, 16); ctx.lineTo(30, 16); ctx.lineTo(44, 44); ctx.closePath(); ctx.fillStyle = '#8d6e63'; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(18, 16); ctx.lineTo(30, 16); ctx.lineTo(27, 26); ctx.lineTo(24, 22); ctx.lineTo(21, 28); ctx.closePath(); ctx.fillStyle = '#ff5722'; ctx.fill(); ctx.stroke();
+  } else {
+    drawEggBomb(ctx, 4, 6, 40);
+  }
+  ctx.restore();
+}
+
 function drawNext() {
   if (!nextKind) return;
   const { ctx, w, h } = fitCanvas(nextCanvas);
   ctx.clearRect(0, 0, w, h);
+  ui.nextName.textContent = DINOS[nextKind].name;
+  if (w < 24 || h < 24) return;          // panel hidden (Hard mode) or not laid out yet
   // top: the dino picture
   const dinoH = Math.round(h * 0.46);
   drawDino(ctx, nextKind, 2, 0, w - 4, dinoH);
@@ -840,6 +1491,7 @@ function drawNext() {
   const rowsN = maxR - minR + 1, colsN = maxC - minC + 1;
   const areaTop = dinoH + 4, areaH = h - areaTop - 2, areaW = w - 4;
   const size = Math.floor(Math.min(areaW / Math.max(colsN, 3), areaH / Math.max(rowsN, 2), 26));
+  if (size < 4) return;
   const ox = Math.round((w - colsN * size) / 2), oy = Math.round(areaTop + (areaH - rowsN * size) / 2);
   const [fr, fc] = FACE_CELL[nextKind];
   for (let r = minR; r <= maxR; r++)
@@ -858,7 +1510,9 @@ function saveBestIfNeeded() {
   return false;
 }
 function updateHud() {
+  if (puzzle) return puzzleHud();
   if (state !== 'over' && state !== 'menu') saveBestIfNeeded();
+  checkPowerEarn();
   ui.score.textContent = score;
   ui.level.textContent = level;
   ui.lines.textContent = lines;
@@ -881,7 +1535,7 @@ function paintToggles() {
 }
 
 function show(overlay) {
-  for (const o of [ui.menu, ui.pause, ui.over]) o.classList.toggle('show', o === overlay);
+  for (const o of [ui.menu, ui.pause, ui.over, $('zones'), $('levels'), $('pz-over'), $('options')]) o.classList.toggle('show', o === overlay);
 }
 
 function refreshMenu() {
@@ -890,6 +1544,10 @@ function refreshMenu() {
     el.textContent = v ? 'Best: ' + v : 'Tap to play';
   });
   document.querySelectorAll('canvas[data-dino]').forEach((c) => drawArt(c, c.dataset.dino));
+  const pipC = document.querySelector('canvas[data-pip]');
+  if (pipC) { const r = fitCanvas(pipC); r.ctx.clearRect(0, 0, r.w, r.h); drawPip(r.ctx, (r.w - r.h) / 2, 0, r.h, r.h, { dir: 1, mode: 'walk', t: 0 }); }
+  const doneN = Object.keys(pzProgress).length;
+  $('puzzle-progress').textContent = doneN ? doneN + '/100 done' : '100 puzzles';
   const t = $('title-art');
   const { ctx, w, h } = fitCanvas(t);
   ctx.clearRect(0, 0, w, h);
@@ -923,6 +1581,17 @@ function update(dt) {
     if (animTimer <= 0) finishRescue();
     return;
   }
+  if (state === 'cascading') {
+    animTimer -= dt;
+    if (animTimer <= 0) finishCascade();
+    return;
+  }
+  if (state === 'power') {
+    powerAnim.t += dt;
+    if (powerAnim.t >= powerAnim.dur) finishPower();
+    return;
+  }
+  if (puzzle && state === 'playing') { puzzleTick(dt); if (state !== 'playing') return; }
   if (state !== 'playing' || !piece) return;
 
   handleRepeat(dt);
@@ -947,12 +1616,13 @@ function update(dt) {
 }
 
 function frame(now) {
+  // keep the loop alive no matter what: schedule the next frame first
+  requestAnimationFrame(frame);
   // clamp the step so a frozen tab (or a debugger) can't make pieces teleport
   const dt = Math.min(50, Math.max(0, now - lastTime));
   lastTime = now;
-  update(dt);
-  if (state !== 'menu') render();
-  requestAnimationFrame(frame);
+  try { update(dt); } catch (e) { console.error(e); }
+  try { if (state !== 'menu') render(); } catch (e) { console.error(e); }
 }
 
 // ---------------------------------------------------------------------------
@@ -995,5 +1665,5 @@ requestAnimationFrame((t) => { lastTime = t; frame(t); });
 
 // small hook for automated tests
 window.__dino = { get state() { return state; }, get score() { return score; }, get lines() { return lines; },
-  get piece() { return piece; }, get board() { return board; }, startGame, press, release, pauseGame, resumeGame };
+  get piece() { return piece; }, get board() { return board; }, get puzzle() { return puzzle; }, startPuzzle, get held() { return Object.keys(held); }, get savesLeft() { return savesLeft; }, get chain() { return chain; }, gameOpts, get power() { return power; }, setPower(k) { power = k; paintPower(); }, addScore(n) { score += n; updateHud(); }, testClear(rows) { clearingRows = rows; animTimer = 1; chain = 1; state = 'clearing'; piece = null; }, startGame, press, release, pauseGame, resumeGame };
 })();

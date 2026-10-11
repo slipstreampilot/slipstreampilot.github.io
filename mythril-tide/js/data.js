@@ -62,17 +62,21 @@ DATA.crewRank = function (c, key) {
 // that knob and nothing else. (Weapon/aug numbers live in WEAPONS/AUGS above;
 // crew station-mastery bonuses are applied in ship.js and revisited in Phase 4.)
 const TUNING = {
-  // --- fire (FTL-style per-tile) ---
-  fireSpreadChance: 0.28,  // chance/sec a burning TILE ignites a given neighbour tile (FTL-ish, gentle pace)
+  // --- fire (FTL-style per-tile; Greg 2026-10-11: "as close to exactly like FTL as you can") ---
+  // FTL: fire spreads tile to tile and through doors (open doors don't slow it; a shut door ~1.75x slower; shut
+  // BLAST doors — Doors lv2+ — ~10x slower), damages systems and crew in the room (2 hp/s per fire) but NEVER the
+  // hull, and goes out only when crew douse it or the air runs out. We have no oxygen, so a flooded room (water
+  // over fireDouseWater) is the "vented" room, and an isolated fire slowly starves (fireBurnoutBase) like an FTL
+  // fire sucking its room dry. Crew douse at their repair speed (race.fireFight / repair mastery).
+  fireSpreadChance: 0.08,  // chance/sec a burning TILE ignites a given neighbour (a lone tile jumps every ~3-4 s)
   fireToSystem:     0.10,  // system-damage progress/sec PER burning tile in the room
-  hullSinge:        0.02,  // hull-damage progress/sec PER burning tile
+  hullSinge:        0,     // FTL: fire never damages the hull
   newFireHp:        60,    // hp a freshly-lit fire TILE starts (and burns down from)
-  fireFightRate:    20,    // fire hp/sec a crew member douses (one sailor can't solo a multi-tile blaze -> a thin crew gets overwhelmed; the enemy AI now actively firefights so fire-kills stay rare)
-  fireEngulfedSpread: 0.35, // a room >65% ablaze punches heat through SHUT doors at this fraction of the open-door rate
+  fireFightRate:    15,    // fire hp/sec one sailor douses (~4 s per tile for an untrained human)
   fireDouseWater:   0.4,   // room water fraction above which fires drown (our oxygen<10% analog)
-  fireBurnoutBase:  13,    // hp/sec an ISOLATED fire tile self-extinguishes (FTL burnout)
-  fireNeighbourBonus: 0.85,// each adjacent lit tile slows that tile's burnout (clusters self-feed)
-  fireDoorClosedMul: 0.22, // closed-door cross-room spread factor (upgraded Doors slow it further)
+  fireBurnoutBase:  3,     // hp/sec an ISOLATED tile starves (~20 s alone; neighbours feed it — FTL fires eat the air)
+  fireNeighbourBonus: 0.85,// each adjacent lit tile slows that tile's starving
+  fireDoorShutMul:  [0.57, 0.57, 0.1, 0.07], // cross-room spread through a SHUT door by Doors level (FTL 1/1.75, blast 1/10)
   // --- water / flooding ---
   scupperFillRate:  0.35,  // water/sec pouring through an open sea door
   leakRate:         0.07,  // water/sec forced in through an un-patched breach
@@ -83,7 +87,7 @@ const TUNING = {
   deepWaterSys:     0.55,  // water above this damages the room's system
   waterToSystem:    0.05,  // system-damage progress/sec from deep water
   // --- wards ---
-  wardRechargeSecs: 3.5,   // seconds to regrow one ward layer
+  wardRechargeSecs: 2.0,   // seconds to regrow one ward layer (FTL shields: 2 s per layer; a manned console /1.1-1.3)
   // --- weapons tempo ---
   weaponTempo:      1.12,  // global charge-rate multiplier (fights resolve faster)
   enrageTempoMul:   1.5,   // charge-rate multiplier while enraged (boss)
@@ -93,13 +97,26 @@ const TUNING = {
   waterMoveMul:     0.6,   // default move multiplier in flooded rooms
   doorSlowPerLv:    0.35,  // boarder slowdown per enemy Doors level
   meleeDps:         7,     // base boarding melee damage/sec (x race.dmg)
-  sabotageRate:     0.13,  // system-sabotage progress/sec (x race.dmg)
-  repairRate:       0.20,  // system-repair progress/sec (x race.rep)
+  sabotageRate:     0.075, // system-sabotage progress/sec: FTL — ~13.3 s per bar for one boarder of ANY race
+  repairRate:       0.075, // system-repair progress/sec (x race.rep): FTL — one human repairs a bar in ~13.3 s
   patchRate:        0.22,  // breach-patch progress/sec (x race.leakFix)
   poisonDps:        3,     // crew hp/sec lost while poisoned
-  crewFireDps:      5,     // crew hp/sec lost standing in fire
+  crewFireDps:      2,     // crew hp/sec lost PER BURNING TILE in the room (FTL: 2 hp/s for every fire in the room)
   crewWaterDps:     5,     // crew hp/sec lost in deep water
-  crewDrawH:        24,    // HD-2D pose render height in LOGICAL px (P1 modest size; P3 raises it)
+  // standing sailor height in LOGICAL px. A room is one TILE (16) tall with the feet at row+15, so 13
+  // puts a human's head just under the deck beam above (Greg 2026-10-09: 24 stood ~1.5 rooms tall).
+  crewDrawH:        13,
+  // per-race height vs a human (DATA.crewH): dwarves are short and broad, storm elves a touch tall
+  crewRaceH:        { dwarf: 0.74, stormelf: 1.04 },
+  // deck-plan visibility (Battle.deckAlpha): floor alpha while watching / commanding, and the enemy's
+  // idle look (outlines only) until you aim at her, hover her or board her
+  depthMinScale:      0.72,  // option C: smallest the enemy is drawn when pushed 'farther away' to clear your hull
+  depthLiftPerScale:  32,    // ...and how far it rises toward the horizon (px per unit of shrink)
+  deckFloorIdle:      0.45,
+  deckFloorActive:    0.92,
+  deckFloorEnemyIdle: 0,
+  deckWallIdle:       0.7,
+  deckWallEnemyIdle:  0.45,
   crewDrownWater:   0.6,   // water above this drowns non-aquatic crew
   floodedMoveWater: 0.4,   // room water above this slows crew (x waterMoveMul / race.waterSpd)
   // --- crew presentation (Stage 1, 2026-10-08) ---
@@ -132,6 +149,8 @@ const TUNING = {
   masteryMeleeMul:  [1.0, 1.15, 1.30],  // boarding melee damage x by combat rank
   maxEvasion:       90,    // % cap so no ship (even under fog veil) becomes untouchable
   // --- advanced systems: Storm Conduit (jam) + Siren's Song (charm), indexed by powered bars [0..3] ---
+  ionSecsPerPoint:  5,      // FTL ion: each point forces 1 power bar out for 5 s; hits add to the timer
+  ionMaxPerHit:     25,     // ...capped at 25 s per application
   hexJamSecs:       [0, 5, 8, 11],       // enemy-system jam (ion) duration by Storm Conduit bars
   hexCdSecs:        [0, 20, 17, 14],     // Storm Conduit cooldown by bars
   songCharmSecs:    [0, 14, 20, 28],     // charm duration by Siren's Song bars (FTL mind-control 14/20/28)
@@ -249,6 +268,8 @@ DATA.RACES = {
   lizard:   { name: 'Lizardfolk', hp: 120, dmg: 1.5, rep: 0.8, spd: 1.0, cost: 60, regen: 1, desc: 'Savage fighter. Slowly regenerates health.' },
   siren:    { name: 'Siren', hp: 80, dmg: 0.7, rep: 1.0, spd: 1.0, cost: 55, song: 0.35, healAura: 0.8, desc: 'Her song weakens foes in her room and mends allies.' },
 };
+// a race's standing render height in logical px (crewDrawH x crewRaceH); every crew draw + overlay uses it
+DATA.crewH = race => TUNING.crewDrawH * ((TUNING.crewRaceH && TUNING.crewRaceH[race]) || 1);
 DATA.NAMES = {
   human: ['Reyes', 'Marlow', 'Ines', 'Drake', 'Costa', 'Bran', 'Sancha', 'Teodor', 'Wren', 'Galen'],
   merfolk: ['Nerissa', 'Coral', 'Maren', 'Pelagio', 'Sirsha', 'Thalo', 'Una', 'Delmar'],
@@ -638,6 +659,7 @@ DATA.crewAnimState = function (c) {
   if ((c.path && c.path.length > 0) || c._settling) return c._climbing ? 'climb' : 'walk';
   if (c._drowning) return 'drown';              // taking deep-water damage (R16)
   if (c._task === 'fire') return 'firefight';   // dousing a blaze (bucket toss)
+  if (c._task === 'sabotage') return 'fight';    // a boarder SMASHING a system swings his weapon at it (not a repair tap)
   if (c._task) return 'repair';
   if (c._operating) return DATA.stationAnim(c._opKey, c.race);
   return 'idle';

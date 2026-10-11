@@ -404,7 +404,13 @@ const Game = {
     // a gun / augment is waiting with no room aboard: the captain decides before sailing on
     if (this.run.pendingWeapon) { this.setScreen('weaponchoice'); return; }
     if (this.run.pendingAug) { this.setScreen('augchoice'); return; }
+    // fire or flooding still aboard: straight below decks to deal with it, not back to the chart
+    if (this.crisisAboard()) { this.setScreen('decks', { crisis: true }); return; }
     this.setScreen('map');
+  },
+  crisisAboard() {
+    const s = this.ship; if (!s) return false;
+    return s.rooms.some(r => r.fire > 0 || r.leak || r.water > 0.15);
   },
 
   nextRegion() {
@@ -572,7 +578,7 @@ const Game = {
       lines.push('');
       if (nFire) lines.push('FIRES STILL BURN BELOW DECKS!');
       if (nLeak) lines.push('THE HULL IS STILL TAKING WATER!');
-      lines.push('SEE TO IT FROM THE DECKS SCREEN - OR LOSE SHIP AND SOULS.');
+      lines.push('ALL HANDS BELOW - YOU WILL GO STRAIGHT TO THE DECKS TO DEAL WITH IT.');
     }
     this.save();
     AUDIO.playMap();
@@ -609,15 +615,31 @@ function hdActionIcon(ctx, key, cx, cy, s, col) {
   }
   ctx.restore();
 }
+// a painted system icon washed with a state colour (cached per image + colour): keeps the drawing, shifts its hue
+const _sysTintCache = new Map();
+function sysIconTinted(img, col) {
+  const k = (img.src || img._k || (img._k = Math.random())) + '|' + col;
+  let c = _sysTintCache.get(k);
+  if (c) return c;
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0, w, h);
+  x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.62; x.fillStyle = col; x.fillRect(0, 0, w, h);
+  _sysTintCache.set(k, c);
+  return c;
+}
 function drawSysSym(ctx, key, x, y, s, col) {
   // painted AI icon if one exists for this system; vector silhouette (below) otherwise.
   const img = SPR.sysIcon(key);
   if (img) {
     const c = ('' + (col || '')).toLowerCase();
     const offline = c === '#ff2e2e' || c === ('' + (COL.red || '')).toLowerCase();
+    // FTL reads state from the icon's colour: DAMAGED (still running) glows orange, ION-locked glows blue
+    const tint = c === ('' + COL.orange).toLowerCase() ? COL.orange : c === ('' + COL.ltblue).toLowerCase() ? COL.ltblue : null;
     ctx.save();
     if (offline) ctx.globalAlpha = 0.42;
-    ctx.drawImage(img, x, y, s, s);
+    ctx.drawImage(tint ? sysIconTinted(img, tint) : img, x, y, s, s);
     ctx.restore();
     if (offline) { // a dead system: dim the icon + slash it red so the down-state still reads
       ctx.save();
@@ -753,13 +775,14 @@ const CombatScreen = {
   hdActions(b) {
     // DeckScreen ("underway") swaps the combat pair for the station controls
     const lx = this.hdBottom().sys.x; // left edge tracks the SHIP SYSTEMS panel so the whole column lines up
-    if (this._deckV) return [ // big icon+label buttons (same treatment as combat's Pause/Stations)
-      { id: 'deck.setStations', x: lx, y: 716, w: 144, h: 100, big: true, icon: 'flag', label: 'Set Stations',
-        tip: [{ t: 'Set Stations', c: TIP.ink }, { t: 'Remember where everyone stands now as their battle stations.', c: TIP.body }],
-        fn: () => { b.setStations(); b._deckMsg = 'STATIONS SAVED.'; b._deckMsgT = 2; } },
-      { id: 'deck.toStations', x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'To Stations',
-        tip: [{ t: 'To Stations', c: TIP.ink }, { t: 'Send every hand back to their saved station.', c: TIP.body }],
-        fn: () => { b._deckMsg = b.returnStations() ? 'ALL HANDS TO STATIONS!' : 'EVERYONE IS AT THEIR STATION.'; b._deckMsgT = 2; } },
+    if (this._deckV) return [ // underway: the SAME pair as combat — Pause (the sea doesn't stop otherwise) + Stations
+      { id: 'deck.pause', x: lx, y: 716, w: 144, h: 100, big: true, icon: 'pause', label: 'Pause', sound: false,
+        tip: [{ t: b.paused ? 'Resume' : 'Pause', c: TIP.ink }, { t: 'Fire and water stop while paused; orders still work. Space also toggles.', c: TIP.body }],
+        fn: () => b.togglePause() },
+      { id: 'deck.stations', x: lx + 152, y: 716, w: 144, h: 100, big: true, icon: 'wheel', label: 'Stations', sound: false,
+        tip: [{ t: 'All hands to stations', c: TIP.ink }, { t: 'Left-click (or R): everyone returns to their saved post.', c: TIP.body }, { t: 'Right-click (or T): save where everyone stands now.', c: TIP.faint }],
+        fn: () => { b._deckMsg = b.returnStations() ? 'ALL HANDS TO STATIONS!' : 'EVERYONE IS AT THEIR STATION.'; b._deckMsgT = 2; AUDIO.sfx('click'); },
+        onRight: () => { b.setStations(); b._deckMsg = 'STATIONS SAVED.'; b._deckMsgT = 2; AUDIO.sfx('click'); } },
     ];
     // Big icon+label buttons seated just above the SHIP SYSTEMS panel — left edge tracks L.sys.x so
     // the Pause frame lines up with the SHIP SYSTEMS frame. (Advanced systems — Veil / Board+Recall /
@@ -804,10 +827,10 @@ const CombatScreen = {
     if (key === 'doors') {
       const note = (t) => { if (this._deckV) { b._deckMsg = t; b._deckMsgT = 2; } else b.log(t); };
       return [
-        { label: 'Open All', icon: 'open', fn: () => { b.p.setAllDoors(true); note('ALL DOORS THROWN OPEN.'); }, snd: 'click', ready: true, live: false, cd: 0, cdMax: 0,
-          tip: 'Throw every door open — crew move freely, but fire and water spread.' },
-        { label: 'Shut All', icon: 'shut', fn: () => { b.p.setAllDoors(false); note('ALL DOORS SEALED — WATERTIGHT.'); }, snd: 'click', ready: true, live: false, cd: 0, cdMax: 0,
-          tip: 'Seal every door — contains fire and flooding, slows boarders.' },
+        { label: 'Open All', icon: 'open', fn: () => { if (b.doorsOperable(b.p)) { b.p.setAllDoors(true); note('ALL DOORS THROWN OPEN.'); } else note(b.doorsLockedWhy(b.p)); }, snd: 'click', ready: b.doorsOperable(b.p), live: false, cd: 0, cdMax: 0,
+          tip: b.doorsOperable(b.p) ? 'Throw every door open (Z) — water and fire pass freely.' : 'Locked: the Doors system is down. Repair it to work the doors.' },
+        { label: 'Shut All', icon: 'shut', fn: () => { if (b.doorsOperable(b.p)) { b.p.setAllDoors(false); note('ALL DOORS SEALED — WATERTIGHT.'); } else note(b.doorsLockedWhy(b.p)); }, snd: 'click', ready: b.doorsOperable(b.p), live: false, cd: 0, cdMax: 0,
+          tip: b.doorsOperable(b.p) ? 'Seal every door (X) — contains fire and flooding, slows boarders.' : 'Locked: the Doors system is down. Repair it to work the doors.' },
       ];
     }
     if (this._deckV) return []; // no combat activations (Veil/Board/Jam/Charm) while underway
@@ -1027,7 +1050,10 @@ const CombatScreen = {
       { const g = ctx.createLinearGradient(0, 0, 0, OFF); g.addColorStop(0, 'rgba(36,74,150,0.30)'); g.addColorStop(1, 'rgba(36,74,150,0)'); ctx.fillStyle = g; ctx.fillRect(SX, 0, SW, OFF); }
       ctx.drawImage(this._sc, 0, 0, SW, dh, SX, OFF, SW, dh); // 1:1 blit -> crisp
       // --- hover the scene: room/door tooltips + a room outline (parity with the classic view) ---
-      if (b.state === 'fight' && !b.surrenderOffer && Game.mouse.x >= SX) {
+      // while AIMING (a gun / beam / Portal / Conduit / Song) nothing may sit on the target: no room or door
+      // tooltips, and the combat-log pop-ups fade right back (Greg 2026-10-11: they blocked beam aiming)
+      const aiming = !deck && (b.selWeapon >= 0 || b.gateMode || b.hexMode || b.songMode || !!this._beamAnchor);
+      if (b.state === 'fight' && !b.surrenderOffer && Game.mouse.x >= SX && !aiming) {
         const lx = (Game.mouse.x - SX) / SS, ly = (Game.mouse.y - OFF) / SS; // scene-logical coords
         if (lx >= 0 && lx < 512 && ly >= 0 && ly < HUD_Y) {
           let done = false;
@@ -1041,7 +1067,23 @@ const CombatScreen = {
           } }
         }
       }
-      if (b.paused && b.state === 'fight') TYPE.drawCentered(ctx, '— PAUSED —', mid, 34, 26, COL.gold, { display: true, outline: COL.black, outlineW: 2 });
+      // PAUSED (Greg 2026-10-11: clearly visible, never blocking): a pulsing gold rim around the scene + a
+      // plaque under the resource bar. Draw-only (no hit rect), so every click still reaches the scene.
+      // (The old label sat at y=34, hidden behind the resource panel.)
+      const pausedBanner = b.paused && b.state === 'fight';
+      if (pausedBanner) {
+        const pulse = 0.5 + 0.5 * Math.sin(Game.time * 3.2);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(240,200,96,' + (0.35 + 0.3 * pulse).toFixed(3) + ')'; ctx.lineWidth = 5;
+        ctx.strokeRect(SX + 2.5, OFF + 2.5, SW - 5, dh - 5);
+        const pw = 380, ph = 58, px = mid - pw / 2, pyb = OFF + 10;
+        ctx.fillStyle = 'rgba(18,11,5,0.78)'; UI.roundRect(ctx, px, pyb, pw, ph, 10); ctx.fill();
+        ctx.strokeStyle = 'rgba(240,200,96,' + (0.7 + 0.3 * pulse).toFixed(3) + ')'; ctx.lineWidth = 2.5;
+        UI.roundRect(ctx, px + 1, pyb + 1, pw - 2, ph - 2, 9); ctx.stroke();
+        KIT.text(ctx, 'Paused', { x: px, y: pyb + 4, w: pw, h: 32 }, { size: 30, display: true, align: 'center', color: COL.gold });
+        KIT.text(ctx, 'Space to resume  ·  orders still work', { x: px, y: pyb + 34, w: pw, h: 20 }, { size: 16, italic: true, align: 'center', color: 'rgba(246,232,200,0.85)' });
+        ctx.restore();
+      }
       if (b.state !== 'fight' && b.banner) TYPE.drawCentered(ctx, b.banner, mid, 300, 32, COL.gold, { display: true, outline: COL.black, outlineW: 2 });
       if (b.gateMode) TYPE.drawCentered(ctx, 'Click an enemy room to board', mid, 280, 24, COL.ltblue, { italic: true, outline: COL.black, outlineW: 2 });
       else if (b.hexMode) TYPE.drawCentered(ctx, 'Click an enemy system to jam', mid, 280, 24, COL.ltblue, { italic: true, outline: COL.black, outlineW: 2 });
@@ -1050,7 +1092,7 @@ const CombatScreen = {
       // fading event popups in the upper-middle (replaces the old COMBAT LOG panel);
       // start below the tall resource panels so the top line never hides behind them.
       // dark outline (not a sub-pixel shadow) so they read over the brightest sky.
-      let py = 150;
+      let py = pausedBanner ? 206 : 150;   // below the Paused plaque while it shows
       // combat log: newest 3 lines, coloured by what the event MEANS for the player (good teal /
       // bad salmon / neutral gold) rather than by grammatical subject, in sentence case (no shouting).
       const shown = b.logs.filter(l => l.t > 0).slice(-3);
@@ -1059,8 +1101,9 @@ const CombatScreen = {
         const col = tone > 0 ? '#a8ecd6' : tone < 0 ? '#ffb39a' : COL.gold;
         const txt = this.sentenceCase(l.msg, b) + ((l.n > 1) ? '  ×' + l.n : '');
         const tw = TYPE.width(ctx, txt, 27, { weight: 600 });
-        KIT.pill(ctx, mid - tw / 2 - 18, py - 5, tw + 36, 36, Math.min(1, l.t) * 0.5);
-        ctx.globalAlpha = Math.min(1, l.t);
+        const la = Math.min(1, l.t) * (aiming ? 0.25 : 1);
+        KIT.pill(ctx, mid - tw / 2 - 18, py - 5, tw + 36, 36, la * 0.5);
+        ctx.globalAlpha = la;
         TYPE.drawCentered(ctx, txt, mid, py, 27, col, { weight: 600, outline: '#0b0805', outlineW: 2 });
         ctx.globalAlpha = 1; py += 38;
       }
@@ -1153,10 +1196,11 @@ const CombatScreen = {
       if (!SPR.drawArt(ctx, 'portrait_' + c.race, LX + 6, cyc + 8, 48, 48)) { ctx.fillStyle = COL.woodfr; ctx.fillRect(LX + 6, cyc + 8, 48, 48); }
       ctx.globalAlpha = c.dead ? 0.4 : 1;
       const room = b.p.rooms[c.roomId], skey = room && room.key;
-      const station = c.dead ? 'lost' : (skey ? (DATA.SYSTEMS[skey] ? DATA.SYSTEMS[skey].name : skey) : 'roaming');
+      const chm = !c.dead && b.charms && b.charms.find(ch => ch.c === c);   // turned by an enemy Siren's Song
+      const station = c.dead ? 'lost' : chm ? 'charmed ' + Math.ceil(chm.until) + 's' : (skey ? (DATA.SYSTEMS[skey] ? DATA.SYSTEMS[skey].name : skey) : 'roaming');
       // name + station on ONE line, same size, dash-separated: "Reyes - Helm". The NAME is bold
       // (faux-bold via double-draw — no Spectral-Bold is bundled — keeps its normal mixed case).
-      const ncol = c.dead ? COL.inkfade : COL.inkdk;
+      const ncol = c.dead ? COL.inkfade : chm ? '#a8326e' : COL.inkdk;
       TYPE.draw(ctx, c.name, LX + 64, cyc + 10, 23, ncol);
       TYPE.draw(ctx, c.name, LX + 64.7, cyc + 10, 23, ncol);
       const nw = TYPE.width(ctx, c.name, 23) + 2;
@@ -1316,6 +1360,7 @@ const CombatScreen = {
           return;
         }
         // POWER in the top region: pips, or the Hearthstone mana column (glowing blue)
+        let sysState = null;
         if (s[2] === 'm') {
           TYPE.drawCentered(ctx, b.p.effMana() + '/' + b.p.manaMax, cm, cardTop + 16, 14, COL.ltblue);
           const gTop = cardTop + 34, gh = pipBase - gTop;
@@ -1324,9 +1369,20 @@ const CombatScreen = {
           ctx.fillStyle = COL.ltblue; ctx.fillRect(Math.round(cm - 11), gTop + gh * (1 - f), 22, gh * f);
         } else {
           const owned = Math.min(b.p.sysLv[s[0]] || 0, 8), on = b.p.powered(s[0]);
-          pipsV(cm, pipBase, owned, on, pipW, 8, 1, s[2] === 's' ? COL.teal : '#9a6c2c', '#4a3a22');
+          // FTL power bars, bottom up: powered · spare capacity · ION-locked (blue) · DAMAGED (red, with a cross)
+          const rm = b.p.roomByKey(s[0]), dmgN = rm ? Math.min(owned, rm.dmg) : 0;
+          const ionN = rm && rm.ion > 0 ? Math.min(owned - dmgN, rm.ionPts >= 99 ? owned : (rm.ionPts || 0)) : 0;
+          const cOn = s[2] === 's' ? COL.teal : '#9a6c2c';
+          for (let pi = 0; pi < owned; pi++) {
+            const py = pipBase - (pi + 1) * 9, px = Math.round(cm - pipW / 2);
+            const dmgPip = pi >= owned - dmgN, ionPip = !dmgPip && pi >= owned - dmgN - ionN;
+            ctx.fillStyle = dmgPip ? '#c8322a' : ionPip ? COL.ltblue : pi < on ? cOn : '#4a3a22';
+            ctx.fillRect(px, py, pipW, 8);
+            if (dmgPip) { ctx.strokeStyle = '#ffd9c8'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(px + pipW / 2 - 3, py + 1.5); ctx.lineTo(px + pipW / 2 + 3, py + 6.5); ctx.moveTo(px + pipW / 2 + 3, py + 1.5); ctx.lineTo(px + pipW / 2 - 3, py + 6.5); ctx.stroke(); }
+          }
+          sysState = rm && rm.dmg > 0 && b.p.sysEff(s[0]) === 0 ? '#ff2e2e' : rm && rm.dmg > 0 ? COL.orange : rm && rm.ion > 0 ? COL.ltblue : null;
         }
-        drawSysSym(ctx, s[0], cm - ICON / 2, iconY, ICON, s[2] === 's' ? COL.teal : COL.inkdk); // icon
+        drawSysSym(ctx, s[0], cm - ICON / 2, iconY, ICON, sysState || (s[2] === 's' ? COL.teal : COL.inkdk)); // icon (state-coloured like FTL)
         TYPE.drawCentered(ctx, s[1], cm, nameY, TYPE.fitSize(ctx, s[1], cw - 4, 18), COL.inkdk); // name BENEATH the icon
         // advanced systems get pressable ACTIVATE button(s) at the top of the card (above the pips);
         // the Brine Gate stacks Board + Recall. A dark wipe + countdown shows the system cooldown.
@@ -1461,7 +1517,7 @@ const CombatScreen = {
     // ---- wordless cue #2: a selected gun streams chevrons toward the enemy ship ("aim me there") ----
     if (b && b.selWeapon >= 0 && hdAimSrc && b.state === 'fight') {
       const sc = this.hdScale();
-      const tx = 330 + (b.eX() + b.e.rw / 2) * sc, ty = 120 + (b.eY() + b.e.rh / 2) * sc;
+      const eq = b.eP(b.eX() + b.e.rw / 2, b.eY() + b.e.rh / 2), tx = 330 + eq.x * sc, ty = 120 + eq.y * sc;
       const dx = tx - hdAimSrc.x, dy = ty - hdAimSrc.y, len = Math.hypot(dx, dy) || 1;
       const ux = dx / len, uy = dy / len, ang = Math.atan2(dy, dx);
       ctx.save();
@@ -1484,7 +1540,7 @@ const CombatScreen = {
     }
     // the dark-wood frame + brass-knot corners as the TOPMOST chrome layer (popups draw after this)
     KIT.flushFrames(ctx);
-    TYPE.draw(ctx, deck ? 'Click a sailor, then a room  ·  right-click a hull room to flood  ·  Esc returns to the chart' : 'Space pauses  ·  Q quits', 24, 1056, 15, COL.brasshi, { italic: true });
+    TYPE.draw(ctx, deck ? 'Click a sailor, right-click a room to send him  ·  click a door to open/shut  ·  Space pauses  ·  Esc to the chart' : 'Click a sailor, right-click a room to send him  ·  Space pauses  ·  Q quits', 24, 1056, 15, COL.brasshi, { italic: true });
     // --- the hovered scrap tooltip, painted on top of everything (after a short dwell). A hovered KIT
     // control's own tip (e.g. a disabled button's reason) wins over the panel-level hover tip beneath it. ---
     const modal = (b && b.surrenderOffer && !deck) || this.quitOpen();
@@ -1760,9 +1816,9 @@ const HELP_PAGES = [
     ],
   },
   {
-    title: 'YOUR CREW', sub: 'Click a sailor, then a room. They do the rest.', img: 'help_crew',
+    title: 'YOUR CREW', sub: 'Click a sailor, then right-click a room. They do the rest.', img: 'help_crew',
     items: [
-      { head: 'Give Orders', text: 'Click a sailor, then click a room. They man stations, repair damage, fight fires, patch leaks, and brawl with boarders. Press R to send all hands to battle stations.' },
+      { head: 'Give Orders', text: 'Click a sailor (or drag a box around several), then RIGHT-click a room — they walk to the very spot you clicked. They man stations, repair damage, fight fires, patch leaks, and brawl with boarders. Press R to send all hands to battle stations.' },
       { head: 'Stations & Mastery', text: 'A manned station works harder. Each race has natural aptitudes, and sailors earn star-ranked mastery by doing the job — hover a sailor to read theirs.' },
       { head: 'Healing', text: 'Wounded crew recover in the Infirmary. In battle it needs mana to run; between fights, at sea, it always works.' },
     ],
@@ -1795,8 +1851,8 @@ const HELP_PAGES = [
     title: 'THE SEA NEVER PAUSES', sub: 'Fire and floodwater follow you out of the fight.', img: 'help_decks',
     items: [
       { head: 'Damage Carries Over', text: 'Fires, leaks, and floodwater survive the battle. The DECKS button on the chart opens your ship underway with full crew control — untended fires char the hull to nothing and sailors drown. A run can end out here.' },
-      { head: 'Breaches & Fire', text: 'Cannonfire punches hull breaches; the sea forces in until a sailor patches them. Deep water drowns non-merfolk and shorts out systems. Fire spreads tile to tile — but a flooded room cannot burn.' },
-      { head: 'Doors & Pumps', text: 'Right-click a hull room’s sea door to flood it on purpose — dousing fire, drowning boarders. Open All / Shut All swing every door; seal them to contain fire and flooding. A Bilge Pump drains water shipwide.' },
+      { head: 'Breaches & Fire', text: 'Cannonfire punches hull breaches; the sea forces in until a sailor patches them. Deep water drowns non-merfolk and shorts out systems. Fire spreads tile to tile and through doors (shut doors slow it; upgraded Doors almost stop it) — and a flooded room cannot burn.' },
+      { head: 'Doors & Pumps', text: 'Click any door to open or shut it (Z opens all, X shuts all). Click a hull room’s sea door — the hatch in its floor — to flood it on purpose — dousing fire, drowning boarders. Open All / Shut All swing every door; seal them to contain fire and flooding. A Bilge Pump drains water shipwide.' },
     ],
   },
 ];

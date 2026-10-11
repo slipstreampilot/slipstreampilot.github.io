@@ -23,7 +23,8 @@ const ShipyardScreen = {
   stateLabel(st) { return st === 'operate' ? 'Operate · ' + this.STATIONS[this.station || 0][1] : this.STATE_LBL[st]; },
   SPEEDS: [0.25, 0.5, 1, 2], SPEED_LBL: ['¼×', '½×', '1×', '2×'],
   BACKDROPS: ['Sea', 'Deck', 'Parchment'],
-  CREW_ZOOMS: [1, 2, 3, 4, 5], SCENE_ZOOMS: [1, 1.5, 2, 3],
+  // x game size; sailors are ~13px tall in battle, so the crew close-ups need more zoom than the ship scenes
+  CREW_ZOOMS: [1, 2, 4, 6, 8], SCENE_ZOOMS: [1, 1.5, 2, 3],
   TOOLS: ['Command crew', 'Set fire', 'Flood', 'Breach', 'Damage system', 'Kill sailor'],
   OUTCOMES: ['Hit', 'Miss', 'Warded'],
   SIDE: { x: 32, y: 150, w: 392, h: 724 },
@@ -205,9 +206,10 @@ const ShipyardScreen = {
   // one sailor, feet at (x, footY), s = screen px per logical px (game size = CombatScreen.hdScale())
   drawSailor(ctx, race, pose, flip, facesLeft, x, footY, s, dy) {
     ctx.save(); ctx.translate(x, footY); ctx.scale(s, s);
-    ctx.fillStyle = 'rgba(20,12,6,0.30)'; ctx.beginPath(); ctx.ellipse(0, 0.6, 6.5, 1.7, 0, 0, 7); ctx.fill();
+    const fw = 0.55 + 0.45 * DATA.crewH(race) / 24;   // foot shadow follows the figure size (as in combat)
+    ctx.fillStyle = 'rgba(20,12,6,0.30)'; ctx.beginPath(); ctx.ellipse(0, 0.6, 6.5 * fw, 1.7 * fw, 0, 0, 7); ctx.fill();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    if (!SPR.drawCrewPose(ctx, race, pose, flip !== facesLeft, 0, dy || 0, TUNING.crewDrawH) && SPR.artPending('crew_' + race + '_' + pose)) {
+    if (!SPR.drawCrewPose(ctx, race, pose, flip !== facesLeft, 0, dy || 0, DATA.crewH(race)) && SPR.artPending('crew_' + race + '_' + pose)) {
       // art still downloading: three pulsing dots where the sailor will stand (instead of an empty shadow)
       const t = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
       for (let i = 0; i < 3; i++) {
@@ -397,6 +399,7 @@ const ShipyardScreen = {
     o.save(); o.scale(-1, 1); b.renderSea(o); o.restore();
     o.save(); o.translate(1024, 0); o.scale(-1, 1); b.renderSea(o); o.restore();
     b.renderSea(o);
+    b._solo = !!only;   // one hull on show: no 'farther away' depth (that is only for two hulls that would collide)
     if (only !== 'p') b.renderShip(o, b.e);
     if (only !== 'e') b.renderShip(o, b.p);
     b.renderProjectiles(o); b.renderSweeps(o); b.renderHazardFx(o);
@@ -484,7 +487,7 @@ const ShipyardScreen = {
     // stage: lineup (all races) on top, focus + filmstrip below
     const G = this.STAGE, top = { x: G.x, y: G.y, w: G.w, h: 300 }, bot = { x: G.x, y: G.y + 316, w: G.w, h: G.h - 316 };
     this.drawBackdrop(ctx, top); this.drawBackdrop(ctx, bot);
-    const gs = this.gameScale(), lsc = this.gameSize ? gs : gs * 2, n = this.RACES.length, cw = top.w / n;
+    const gs = this.gameScale(), lsc = this.gameSize ? gs : gs * 3.5, n = this.RACES.length, cw = top.w / n;
     const ink = this.BACKDROPS[this.backdrop] === 'Sea' ? '#fff6e0' : COL.inkdk, sub = this.BACKDROPS[this.backdrop] === 'Sea' ? 'rgba(255,246,224,0.85)' : COL.inkmd, shd = this.BACKDROPS[this.backdrop] === 'Sea' ? 'rgba(10,6,2,0.85)' : null;
     for (let i = 0; i < n; i++) {
       const r = this.RACES[i], fi = this.frameInfo(r, st, clk), cx = top.x + cw * (i + 0.5), cell = { x: top.x + cw * i, y: top.y, w: cw, h: top.h };

@@ -1040,7 +1040,7 @@ const LootScreen = {
   update(dt) {},
   click() {},
   key(k) { if (k === ' ' || k === 'Enter') { AUDIO.sfx('click'); Game.afterNode(); } },
-  HAZARD: /FIRES STILL BURN|STILL TAKING WATER|SEE TO IT FROM THE DECKS/,
+  HAZARD: /FIRES STILL BURN|STILL TAKING WATER|SEE TO IT FROM THE DECKS|STRAIGHT TO THE DECKS/,
   findWeapon(name) { name = name.trim().toLowerCase(); return Object.keys(DATA.WEAPONS).find(k => DATA.WEAPONS[k].name.toLowerCase() === name); },
   findAug(name) { name = name.trim().toLowerCase(); return Object.keys(DATA.AUGS).find(k => DATA.AUGS[k].name.toLowerCase() === name); },
   // sort the authored CAPS lines into prose paragraphs, spoils chips and hazard warnings

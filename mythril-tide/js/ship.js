@@ -192,7 +192,7 @@ class Ship {
       const gx = r.x + nlx, gy = r.y + nly, ar = this.roomAtTile(gx, gy);
       if (!ar || ar === r) continue;
       const dk = this.doorBetween(r.id, ar.id); if (dk < 0) continue;
-      const mul = this.doorOpen[dk] ? 1 : TUNING.fireDoorClosedMul / (1 + (this.sysLv.doors || 0) * 0.6);
+      const DM = TUNING.fireDoorShutMul, mul = this.doorOpen[dk] ? 1 : DM[Math.min(DM.length - 1, this.sysLv.doors || 0)];
       out.push({ room: ar, idx: (gy - ar.y) * ar.w + (gx - ar.x), mul });
     }
     return out;
@@ -225,8 +225,8 @@ class Ship {
     if (!this.sysLv[key]) return 0;
     const r = this.roomByKey(key);
     if (!r) return this.sysLv[key]; // distributed systems (sump pumps) have no room to shoot
-    if (r.ion > 0) return 0;
-    return Math.max(0, this.sysLv[key] - r.dmg);
+    // FTL ion: each ion point forces one power bar out until the shared timer runs down (ionPts 99 = fully jammed)
+    return Math.max(0, this.sysLv[key] - r.dmg - (r.ion > 0 ? (r.ionPts || 99) : 0));
   }
   powered(key) {
     if (DATA.SYS_SUB.includes(key)) return this.sysEff(key);
@@ -288,7 +288,8 @@ class Ship {
     const r = this.roomByKey(key);
     if (!r) return null;
     for (const c of occupantsOf(this, r.id, battle)) {
-      if (c.owner === this.owner && !c.dead && c.stun <= 0 && c.path.length === 0) return c;
+      // FTL: only a sailor who has REACHED his post mans it — not one still walking in (path or the final settle)
+      if (c.owner === this.owner && !c.dead && c.stun <= 0 && c.path.length === 0 && !c._settling) return c;
     }
     return null;
   }
@@ -325,15 +326,32 @@ class Ship {
     c.roomId = roomId;
     const r = this.rooms[roomId];
     const others = this.crew.filter(o => o !== c && o.roomId === roomId && !o.dead).length;
-    c.slot = others % r.w;
-    c.px = (r.x + c.slot) * TILE + 2;
-    c.py = r.y * TILE + 1;
+    c.slot = others % (r.w * r.h);
+    c._destSlot = null;
+    const sp = this.slotPos(roomId, c.slot);
+    c.px = sp.x; c.py = sp.y;
     c.path = [];
     c._wp = null; c._wpKey = null; c._settling = false; // drop any in-flight walk legs
   }
+  // one standing spot per TILE (FTL): slot s = column s % w, row floor(s / w) — a 2x2 room holds four
   slotPos(roomId, slot) {
-    const r = this.rooms[roomId];
-    return { x: (r.x + (slot % r.w)) * TILE + 2, y: r.y * TILE + 1 };
+    const r = this.rooms[roomId], n = r.w * r.h, k = ((slot % n) + n) % n;
+    return { x: (r.x + (k % r.w)) * TILE + 2, y: (r.y + Math.floor(k / r.w)) * TILE + 1 };
+  }
+  // the free spot in a room nearest `want` (a slot index), or null when every tile is taken. A spot is taken by
+  // anyone standing in the room (either side) or walking there with that destination reserved.
+  pickSlot(roomId, want, battle, except) {
+    const r = this.rooms[roomId], n = r.w * r.h, taken = new Set();
+    const consider = list => { for (const o of list) { if (o === except || o.dead) continue;
+      const here = o.roomId === roomId && !(o.path && o.path.length);
+      const bound = o.path && o.path.length && o.path[o.path.length - 1] === roomId;
+      if (here) taken.add(o.slot); if (bound && o._destSlot != null) taken.add(o._destSlot); } };
+    consider(this.crew.filter(o => o.aboard === 'home'));
+    const other = battle ? otherShip(this, battle) : null; if (other) consider(other.crew.filter(o => o.aboard === 'away'));
+    const w0 = want == null ? 0 : want, wx = w0 % r.w, wy = Math.floor(w0 / r.w);
+    let best = null, bd = 1e9;
+    for (let k = 0; k < n; k++) { if (taken.has(k)) continue; const d = Math.abs(k % r.w - wx) + Math.abs(Math.floor(k / r.w) - wy) * 1.5; if (d < bd) { bd = d; best = k; } }
+    return best;
   }
   findPath(from, to) {
     if (from === to) return [];
@@ -353,10 +371,27 @@ class Ship {
     }
     return null;
   }
-  orderCrew(c, roomId) {
-    if (c.dead || c.aboard === 'away') return;
+  // send a sailor to a room on THIS ship (where he physically stands: his home deck, or the enemy deck he boarded).
+  // `slot` = the tile clicked (FTL right-click); null = any free spot. Returns false when the room is full.
+  orderCrew(c, roomId, slot, battle) {
+    if (c.dead) return false;
+    const mine = this.crew.includes(c);
+    if (mine !== (c.aboard === 'home')) return false;            // he isn't standing on this deck
+    if (slot != null) {
+      const s2 = this.pickSlot(roomId, slot, battle, c);
+      if (s2 == null) return false;                               // every tile taken (FTL: the order is refused)
+      slot = s2;
+    }
+    if (roomId === c.roomId && !(c.path && c.path.length)) {      // same room: just step to the new tile
+      if (slot == null || slot === c.slot) return true;
+      c.slot = slot; c._destSlot = null; c.repProg = 0; c.patchProg = 0;
+      c._wp = [this.slotPos(roomId, slot)]; c._wpKey = c.aboard + ':settle' + roomId; c._settling = true;
+      return true;
+    }
     const path = this.findPath(c.roomId, roomId);
-    if (path) { c.path = path; c.repProg = 0; c.patchProg = 0; }
+    if (!path) return false;
+    c.path = path; c.repProg = 0; c.patchProg = 0; c._destSlot = slot;
+    return true;
   }
 
   // ---------- crew walking (Stage 1): door-routed, axis-aligned legs + an eased settle ----------
@@ -408,8 +443,9 @@ class Ship {
     if (c.path.length === 0) {
       // last room: pick a free slot and EASE into it (was: teleport to the slot)
       const r2 = ship.rooms[c.roomId];
-      const occ = occupantsOf(ship, c.roomId, battle).filter(o => o !== c);
-      c.slot = occ.length % r2.w;
+      const pick = ship.pickSlot(c.roomId, c._destSlot, battle, c);   // the clicked tile if still free, else the nearest free one
+      c.slot = pick != null ? pick : occupantsOf(ship, c.roomId, battle).filter(o => o !== c).length % (r2.w * r2.h);
+      c._destSlot = null;
       c._wp = [ship.slotPos(c.roomId, c.slot)]; c._wpKey = c.aboard + ':settle' + c.roomId; c._settling = true;
     }
   }
@@ -440,7 +476,7 @@ class Ship {
     if (this.hexCd > 0) this.hexCd -= dt;
     if (this.songCd > 0) this.songCd -= dt;
     for (const r of this.rooms) {
-      if (r.ion > 0) r.ion -= dt;
+      if (r.ion > 0) { r.ion -= dt; if (r.ion <= 0) { r.ion = 0; r.ionPts = 0; } }
       if (r.stunT > 0) r.stunT -= dt;
     }
 
@@ -510,10 +546,10 @@ class Ship {
             r.dmgF += dt * TUNING.fireToSystem * litN;
             while (r.dmgF >= 1) { r.dmgF -= 1; this.damageSystem(r, 1); }
           }
-          this.hullF = (this.hullF || 0) + dt * TUNING.hullSinge * litN;
-          while (this.hullF >= 1) { this.hullF -= 1; this.damageHull(1); }
-          // a room mostly ablaze radiates enough heat to jump SHUT doors (structural failure)
-          const engulfed = litN > r._fires.length * 0.65;
+          if (TUNING.hullSinge) {   // 0 = FTL (fire never touches the hull)
+            this.hullF = (this.hullF || 0) + dt * TUNING.hullSinge * litN;
+            while (this.hullF >= 1) { this.hullF -= 1; this.damageHull(1); }
+          }
           // per-tile burnout + spread (snapshot lit tiles so newly-lit ones wait until next frame)
           for (const i of litIdx) {
             const nbrs = this.fireNeighbours(r, i);
@@ -522,8 +558,7 @@ class Ship {
             r._fires[i] = Math.max(0, r._fires[i] - dt * TUNING.fireBurnoutBase / (1 + adjLit * TUNING.fireNeighbourBonus));
             for (const n of nbrs) {
               if (n.room._fires[n.idx] > 0 || n.room.water > TUNING.fireDouseWater) continue;
-              const mul = (engulfed && n.room !== r) ? Math.max(n.mul, TUNING.fireEngulfedSpread) : n.mul;
-              if (U.chance(dt * TUNING.fireSpreadChance * mul)) n.room._fires[n.idx] = TUNING.newFireHp;
+              if (U.chance(dt * TUNING.fireSpreadChance * n.mul)) n.room._fires[n.idx] = TUNING.newFireHp;
             }
           }
         }
@@ -628,11 +663,8 @@ class Ship {
       c.hp = Math.min(c.maxhp, c.hp + dt * 1.5);
     }
 
-    // environment damage — FIRE is per-tile (FTL): only a sailor standing ON a burning tile is hurt
-    if (room.fire > 0 && !race.fireImmune) {
-      const ti = locShip.crewLocalTile(c, room);
-      if (ti >= 0 && room._fires[ti] > 0) c.hp -= dt * TUNING.crewFireDps;
-    }
+    // environment damage — FIRE (FTL): 2 hp/s for EVERY burning tile in the room, wherever you stand in it
+    if (room.fire > 0 && !race.fireImmune) c.hp -= dt * TUNING.crewFireDps * locShip.litTileCount(room);
     if (room.water > TUNING.crewDrownWater && !race.waterImmune && !(c.owner === 'player' && Game.run && Game.run.augs.includes('selkie_cloak'))) {
       c.hp -= dt * TUNING.crewWaterDps; c._drowning = true; // drives the `drown` anim (R16)
     }
@@ -690,7 +722,8 @@ class Ship {
     // operator (no spare hand) still does the job. mannedBy() picks ONE operator, so the others act
     // and there's no stand-off. Fighting boarders is exempt (handled above — you can't man through melee).
     const operating = c.aboard === 'home' && loyal && !!(room.key && locShip.sysLv[room.key]) && locShip.mannedBy(room.key, battle) === c;
-    const stayManning = operating && occupantsOf(locShip, c.roomId, battle).some(o =>
+    // (in battle only: underway, with no fight on, EVERYONE in a damaged room turns to the repair)
+    const stayManning = !!battle && operating && occupantsOf(locShip, c.roomId, battle).some(o =>
       o !== c && !o.dead && o.owner === c.owner && o.aboard === 'home' && o.path.length === 0 && o.stun <= 0);
     if (room.fire > 0 && c.aboard === 'home' && loyal && !stayManning) {
       // throw water on the HOTTEST tile first — one bucket at a time
@@ -722,8 +755,8 @@ class Ship {
       // sabotage: a boarder (away) OR a charmed defector (home but disloyal — Siren's Crown/Song)
       // wrecks the system in their room, FTL mind-control style
       if (room.key && locShip.sysLv[room.key] && room.dmg < locShip.sysLv[room.key]) {
-        c.repProg += dt * TUNING.sabotageRate * race.dmg;
-        c._task = 'sabotage'; c._taskP = c.repProg;
+        c.repProg += dt * TUNING.sabotageRate;   // FTL: every race sabotages at the same pace
+        c._task = 'sabotage'; c._taskP = c.repProg; this.faceStation(c, room);
         if (c.repProg >= 1) { c.repProg = 0; locShip.damageSystem(room, 1); }
       }
     }
@@ -764,6 +797,12 @@ class Ship {
     if (battle && mine) battle.log(c.name + ' IS LOST!');
   }
 
+  // FTL ion: +n power bars forced out, +5 s per point on the shared timer (<= 25 s per application).
+  // full=true jams the whole system (Storm Conduit / Stormcaller, the FTL hacking analogs).
+  applyIon(room, n, full, secs) {
+    room.ionPts = full ? 99 : Math.min(99, (room.ion > 0 ? (room.ionPts || 0) : 0) + n);
+    room.ion = full ? Math.max(room.ion || 0, secs) : (room.ion || 0) + Math.min(TUNING.ionMaxPerHit, TUNING.ionSecsPerPoint * n);
+  }
   damageSystem(room, n) {
     if (room.key && this.sysLv[room.key]) room.dmg = U.clamp(room.dmg + n, 0, this.sysLv[room.key]);
   }
@@ -776,7 +815,7 @@ class Ship {
   // post-battle cleanup - FTL-style: fires, leaks, and floodwater PERSIST.
   // Sail away burning and you had better send sailors to deal with it.
   settle() {
-    for (const r of this.rooms) { r.ion = 0; r.stunT = 0; r._sealT = 0; r.dmgF = 0; r.dmgW = 0; } // clear coral-seal + damage accumulators
+    for (const r of this.rooms) { r.ion = 0; r.ionPts = 0; r.stunT = 0; r._sealT = 0; r.dmgF = 0; r.dmgW = 0; } // clear coral-seal + damage accumulators
     for (const c of this.crew) { c.stun = 0; if (!c.dead && c.aboard === 'away') { c.aboard = 'home'; this.placeCrew(c, this.rooms[0].id); } }
     // FTL: the fallen don't linger in the roster between fights. Pruning here (not just in
     // serialize) keeps the in-memory crew clean so corpses can't accumulate and push the

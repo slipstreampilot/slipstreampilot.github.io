@@ -986,7 +986,7 @@ const DeckScreen = {
   // Stage 7: the decks screen IS the HD combat chrome in "underway" mode (enemy + firing removed,
   // station controls + damage-control added). Always HD — the classic 512x288 decks layout was retired.
   designW: 1920, designH: 1080,
-  enter() {
+  enter(args) {
     const v = Object.create(Battle.prototype); // borrow the battle renderer + logic for our ship
     v.p = Game.ship;
     v.e = { crew: [], rooms: [], weapons: [], doors: [], doorOpen: [], alloc: {}, rw: 0, rh: 0, veilT: 0, sysLv: {}, hull: 1, hullMax: 1, name: '', wards: { layers: 0 } };
@@ -997,11 +997,16 @@ const DeckScreen = {
     v.state = 'fight'; v.banner = null; v.paused = false;
     v.hazard = 'none'; v.shake = 0; v.tentacleT = 0;
     v.surrenderOffer = null;
-    v._deckMsg = null; v._deckMsgT = 0;
+    v._deckMsg = null; v._deckMsgT = 0; v._isDeck = true;
+    if (args && args.crisis) {   // sent here straight from a battle with fire / flooding still aboard
+      const s = Game.ship, f = s.rooms.some(r => r.fire > 0), w = s.rooms.some(r => r.leak || r.water > 0.15);
+      v._deckMsg = (f && w ? 'FIRE AND FLOODING' : f ? 'FIRES STILL BURN' : 'WATER IS RISING') + ' - DEAL WITH IT BEFORE YOU SAIL ON.'; v._deckMsgT = 5;
+    }
     this.v = v;
     CombatScreen._deckV = v; // route the shared HD renderer / click handler at our ship
   },
   update(dt) {
+    if (this.v.paused) return;   // Space pauses the decks too (orders still work, like a paused battle)
     this.v.time += dt;
     Game.ship.tick(dt, null); // the sea doesn't pause: fires spread, water rises
     if (this.v._deckMsgT > 0) this.v._deckMsgT -= dt;
@@ -1011,6 +1016,9 @@ const DeckScreen = {
   mouseup(x, y, btn) { CombatScreen.hdUp(x, y, btn); },
   key(k) {
     const v = this.v;
+    if (k === ' ') { v.paused = !v.paused; AUDIO.sfx(v.paused ? 'back' : 'click'); return; }
+    if (k === 'z' || k === 'Z') { v.setAllDoors(Game.ship, true); return; }
+    if (k === 'x' || k === 'X') { v.setAllDoors(Game.ship, false); return; }
     if (k === 'Escape') { if (v.selCrew.size) v.selCrew.clear(); else { CombatScreen._deckV = null; Game.setScreen('map'); } }
     else if (k === 'r' || k === 'R') { if (v.returnStations()) { v._deckMsg = 'ALL HANDS TO STATIONS!'; v._deckMsgT = 2; AUDIO.sfx('click'); } }
     else if (k === 't' || k === 'T') { if (v.setStations()) { v._deckMsg = 'STATIONS SAVED.'; v._deckMsgT = 2; AUDIO.sfx('click'); } }

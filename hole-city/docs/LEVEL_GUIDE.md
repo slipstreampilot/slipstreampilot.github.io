@@ -94,6 +94,12 @@ the reference examples.
   four sides. Lit windows glow at night automatically.
 - `g.flat(x, y, z, w, d, color)`: a decal lying flat.
 - `g.glowing(() => { … })`: everything drawn inside glows on night levels (neon, lanterns, screens).
+- `g.limb(swing, px, py, () => { … })`: a leg or arm for the walk cycle. It swings around the hip or
+  shoulder at (px, py) in the x-y plane; use +1 / −1 for legs in opposite phase (diagonal pairs on
+  four-legged animals), and about ∓0.6 for arms (opposite to the leg on the same side). Anything that
+  walks must face **+x**; wrap an older model in `g.turned(Math.PI / 2, () => { … })` if it faced +z.
+- `HC.buildSupertall(g, { h, r, seg: 24 | 8, twist, glow, glass, lit, accent, ledge })`: a round
+  (seg 24) or octagonal (seg 8) supertall with setbacks, window bands, a crown and a spire.
 - `o` options: `{ tint: true }`, `{ rx, ry, rz }` rotations, `{ shade: false }`.
 
 Keep each kind under about 400 triangles. Spheres cost 20 triangles at detail 0 and 80 at detail 1.

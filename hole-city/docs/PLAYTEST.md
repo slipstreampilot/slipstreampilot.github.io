@@ -27,6 +27,36 @@ Hole diameter by level: L1 34 · L2 41 · L3 49 · L4 59 · L5 71 · L6 85 · L7
 Parking dead-centre under something longer than the hole leaves it bridged across. That's real: move
 so one end hangs over the void and it tips in.
 
+## Final-requests pass
+
+- **Walk cycle.** Every person and animal that walks or roams strides: legs (and arms on people) swing
+  in step with how fast it moves and settle back to standing when it stops. Checked in side-on
+  close-ups of people, cowboys, astronauts, cows, horses, chickens, raptors, the T. rex and crabs.
+  People, cowboys and astronauts used to walk sideways; they now face where they're going.
+- **Supertalls.** Hole City gets a round needle and a twisted octagon (2,100 units, twice THE TOWER);
+  Neon Ward gets glowing ones (1,800, twice the pagoda). 260 points each; every solo test run on
+  those levels ate both.
+- **Townhouse district.** Two blocks in south-east Hole City: 144 tall, narrow row houses, 4 points
+  each, packed back to back. A row house reliably drops into a level-7 hole.
+- **Roller coaster (Funland).** The track spans 1,415 × 2,444 units (the island is 5,520 across) and
+  climbs to 620. One lap takes about 42 s: out of the station at 55, chain lift at 120, a peak of
+  about 570 at the bottom of the first drop, and about 180 on average including the station stop. The
+  park train runs at 105. Eating track at the bottom of the drop sends the train flying (it crashed
+  at 465 and shoved about 70 nearby things around, which had all settled about 7 s later); eating track on the
+  lift strands the train safely at the gap. Crashed cars become ordinary edible objects.
+- **Easy / Normal** on the title screen: rivals move at 187 instead of 220 on Easy; nothing else
+  changes. Classic on Normal, skill 0.85, four levels × 3 seeds: won 7 of 12 (8 of 12 before these
+  additions; within run-to-run variation).
+- The title screen still fits without scrolling on iPhone SE, iPhone, iPhone landscape, iPad (both
+  ways), desktop and a small desktop window.
+
+## Brain Boost and difficulty update
+
+- 20,000 generated sets: each number in + and − problems was 1, 2 or 3 digits about 33.3% of the time
+  each; no negative answers, every answer among its 5 choices, choices always ascending. Even/odd and
+  place-value numbers now range up to 9,999,999.
+- Difficulty: Hard = the original game; Normal starts you at level 2; Easy also slows rivals by 15%.
+
 ## Fixed from playtesting
 
 - **The invisible ring around the player pushed things away.** Cause: overly wide physics activation
@@ -50,22 +80,22 @@ so one end hangs over the void and it tips in.
 
 ## Physics-only pass (current tuning)
 
-Solo, 2:00, skill 0.85, one seed per level:
+Solo, 2:00, skill 0.85, one seed per level (after the townhouses, supertalls and coaster went in):
 
 | Level | L5 | L10 | L15 | L20 |
 |---|---|---|---|---|
-| Hole City | 38 s | 78 s | 101 s | 108 s |
-| Maple Hills | 39 s | 77 s | 94 s | 100 s |
-| Sunny Shores | 38 s | 92 s | 106 s | 113 s |
-| Cluckington Farm | 25 s | 74 s | 94 s | 100 s |
-| Funland | 43 s | 89 s | 108 s | 114 s |
-| Frostville | 60 s | 98 s | 113 s | (L19) |
-| Neon Ward | 33 s | 84 s | 97 s | 104 s |
-| Dusty Gulch | 30 s | 80 s | 100 s | 103 s |
-| Dino Valley | 27 s | 62 s | 76 s | 82 s |
-| Lunar Base | 27 s | 64 s | 81 s | 87 s |
+| Hole City | 34 s | 77 s | 97 s | 105 s |
+| Maple Hills | 39 s | 69 s | 83 s | 87 s |
+| Sunny Shores | 36 s | 78 s | 95 s | 103 s |
+| Cluckington Farm | 27 s | 62 s | 76 s | 82 s |
+| Funland | 39 s | 80 s | 96 s | 102 s |
+| Frostville | 49 s | 98 s | 116 s | (L16) |
+| Neon Ward | 27 s | 65 s | 82 s | 87 s |
+| Dusty Gulch | 35 s | 70 s | 86 s | 90 s |
+| Dino Valley | 23 s | 63 s | 80 s | 84 s |
+| Lunar Base | 27 s | 60 s | 78 s | 83 s |
 
-Classic on Easy (Hole City, Maple Hills, Neon Ward, Lunar Base × 3 seeds): skill 0.85 won 8 of 12
+Classic, standard rivals (now "Normal" on the title screen; Hole City, Maple Hills, Neon Ward, Lunar Base × 3 seeds): skill 0.85 won 8 of 12
 and skill 0.7 won 8 of 12. Before this change it was 6 of 12 for both. Losses are almost always from
 being eaten early.
 

@@ -6,7 +6,7 @@ global `HC` namespace. `index.html` loads them in dependency order:
 ```
 vendor/three.min.js  vendor/cannon.min.js      third-party (bundled locally, no CDN)
 config → util → geo → catalog → gentools → levels/registry → levels/01…10 → world → movers
-      → physics → holes → bots → progress → render → fx → audio → input → game → math → hud → menus → main
+      → coaster → physics → holes → bots → progress → render → fx → audio → input → game → math → hud → menus → main
 ```
 
 ## Data flow per frame
@@ -16,7 +16,8 @@ main.js boots ─► Game.frame (requestAnimationFrame)
                    │
                    ├─ fixed 60 Hz Game.step(dt) ×N
                    │    ├─ Input.dir() / Bots.steer()  → Hole.move()
-                   │    ├─ Movers.update()              pedestrians, ducks, traffic
+                   │    ├─ Movers.update()              pedestrians, ducks, traffic (+ walk-cycle phase)
+                   │    ├─ Coaster.update()             the Funland roller coaster train
                    │    ├─ Physics.step()               rims, fast-swallow, bodies, consume
                    │    ├─ Physics.consumeInstant()     off-screen holes (no physics)
                    │    └─ hole-vs-hole, respawn, end-of-match checks
@@ -33,16 +34,17 @@ main.js boots ─► Game.frame (requestAnimationFrame)
 |---|---|
 | `config.js` | Every tunable number: speeds, growth, physics, camera, bots, scoring. Start balancing here. |
 | `util.js` | Seeded RNG, easing, a uniform spatial `Grid`. |
-| `geo.js` | Low-poly geometry builder (boxes, cylinders, gables, window panels) that merges into one vertex-colored `BufferGeometry`. The `aTint` attribute marks the parts that take the per-instance color. |
+| `geo.js` | Low-poly geometry builder (boxes, cylinders, gables, window panels) that merges into one vertex-colored `BufferGeometry`. The `aTint` attribute marks the parts that take the per-instance color. `g.limb(swing, px, py, fn)` tags legs/arms for the walk cycle (attribute `aLeg`); `g.turned(yaw, fn)` rotates a sub-model. Every walking model faces +x. |
 | `catalog.js` | Every swallowable kind: layout size (`w × d × h`, in units of 5 cm; the collision shape is derived from the mesh), mass, points, tint palette, mover type, and its `build()` mesh recipe. |
 | `citygen.js` | Seeded city layout as pure data: ground decals, object placements, sidewalk loops, roads, spawn points. Uses a 5×5 block plan (parks, homes, shops, apartments, downtown, landmark, parking, works). |
 | `world.js` | Live object list and states (`static` → `active` → `captured` → `gone`), plus a spatial grid for queries. |
-| `movers.js` | Scripted life: walk loops (people, trains, rovers, boats), roaming animals (with optional rolling), right-hand grid traffic that picks turns and brakes for the car ahead. |
+| `movers.js` | Scripted life: walk loops (people, trains, rovers, boats), roaming animals (with optional rolling), right-hand grid traffic that picks turns and brakes for the car ahead. Walkers feed their stride phase and "how much they're walking" (eases to 0 when they stop) to `Render.setWalk`. |
+| `coaster.js` | The Funland roller coaster. `Coaster.layout()` turns control points into a closed 3D track of edible `coaster_rail` pieces (parallel-transported "up", so the vertical loop flips riders) plus support posts and a 4-car train. At runtime the train runs on energy physics (gravity along the slope, drag, chain lift, station brakes and dwell). A missing piece ahead at speed > 170 u/s, or under any car, derails it: the cars become tumbling physics bodies (`Physics.launch`) that wake and shove whatever they hit, then settle as ordinary edible objects. Slow trains stop at a gap on the safety brakes. |
 | `physics.js` | The swallow engine; see below. |
 | `holes.js` | `Hole` class: level/xp/score, eased radius, speed curve, respawn helpers. |
 | `bots.js` | Rival AI: forage → eat a chosen target, hunt, flee, wander. Each bot has a personality. |
 | `progress.js` | Skins catalog, save data (localStorage, fail-safe), rank stars, unlock rules, match recording. |
-| `render.js` | three.js scene, lighting, the island, the sea shader, instanced objects, hole pits and rims, camera, and the see-through dither. |
+| `render.js` | three.js scene, lighting, the island, the sea shader, instanced objects, hole pits and rims, camera, and the see-through dither. Walkers' legs and arms swing in the vertex shader (per-instance `aWalk` = stride phase, walking amount); a matching depth material keeps their shadows in step. |
 | `fx.js` | Particle bursts, dust, confetti, level-up shockwaves, screen shake. |
 | `audio.js` | Web Audio synth: swallow bloops scaled by size and combo, level-up chime, kill, countdown, a music loop. |
 | `input.js` | Drag-anywhere virtual joystick, plus WASD and arrow keys. |
@@ -84,6 +86,10 @@ The approach is the one hole.io uses, built with cannon-es. Physics runs in mete
    - Jams: something sunk into the pit and barely moving for 1 s gets a small physical jostle. If its
      whole outline fits the opening, it is only snagged under the thin lip, so it slips past it.
      Nothing whose outline doesn't fit is ever let through.
+   - Crashed coaster cars fly as `G_SMASH` bodies: they hit the ground and resting objects (which wake
+     up for a few seconds and get shoved) but never hole rims, and nothing is destroyed.
+   - Scripted kinds (`def.scripted`, the coaster track) never get a body: a piece is eaten when its
+     support stands inside an opening at least `minHole` across, and it drops from its height.
 5. **Scoring.** An object scores when its top falls below street level. Points go to the hole it fell into.
 6. **"Likely fits" rule.** `Physics.likelyFits(def, r)` says what reliably goes in, calibrated against
    `tools/fitprobe.js`: the outline diagonal is under 85% of the opening, or the object is slim

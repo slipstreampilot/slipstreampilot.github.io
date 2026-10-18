@@ -78,7 +78,7 @@ build on Poki. Full links are at the end.
 Ten worlds (see README). Each has its own layout, 20–25 unique objects, a palette and theme, a
 landmark worth 320–340 points to finish on, and sometimes a twist: ice (Frostville, grip 0.3), low
 gravity (Lunar Base, 0.4), night glow (Neon Ward). Brain Boost math runs before every match (9/10
-needed). Rivals default to Easy for kids: lower skill, they top out at level 16, they won't chase a
+needed). Rivals are tuned for kids (Hard is the original balance; Normal starts you a size up; Easy also slows rivals 15%): lower skill, they top out at level 16, they won't chase a
 player at level 3 or below, they get a smaller cut when eating each other, and they slow down when
 far ahead of you.
 

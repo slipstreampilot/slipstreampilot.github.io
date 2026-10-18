@@ -26,14 +26,14 @@
 
   function kinds(def) {
     // ---------- tiny ----------
-    def('moon_astro', { w: 12, d: 9, h: 30, points: 1, mass: 90, tints: ['#FF8C42', '#2EC4B6', '#FF5AC8', '#FFD23F', '#7BD84A'],
-      build(g) {
-        for (const x of [-2.8, 2.8]) { g.block(x, 0, 0, 4.4, 11, 5.6, WHITE); g.block(x, 0, 0.6, 4.8, 2.4, 6.4, GREY); }
+    def('moon_astro', { w: 9, d: 12, h: 30, points: 1, mass: 90, tints: ['#FF8C42', '#2EC4B6', '#FF5AC8', '#FFD23F', '#7BD84A'],
+      build(g) { g.turned(Math.PI / 2, () => { // modeled facing +z, turned to walk along +x
+        for (const x of [-2.8, 2.8]) g.limb(x < 0 ? 1 : -1, 0, 11, () => { g.block(x, 0, 0, 4.4, 11, 5.6, WHITE); g.block(x, 0, 0.6, 4.8, 2.4, 6.4, GREY); });
         g.block(0, 10, 0, 10, 10, 7, WHITE); g.block(0, 11, -4.6, 8, 9, 3, SILVER); g.block(0, 14, 3.6, 4, 3, 0.6, '#FFF', { tint: true });
-        for (const x of [-6, 6]) g.block(x, 11, 0, 2.6, 8, 3.4, WHITE);
+        for (const x of [-6, 6]) g.limb(x < 0 ? -0.6 : 0.6, 0, 18, () => g.block(x, 11, 0, 2.6, 8, 3.4, WHITE));
         g.ball(0, 24, 0, 5.6, WHITE);
         g.glowing(() => g.ball(0, 24, 2.3, 4.2, '#FFF', { tint: true, sz: 0.75 }));
-        g.block(2.5, 29, -2, 0.8, 4, 0.8, GREY);
+        g.block(2.5, 29, -2, 0.8, 4, 0.8, GREY); });
       } });
     def('moon_bot', { w: 10, d: 10, h: 17, points: 1, mass: 40, tints: ['#FF8C42', '#2EC4B6', '#FF5AC8', '#FFD23F'],
       build(g) {

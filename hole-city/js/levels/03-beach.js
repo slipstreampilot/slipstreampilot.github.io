@@ -46,7 +46,7 @@
         for (const s of [-1, 1]) {
           g.block(s * 1.6, 3.5, 2, 0.8, 3, 0.8, '#FF5A3C'); g.ball(s * 1.6, 6.6, 2, 1.1, '#FFFFFF'); g.ball(s * 1.6, 6.8, 2.8, 0.5, '#2B2D42');
           g.ball(s * 5.4, 3, 3.4, 1.9, '#FF7A5C', { sx: 1.2 });
-          for (let i = 0; i < 3; i++) g.block(s * 5.2, 0, -2 + i * 1.8, 3.4, 1, 0.8, '#E8452C', { rz: s * 0.5 });
+          for (let i = 0; i < 3; i++) g.limb((i % 2 ? 0.7 : -0.7) * s, s * 3.6, 1, () => g.block(s * 5.2, 0, -2 + i * 1.8, 3.4, 1, 0.8, '#E8452C', { rz: s * 0.5 }));
         }
       } });
     def('beach_gull', { w: 13, d: 7, h: 11, points: 1, mass: 1, mover: 'walk',
@@ -54,7 +54,7 @@
         g.ball(0, 6, 0, 3.6, '#FFFFFF', { sx: 1.5, sy: 0.9 }); g.ball(4.4, 8.6, 0, 2.4, '#FFFFFF');
         g.block(7, 8, 0, 2.8, 1, 1.2, '#FFC21F'); g.ball(5.4, 9.4, 1.5, 0.5, '#2B2D42'); g.ball(5.4, 9.4, -1.5, 0.5, '#2B2D42');
         g.block(-1, 6.4, 3, 8, 1.2, 2.6, '#B8C2D9'); g.block(-1, 6.4, -3, 8, 1.2, 2.6, '#B8C2D9'); g.block(-6, 6, 0, 3, 1.2, 3, '#3A3F58');
-        g.block(0, 0, 1, 0.8, 3.6, 0.8, '#FF9B3D'); g.block(0, 0, -1, 0.8, 3.6, 0.8, '#FF9B3D');
+        g.limb(1, 0, 3.6, () => g.block(0, 0, 1, 0.8, 3.6, 0.8, '#FF9B3D')); g.limb(-1, 0, 3.6, () => g.block(0, 0, -1, 0.8, 3.6, 0.8, '#FF9B3D'));
       } });
     def('beach_swimmer', { w: 15, d: 15, h: 11, points: 1, mass: 60, tints: ['#FF5A5F', '#FEE440', '#00F5D4', '#FF8C42', '#F15BB5'], mover: 'walk',
       build(g) {

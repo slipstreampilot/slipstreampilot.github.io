@@ -78,6 +78,10 @@
         for (let k = 0; k < 6; k++) T.put('bollard', b.x0 + 240 + k * 20, b.z1 - 20);
       }
     },
+    // Supertall plazas: one round needle and one twisted octagon, twice the height of THE TOWER.
+    skyRound(T, b) { sky(T, b, 'skyneedle'); },
+    rows(T, b) { rows(T, b); },
+    skyOcta(T, b) { sky(T, b, 'skyocta'); },
     landmark(T, b) {
       T.rect(b.x0, b.z0, b.x1, b.z1, 2, COL.plaza); T.ring(b.cx, b.cz, 300, 312, 2.4, COL.plazaRing, 64);
       T.put('landmark', b.cx, b.cz, 0);
@@ -115,6 +119,32 @@
     },
   };
 
+  // Townhouse district: three double rows of tall, narrow houses packed shoulder to shoulder and
+  // back to back, with tree-lined lanes between them.
+  function rows(T, b) {
+    T.rect(b.x0, b.z0, b.x1, b.z1, 2, '#EFE6F7');
+    const n = Math.floor((b.w - 6) / 51), xs = b.cx - (n * 51) / 2 + 25.5, D = 148, lane = (b.d - 3 * D) / 2;
+    for (let r = 0; r < 3; r++) {
+      const d0 = b.z0 + r * (D + lane);
+      for (let i = 0; i < n; i++) { T.put('rowhouse', xs + i * 51, d0 + 36, Math.PI); T.put('rowhouse', xs + i * 51, d0 + 112, 0); }
+      if (r < 2) {   // the lane after this double row
+        const lz = d0 + D + lane / 2;
+        T.rect(b.x0, lz - lane / 2 + 6, b.x1, lz + lane / 2 - 6, 2.3, '#FFE8C2');
+        for (let k = 0; k < 6; k++) T.put(k % 2 ? 'blossom' : 'streettree', b.x0 + 50 + k * (b.w - 100) / 5, lz + (k % 2 ? 22 : -22));
+        for (let k = 0; k < 4; k++) T.put(T.pick({ bike: 2, bench: 1, bin: 1, flowerpot: 2 }), b.x0 + 100 + k * 140, lz + (k % 2 ? -26 : 26), k % 2 ? 0 : Math.PI);
+        T.walkLoop([[b.x0 + 10, lz - 8], [b.x1 - 10, lz - 8], [b.x1 - 10, lz + 8], [b.x0 + 10, lz + 8]], 5, { person: 1 }, { dogChance: 0.3, lane: 0 });
+      }
+    }
+  }
+
+  function sky(T, b, kind) {
+    T.rect(b.x0, b.z0, b.x1, b.z1, 2, COL.plaza); T.ring(b.cx, b.cz, 200, 214, 2.4, COL.plazaRing, 64);
+    T.put(kind, b.cx, b.cz, 0);
+    for (const [x, z] of [[b.x0 + 50, b.z0 + 50], [b.x1 - 50, b.z0 + 50], [b.x0 + 50, b.z1 - 50], [b.x1 - 50, b.z1 - 50]]) { T.put('blossom', x, z); T.put('bench', x + (x < b.cx ? 70 : -70), z, Math.PI / 2); }
+    for (let k = 0; k < 8; k++) { T.put('bollard', b.x0 + 200 + k * 30, b.z1 - 24); T.put('flowerpot', b.x0 + 200 + k * 30, b.z0 + 24); }
+    T.walkLoop(Array.from({ length: 24 }, (_, i) => { const a = i / 24 * Math.PI * 2; return [b.cx + Math.cos(a) * 250, b.cz + Math.sin(a) * 250]; }), 10, { person: 1 }, { dogChance: 0.2 });
+  }
+
   function park(T, b, pond) {
     T.stripes(b.x0, b.z0, b.x1, b.z1, 2, COL.lawnA, COL.lawnB, 9);
     T.rect(b.cx - 26, b.z0, b.cx + 26, b.z1, 2.6, COL.path); T.rect(b.x0, b.cz - 26, b.x1, b.cz + 26, 2.6, COL.path);
@@ -144,17 +174,17 @@
 
   HC.Levels.add({
     id: 'city', num: 1, name: 'Hole City', tagline: 'Downtown island · parks, traffic & towers', icon: '🏙️', colors: ['#38B6FF', '#FF4F9A'],
-    milestones: [['car', '🚗 Cars'], ['bus', '🚌 Buses'], ['parktree', '🌳 Big trees'], ['fountain', '⛲ Fountains'], ['house', '🏠 Houses'], ['shop', '🏪 Shops'], ['apartment', '🏢 Apartments'], ['civic', '🏛️ City Hall'], ['office', '🏙️ Offices'], ['tower', '🌆 Skyscrapers'], ['landmark', '🗼 THE TOWER']],
+    milestones: [['car', '🚗 Cars'], ['bus', '🚌 Buses'], ['rowhouse', '🏘️ Townhouses'], ['parktree', '🌳 Big trees'], ['fountain', '⛲ Fountains'], ['house', '🏠 Houses'], ['shop', '🏪 Shops'], ['apartment', '🏢 Apartments'], ['civic', '🏛️ City Hall'], ['office', '🏙️ Offices'], ['tower', '🌆 Skyscrapers'], ['skyneedle', '🌇 Supertalls'], ['landmark', '🗼 THE TOWER']],
     generate(T) {
       T.island();
       T.rect(R[0] - 160, R[0] - 160, R[5] + 160, R[5] + 160, 0, '#F3EEF8');
       T.roadGrid(R);
       const plan = [
         ['res', 'com', 'apt', 'park', 'res'],
-        ['lot', 'down', 'apt', 'down', 'com'],
+        ['lot', 'down', 'apt', 'skyRound', 'com'],
         ['park2', 'apt', 'landmark', 'down', 'civic'],
-        ['com', 'down', 'apt', 'down', 'lot'],
-        ['res', 'works', 'com', 'res', 'res'],
+        ['com', 'skyOcta', 'apt', 'down', 'lot'],
+        ['res', 'works', 'com', 'rows', 'rows'],
       ];
       T.blocks(R, (b) => { BLOCKS[plan[b.bz][b.bx]](T, b); streetFurniture(T, b); });
       const o0 = R[0] - 130, o1 = R[5] + 130;

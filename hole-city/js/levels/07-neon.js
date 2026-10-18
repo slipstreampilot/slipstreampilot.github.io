@@ -229,6 +229,11 @@
         });
         g.cyl(0, 1020, 0, 4, 8, 82, 6, '#C9CCD9'); g.glowing(() => { g.cyl(0, 1022, 0, 80, 80, 1.5, 20, '#FFF', { tint: true }); g.cyl(0, 1022.2, 0, 66, 66, 1.6, 20, '#353A70'); }); outline(g, 0, 0, 366, 366, 612, '#FFF', { tint: true, t: 8, h: 10 }); outline(g, 0, 0, 296, 296, 912, '#FFF', { tint: true, t: 7, h: 10 }); outline(g, 0, 0, 196, 196, 1010, '#FFF', { tint: true, t: 6, h: 10 });
         g.block(0, 620, 0, 352, 1.5, 352, '#4A4F88'); g.block(0, 920, 0, 282, 1.5, 282, '#4A4F88'); } });
+    // Supertalls: twice the pagoda's height, glowing bands all the way up.
+    def('neon_needle', { w: 340, d: 340, h: 1800, points: 260, mass: 4000000, tints: ['#2B2F5E', '#352B66', '#23345E'],
+      build(g) { HC.buildSupertall(g, { h: 1800, r: 150, seg: 24, glow: true, glass: N.cyan, lit: N.lemon, accent: N.pink, ledge: '#4A4470' }); } });
+    def('neon_octa', { w: 340, d: 340, h: 1800, points: 260, mass: 4000000, tints: ['#2E3360', '#3A2B5E', '#26405E'],
+      build(g) { HC.buildSupertall(g, { h: 1800, r: 150, seg: 8, twist: true, glow: true, glass: N.pink, lit: '#FFFFFF', accent: N.lime, ledge: '#4A4470' }); } });
     def('neon_pagoda', { hs: 0.66, w: 540, d: 540, h: 1360, points: 330, mass: 6000000,
       build(g) {
         g.block(0, 0, 0, 540, 30, 540, '#9A96B0'); g.block(0, 30, 0, 500, 14, 500, '#B4B0C8');
@@ -458,7 +463,7 @@
     T.rect(830, 2000, 900, 4800, 1.2, COL.alley);
     for (const z of [2715, 3405, 4085]) T.rect(200, z - 35, 1530, z + 35, 1.2, COL.alley);
     const cols = [[240, 830], [900, 1490]], rows = [[2040, 2680], [2750, 3370], [3440, 4050], [4120, 4760]];
-    const WPLAN = [['sky', 'capsule'], ['arcade', 'tower'], ['park', 'karaoke'], ['capsule', 'sky']];
+    const WPLAN = [['sky', 'capsule'], ['needle', 'tower'], ['octa', 'karaoke'], ['capsule', 'sky']];
     for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) westCell(T, WPLAN[r][c], cols[c][0], rows[r][0], cols[c][1], rows[r][1]);
     for (const z of [2715, 3405, 4085]) for (let x = 230; x < 1520; x += 72) T.put(T.pick({ neon_lantern: 4, neon_stool: 1, neon_cat: 1, person: 2, none: 3 }) === 'none' ? 'neon_lantern' : T.pick({ neon_lantern: 4, person: 2, neon_cat: 1, neon_aboard: 1 }), x, z + (x % 144 < 72 ? -24 : 24), T.rng() * 6);
     T.walkLoop([[865, 2010], [865, 4790], [215, 4790], [215, 4085], [1515, 4085], [1515, 3405], [215, 3405], [215, 2715], [1515, 2715], [1515, 2010]], 18, { person: 1 }, { dogChance: 0.15 });
@@ -528,7 +533,13 @@
   function westCell(T, type, x0, z0, x1, z1) {
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     const edge = (n, weights) => { for (let k = 0; k < n; k++) { const t = (k + 0.5) / n; T.put(T.pick(weights), x0 + 16 + (x1 - x0 - 32) * t, z1 - 16, 0); } };
-    if (type === 'sky') {
+    if (type === 'needle' || type === 'octa') {
+      T.ring(cx, cz, 200, 214, 1.0, COL.alley, 48); T.disc(cx, cz, 196, 0.8, COL.plaza, 48);
+      T.put(type === 'needle' ? 'neon_needle' : 'neon_octa', cx, cz, 0);
+      for (const [x, z] of [[x0 + 36, z0 + 36], [x1 - 36, z0 + 36], [x0 + 36, z1 - 36], [x1 - 36, z1 - 36]]) { T.put('neon_lamp', x, z); T.disc(x, z, 46, 1.3, COL.pool, 16); }
+      edge(12, { neon_vend: 2, neon_lantern: 3, bike: 2, person: 2, neon_aboard: 1 });
+      T.walkLoop(Array.from({ length: 24 }, (_, i) => { const a = i / 24 * Math.PI * 2; return [cx + Math.cos(a) * 248, cz + Math.sin(a) * 248]; }), 8, { person: 1 });
+    } else if (type === 'sky') {
       T.ring(cx, cz - 40, 230, 246, 1.0, COL.alley, 48);
       T.put('neon_skytower', cx, cz - 40, 0);
       for (const [x, z] of [[x0 + 30, z0 + 30], [x1 - 30, z0 + 30], [x0 + 30, z1 - 90], [x1 - 30, z1 - 90]]) T.put('blossom', x, z);
@@ -569,7 +580,7 @@
     },
     mods: { botSkill: -0.1 },
     milestones: [['neon_minicar', '🚗 Kei cars'], ['neon_train', '🚆 Trains'], ['neon_bigtorii', '⛩️ Shrine gates'], ['neon_shophouse', '🏮 Shophouses'], ['neon_arcade', '🕹️ Arcades'],
-      ['neon_capsule', '🏨 Capsule towers'], ['neon_tower', '🌃 Neon towers'], ['neon_skytower', '🌆 Sky towers'], ['neon_pagoda', '🏯 THE PAGODA']],
+      ['neon_capsule', '🏨 Capsule towers'], ['neon_tower', '🌃 Neon towers'], ['neon_skytower', '🌆 Sky towers'], ['neon_needle', '🌇 Supertalls'], ['neon_pagoda', '🏯 THE PAGODA']],
     kinds,
     generate,
   });

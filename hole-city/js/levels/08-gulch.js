@@ -13,13 +13,13 @@
 
   function kinds(def) {
     // ---------- tiny ----------
-    def('gulch_cowboy', { w: 14, d: 9, h: 40, points: 1, mass: 75, tints: ['#D23C2C', '#3D7BFF', '#F2B84B', '#2EC4B6', '#9B5DE5', '#FF8C42', '#F7E3C0'], mover: 'walk',
-      build(g) { g.block(-3.2, 0, 0, 4.6, 4, 6, W.dark); g.block(3.2, 0, 0, 4.6, 4, 6, W.dark);
-        g.block(-3.2, 4, 0, 4.6, 11, 5.5, '#3B5A8C'); g.block(3.2, 4, 0, 4.6, 11, 5.5, '#3B5A8C');
+    def('gulch_cowboy', { w: 9, d: 14, h: 40, points: 1, mass: 75, tints: ['#D23C2C', '#3D7BFF', '#F2B84B', '#2EC4B6', '#9B5DE5', '#FF8C42', '#F7E3C0'], mover: 'walk',
+      build(g) { g.turned(Math.PI / 2, () => { // modeled facing +z, turned to walk along +x
+        for (const s of [-1, 1]) g.limb(-s, 0, 15, () => { g.block(s * 3.2, 0, 0, 4.6, 4, 6, W.dark); g.block(s * 3.2, 4, 0, 4.6, 11, 5.5, '#3B5A8C'); });
         g.block(0, 14, 0, 12, 12, 7, '#FFF', { tint: true }); g.block(0, 14, 0, 12.4, 10, 7.4, '#7A4A2E', { }); g.block(0, 14, 3.8, 4, 10, 0.4, '#FFF', { tint: true });
-        g.block(-7.4, 15, 0, 3, 10, 4, '#FFF', { tint: true }); g.block(7.4, 15, 0, 3, 10, 4, '#FFF', { tint: true }); g.block(0, 14, 0, 12.6, 2, 7.6, W.dark); g.block(3, 14, 3.9, 2.4, 2, 0.4, W.gold);
+        g.limb(-0.6, 0, 24, () => g.block(-7.4, 15, 0, 3, 10, 4, '#FFF', { tint: true })); g.limb(0.6, 0, 24, () => g.block(7.4, 15, 0, 3, 10, 4, '#FFF', { tint: true })); g.block(0, 14, 0, 12.6, 2, 7.6, W.dark); g.block(3, 14, 3.9, 2.4, 2, 0.4, W.gold);
         g.ball(0, 30, 0, 5, '#F2B48C', { detail: 1 }); g.block(0, 26, 3, 4, 2, 2, '#D23C2C');
-        g.cyl(0, 33, 0, 9, 9, 1.2, 12, '#8A5A3B'); g.cyl(0, 34, 0, 4.4, 5, 5.5, 10, '#8A5A3B'); g.cyl(0, 34.4, 0, 5.1, 5.1, 1.2, 10, W.dark); } });
+        g.cyl(0, 33, 0, 9, 9, 1.2, 12, '#8A5A3B'); g.cyl(0, 34, 0, 4.4, 5, 5.5, 10, '#8A5A3B'); g.cyl(0, 34.4, 0, 5.1, 5.1, 1.2, 10, W.dark); }); } });
     def('gulch_barrel', { w: 14, d: 14, h: 20, points: 1, mass: 40,
       build(g) { g.cyl(0, 0, 0, 6, 6, 20, 10, W.wood); g.cyl(0, 6, 0, 7, 7, 8, 10, W.wood3); g.cyl(0, 3, 0, 6.6, 6.6, 1.6, 10, W.iron); g.cyl(0, 15.5, 0, 6.6, 6.6, 1.6, 10, W.iron); g.cyl(0, 19.6, 0, 5.4, 5.4, 0.6, 10, W.wood2); } });
     def('gulch_crate', { w: 16, d: 16, h: 16, points: 1, mass: 25,
@@ -45,7 +45,7 @@
         g.block(0, 12, 8.4, 40, 2, 1.6, W.wood2); g.block(0, 12, -8.4, 40, 2, 1.6, W.wood2); } });
     def('gulch_horse', { w: 66, d: 16, h: 46, points: 3, mass: 450, tints: ['#8A5A3B', '#5A3A28', '#C98B62', '#F4ECE0', '#2B2D42', '#B5713E'], mover: 'walk',
       build(g) { g.block(-2, 18, 0, 34, 14, 13, '#FFF', { tint: true }); g.ball(-18, 25, 0, 6.5, '#FFF', { tint: true });
-        for (const [x, z] of [[-14, -4.5], [-14, 4.5], [10, -4.5], [10, 4.5]]) { g.block(x, 0, z, 3.6, 19, 3.6, '#FFF', { tint: true }); g.block(x, 0, z, 4, 3, 4, W.dark); }
+        for (const [x, z] of [[-14, -4.5], [-14, 4.5], [10, -4.5], [10, 4.5]]) g.limb(x * z > 0 ? 0.8 : -0.8, x, 19, () => { g.block(x, 0, z, 3.6, 19, 3.6, '#FFF', { tint: true }); g.block(x, 0, z, 4, 3, 4, W.dark); });
         g.block(18, 26, 0, 8, 16, 7, '#FFF', { tint: true, rz: -0.55 }); g.block(25, 36, 0, 13, 7, 7, '#FFF', { tint: true, rz: -0.25 }); g.block(31, 34, 0, 4, 5, 6, '#5A3A28');
         g.block(21, 40, 1.6, 2, 4, 1.6, '#FFF', { tint: true }); g.block(21, 40, -1.6, 2, 4, 1.6, '#FFF', { tint: true });
         g.block(15, 30, 0, 14, 12, 2.6, W.dark, { rz: -0.55 }); g.block(-22, 17, 0, 4, 18, 3, W.dark, { rz: 0.35 });

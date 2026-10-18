@@ -14,8 +14,10 @@
   const C = CANNON, CFG = HC.CONFIG, PC = CFG.physics, M = CFG.world.unitToMeter;
   // Resting objects only touch the ground and things that are falling; falling objects touch the rim.
   // So nothing outside the opening is ever shoved by the hole or by an overlapping neighbor.
-  const G_GROUND = 1, G_RIM = 2, G_REST = 4, G_FALL = 8;
-  const MASK_REST = G_GROUND | G_FALL, MASK_FALL = G_RIM | G_FALL | G_REST, MASK_SLIP = G_FALL | G_REST;
+  // G_SMASH: a crashed coaster car flying through the scene. It hits the ground and resting things
+  // (which wake up and get shoved) but never the hole rims.
+  const G_GROUND = 1, G_RIM = 2, G_REST = 4, G_FALL = 8, G_SMASH = 16;
+  const MASK_REST = G_GROUND | G_FALL | G_SMASH, MASK_FALL = G_RIM | G_FALL | G_REST, MASK_SLIP = G_FALL | G_REST, MASK_SMASH = G_GROUND | G_REST | G_SMASH;
   const P = { active: [], rims: new Map(), onConsume: null, captured: [] };
 
   P.init = function () {
@@ -27,7 +29,7 @@
     w.addContactMaterial(new C.ContactMaterial(P.matObj, P.matGround, { friction: PC.groundFriction, restitution: 0.02 }));
     w.addContactMaterial(new C.ContactMaterial(P.matObj, P.matRim, { friction: PC.rimFriction, restitution: 0.02 }));
     w.addContactMaterial(new C.ContactMaterial(P.matObj, P.matObj, { friction: 0.12, restitution: 0.05 }));
-    const ground = new C.Body({ mass: 0, material: P.matGround, collisionFilterGroup: G_GROUND, collisionFilterMask: G_REST });
+    const ground = new C.Body({ mass: 0, material: P.matGround, collisionFilterGroup: G_GROUND, collisionFilterMask: G_REST | G_SMASH });
     ground.addShape(new C.Plane()); ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0); w.addBody(ground);
     P.ground = ground;
   };
@@ -168,7 +170,10 @@
   P.opening = (h) => h.r * 2 * PC.holeSlack;               // physical hole diameter (world units)
   // Worth simulating: the narrow side passes and it is short enough that it could tip in end-first.
   // Physics alone decides whether it actually falls.
-  const canFit = (o, h) => { const s = P.shape(o.def), D = P.opening(h); return s.min < D * 0.98 && s.max < D * PC.tipLength; };
+  const canFit = (o, h) => { if (o.def.scripted) return false; const s = P.shape(o.def), D = P.opening(h); return s.min < D * 0.98 && s.max < D * PC.tipLength; };
+  // Scripted kinds (roller-coaster track) are eaten when their support stands inside the opening and
+  // the hole is at least `minHole` across; they drop into the pit with the scripted fall.
+  const scriptedEdible = (o, h, d) => o.state === 'static' && h.r * 2 >= o.def.minHole && d < h.r * PC.holeSlack - 6;
   P.canFit = canFit;
   // What a player can reliably get in, calibrated against tools/fitprobe.js: its whole outline fits
   // with a little room to spare, or it's slim and only a little longer than the hole (tips in
@@ -231,7 +236,8 @@
     }
     for (let i = P.active.length - 1; i >= 0; i--) {
       const o = P.active[i];
-      if (o.committed) continue;
+      if (o.committed || o.smash) continue;
+      if (o.keepT > 0) { o.keepT -= 1 / 60; continue; }   // shoved by a crash: let it tumble and settle
       let close = false;
       for (const h of holes) { if (h.alive && h.physical && Math.hypot(o.x - h.x, o.z - h.z) < h.r * 1.4 + P.shape(o.def).diag / 2 + 60 && canFit(o, h)) { close = true; break; } }
       if (!close && o.groundOn && (o.body.sleepState === C.Body.SLEEPING || o.body.velocity.lengthSquared() < 0.01)) {
@@ -256,7 +262,8 @@
     if (o.body) { P.world.removeBody(o.body); o.body = null; const i = P.active.indexOf(o); if (i >= 0) { P.active[i] = P.active[P.active.length - 1]; P.active.pop(); } }
     o.state = 'captured'; if (o.mover) o.mover.halted = true;
     const a = Math.random() * Math.PI * 2;
-    o.cap = { h, t: 0, dur: (0.3 + 0.1 * Math.sqrt(o.def.h * M)) / Math.sqrt(P.gScale), rx: o.x - h.x, rz: o.z - h.z, y0: o.p[1], q0: o.q.slice(), ax: Math.cos(a), az: Math.sin(a), spin: 1.2 + Math.random() * 1.6 };
+    const up = Math.max(0, o.p[1]);   // elevated things (coaster track) drop from where they are
+    o.cap = { h, t: 0, dur: (0.3 + 0.1 * Math.sqrt((o.def.h + up) * M)) / Math.sqrt(P.gScale), rx: o.x - h.x, rz: o.z - h.z, y0: o.p[1], fall: up + o.def.h * 1.6 + 30, q0: o.q.slice(), ax: Math.cos(a), az: Math.sin(a), spin: 1.2 + Math.random() * 1.6 };
     P.captured.push(o);
   }
   function captureScan(holes, dt) {
@@ -264,6 +271,7 @@
       if (!h.alive) continue;
       const list = HC.World.query(h.x, h.z, h.r);
       for (const o of list) {
+        if (o.def.scripted) { if (scriptedEdible(o, h, Math.hypot(o.x - h.x, o.z - h.z))) capture(o, h); continue; }
         if ((o.state !== 'static' && !(o.state === 'active' && !o.committed)) || !small(o, h) || !canFit(o, h)) continue;
         const d = Math.hypot(o.x - h.x, o.z - h.z);
         if (d < h.r * PC.holeSlack - P.shape(o.def).diag / 2 * 0.55) {
@@ -282,7 +290,7 @@
       // Ride along with the hole, drift toward its middle, tip over and drop into the pit.
       const k = 1 - 0.55 * HC.U.easeOutCubic(f);
       o.x = h.x + c.rx * k; o.z = h.z + c.rz * k;
-      o.p[0] = o.x; o.p[2] = o.z; o.p[1] = c.y0 - e * (o.def.h * 1.6 + 30);
+      o.p[0] = o.x; o.p[2] = o.z; o.p[1] = c.y0 - e * c.fall;
       ax.set(c.az, 0, -c.ax); qa.setFromAxisAngle(ax, Math.min(1.5, f * c.spin * 1.6));
       qb.set(c.q0[0], c.q0[1], c.q0[2], c.q0[3]); const q = qa.mult(qb);
       o.q[0] = q.x; o.q[1] = q.y; o.q[2] = q.z; o.q[3] = q.w;
@@ -303,6 +311,7 @@
     for (let i = P.active.length - 1; i >= 0; i--) {
       const o = P.active[i], b = o.body;
       o.x = b.position.x / M; o.z = b.position.z / M;
+      if (o.smash) { smashStep(o, b, dt); continue; }
       const h = o.committed ? o.owner : holeFor(o, holes);
       if (h && !o.committed) o.owner = h;
       const over = !!h;
@@ -371,6 +380,7 @@
   P.consumeInstant = function (h, dt) {
     const list = HC.World.query(h.x, h.z, h.r + 40);
     for (const o of list) {
+      if (o.def.scripted) { if (scriptedEdible(o, h, Math.hypot(o.x - h.x, o.z - h.z))) { HC.World.markGone(o); HC.Render && HC.Render.hideObject && HC.Render.hideObject(o); if (P.onConsume) P.onConsume(o, h); } continue; }
       if (o.state !== 'static' || !P.likelyFits(o.def, h.r) || small(o, h)) continue;
       const d = Math.hypot(o.x - h.x, o.z - h.z), sh = P.shape(o.def);
       if (d < h.r * PC.holeSlack - sh.min * 0.15) {
@@ -385,6 +395,33 @@
       } else if (o.ghostHole === h) { o.ghostT = Math.max(0, o.ghostT - dt * 2); }
     }
   };
+
+  // ---- crashed coaster cars ----
+  // Throw an object into the scene as a tumbling body (velocity in world units/s, spin in rad/s).
+  P.launch = function (o, vel, spin) {
+    o.state = 'static'; activate(o);
+    const b = o.body; b.collisionFilterGroup = G_SMASH; b.collisionFilterMask = MASK_SMASH;
+    b.velocity.set(vel[0] * M, vel[1] * M, vel[2] * M); b.angularVelocity.set(spin[0], spin[1], spin[2]);
+    b.linearDamping = 0.02; b.allowSleep = false; o.smash = true; o.settleT = 0; b.wakeUp();
+  };
+  const near = [];
+  function smashStep(o, b, dt) {
+    const sp = b.velocity.length();
+    // Wake whatever it's about to plough into so it gets shoved around (and stays awake a while).
+    if (sp > 1.2) {
+      near.length = 0; HC.World.query(o.x, o.z, P.shape(o.def).diag / 2 + 90 + sp * 4, near);
+      for (const n of near) {
+        if (n === o || n.state !== 'static' || n.def.scripted || P.active.length >= PC.maxBodies) continue;
+        activate(n); n.keepT = 3; n.groundOn = true;
+      }
+    }
+    if (sp < 0.5 && b.angularVelocity.length() < 0.6 && b.position.y < 4) o.settleT += dt; else o.settleT = 0;
+    if (o.settleT > 0.8 || b.position.y < -40) {
+      // Settled: from now on it's an ordinary object a hole can swallow.
+      o.smash = false; o.groundOn = true; o.inHoleT = 0; b.allowSleep = true;
+      b.collisionFilterGroup = G_REST; b.collisionFilterMask = MASK_REST;
+    }
+  }
 
   HC.Physics = P;
 })();

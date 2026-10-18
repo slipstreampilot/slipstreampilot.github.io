@@ -1,6 +1,7 @@
 // Brain Boost: a Brain Age-style math gate before every match.
-// 10 multiple-choice problems: 3-digit addition, 3-digit subtraction (never negative), times tables to
-// 12×12, even-or-odd and place value (numbers up to 1,000,000). Answers are always listed lowest → highest.
+// 10 multiple-choice problems: addition and subtraction of 1-, 2- and 3-digit numbers (each size equally
+// likely; subtraction is never negative), times tables to 12×12, even-or-odd and place value (numbers up
+// to 9,999,999). Answers are always listed lowest → highest.
 // Score 9/10 or better to play. Stacked column layout for + and −.
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -20,25 +21,29 @@
     for (let i = t.length - 1; i >= 0; i--) if (t[i] !== ',' && ++seen === p.k) return `${t.slice(0, i)}<span class="${cls}">${t[i]}</span>${t.slice(i + 1)}`;
     return t;
   }
+  // A 1-, 2- or 3-digit number, each size equally likely (1 digit = 0–9, 2 = 10–99, 3 = 100–999).
+  const sized = () => { const d = R(1, 3); return d === 1 ? R(0, 9) : d === 2 ? R(10, 99) : R(100, 999); };
   const PLACES = ['ones', 'tens', 'hundreds', 'thousands', 'ten thousands', 'hundred thousands', 'millions'];
   MB.TYPES = { add: 'Add', sub: 'Subtract', mul: 'Times tables', parity: 'Even or odd', place: 'Place value' };
 
   // ---------- problem generation ----------
   function makeProblem(type) {
     if (type === 'parity') {
-      const n = R(0, 1000000);
+      const n = R(0, 9999999);
       return { type, n, ans: n % 2 === 0 ? 'Even' : 'Odd', choices: ['Even', 'Odd'] };
     }
     if (type === 'place') {
       // "What place is the underlined digit in?" The digit is underlined and colored in the number.
-      const n = R(10, 1000000), len = String(n).length, k = R(0, len - 1);
+      const n = R(10, 9999999), len = String(n).length, k = R(0, len - 1);
       // Five neighboring place names that include the answer, listed lowest place → highest.
       const lo = R(Math.max(0, k - 4), Math.min(k, PLACES.length - 5));
       return { type, n, k, digit: Math.floor(n / Math.pow(10, k)) % 10, ans: PLACES[k], choices: PLACES.slice(lo, lo + 5) };
     }
     let a, b, ans, op;
-    if (type === 'add') { a = R(0, 999); b = R(0, 999); ans = a + b; op = '+'; }
-    else if (type === 'sub') { a = R(0, 999); b = R(0, 999); if (b > a) [a, b] = [b, a]; ans = a - b; op = '−'; }
+    if (type === 'add') { a = sized(); b = sized(); ans = a + b; op = '+'; }
+    // Both numbers are drawn the same way; the larger goes on top, so the answer is never negative
+    // (a 1- or 2-digit number is never minus a 3-digit one).
+    else if (type === 'sub') { a = sized(); b = sized(); if (b > a) [a, b] = [b, a]; ans = a - b; op = '−'; }
     else { a = R(0, 12); b = R(0, 12); ans = a * b; op = '×'; }
     return { type, a, b, op, ans, choices: choicesFor(type, a, b, ans) };
   }

@@ -24,7 +24,7 @@
     const cells = new Map(), cs = 240;
     const Ph = HC.Physics;
     for (const o of near) {
-      if (!Ph.likelyFits(o.def, h.r, 0.9)) continue;
+      if (o.state === 'riding' || !Ph.likelyFits(o.def, h.r, 0.9)) continue;
       const k = Math.floor(o.x / cs) * 1000 + Math.floor(o.z / cs);
       let c = cells.get(k); if (!c) { c = { x: 0, z: 0, v: 0, n: 0 }; cells.set(k, c); }
       // Big-but-fitting things are worth chasing more than crumbs.
@@ -77,7 +77,7 @@
       const near = HC.World.query(h.x, h.z, 260 + h.r * 4);
       let bo = null, bv = 0;
       for (const o of near) {
-        if (o.state === 'gone' || !fits(o)) continue;
+        if (o.state === 'gone' || o.state === 'riding' || !fits(o)) continue;
         const Lb = HC.World.city.land; if (o.x < Lb.min + 90 || o.x > Lb.max - 90 || o.z < Lb.min + 90 || o.z > Lb.max - 90) continue;
         if (ai.skip && ai.skip.has(o) && ai.skip.get(o) > performance.now()) continue;
         const d = Math.hypot(o.x - h.x, o.z - h.z);

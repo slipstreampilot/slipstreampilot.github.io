@@ -28,16 +28,18 @@
   HC.defKind = def;
 
   // ---------- tiny street stuff (level 1) ----------
-  def('person', { w: 12, d: 8, h: 34, points: 1, mass: 70, tints: P.shirts, mover: 'walk',
-    build(g) {
-      g.block(-3.2, 0, 0, 5, 15, 6, '#3B4A6B'); g.block(3.2, 0, 0, 5, 15, 6, '#3B4A6B');
-      g.block(0, 14, 0, 12, 12, 7, '#FFFFFF', { tint: true });
-      g.block(-7.4, 15, 0, 3, 10, 4, '#FFFFFF', { tint: true }); g.block(7.4, 15, 0, 3, 10, 4, '#FFFFFF', { tint: true });
-      g.ball(0, 30, 0, 5, '#FFD3B0', { detail: 1 }); g.ball(0, 32.5, -0.6, 5.1, '#5A3825', { sy: 0.6 });
+  def('person', { w: 8, d: 12, h: 34, points: 1, mass: 70, tints: P.shirts, mover: 'walk',
+    build(g) { // modeled facing +z, turned to face +x (the way it walks); legs and arms swing in stride
+      g.turned(Math.PI / 2, () => {
+        g.limb(-1, 0, 15, () => g.block(-3.2, 0, 0, 5, 15, 6, '#3B4A6B')); g.limb(1, 0, 15, () => g.block(3.2, 0, 0, 5, 15, 6, '#3B4A6B'));
+        g.block(0, 14, 0, 12, 12, 7, '#FFFFFF', { tint: true });
+        g.limb(0.6, 0, 24, () => g.block(-7.4, 15, 0, 3, 10, 4, '#FFFFFF', { tint: true })); g.limb(-0.6, 0, 24, () => g.block(7.4, 15, 0, 3, 10, 4, '#FFFFFF', { tint: true }));
+        g.ball(0, 30, 0, 5, '#FFD3B0', { detail: 1 }); g.ball(0, 32.5, -0.6, 5.1, '#5A3825', { sy: 0.6 });
+      });
     } });
   def('dog', { w: 16, d: 6, h: 12, points: 1, mass: 20, tints: ['#C8873E', '#F4E1C1', '#3B3B3B', '#E9B872'], mover: 'walk',
     build(g) { g.block(0, 4, 0, 12, 6, 6, '#FFF', { tint: true }); g.block(7, 7, 0, 5, 5, 5, '#FFF', { tint: true });
-      for (const [x, z] of [[-4, -2], [4, -2], [-4, 2], [4, 2]]) g.block(x, 0, z, 2, 4, 2, '#5A3E2B'); g.block(-7, 8, 0, 4, 1.5, 1.5, '#FFF', { tint: true }); } });
+      for (const [x, z] of [[-4, -2], [4, -2], [-4, 2], [4, 2]]) g.limb(x * z > 0 ? 1 : -1, x, 4, () => g.block(x, 0, z, 2, 4, 2, '#5A3E2B')); g.block(-7, 8, 0, 4, 1.5, 1.5, '#FFF', { tint: true }); } });
   def('cone', { w: 12, d: 12, h: 18, points: 1, mass: 3,
     build(g) { g.block(0, 0, 0, 12, 2, 12, '#FF6B2C'); g.cone(0, 2, 0, 5, 16, 8, '#FF7A30'); g.cyl(0, 8, 0, 3.4, 4, 3, 8, '#FFFFFF'); } });
   def('hydrant', { w: 10, d: 10, h: 18, points: 1, mass: 60,
@@ -194,6 +196,65 @@
       g.block(0, 480, 0, 380, 420, 380, '#B79BFF'); g.windows(0, 0, 380, 380, 500, 880, 8, 7, '#FFFFFF', { fill: 0.6 });
       g.block(0, 900, 0, 270, 360, 270, '#5CC8FF'); g.windows(0, 0, 270, 270, 920, 1240, 7, 5, '#FFFFFF', { fill: 0.6 });
       g.block(0, 1260, 0, 170, 160, 170, '#7BE0AD'); g.cone(0, 1420, 0, 110, 260, 4, '#FFD23F', { ry: Math.PI / 4 }); g.ball(0, 1700, 0, 22, '#FF5A5F', { detail: 1 }); } });
+
+  // ---------- townhouses: tall, narrow and packed shoulder to shoulder (4 points each) ----------
+  def('rowhouse', { w: 48, d: 72, h: 200, points: 4, mass: 12000,
+    tints: ['#FF6B8B', '#FFB347', '#4FC3F7', '#7BE0AD', '#B79BFF', '#FFD23F', '#FF8C69', '#5CE1E6', '#F78FB3'],
+    build(g) { // faces +z (the street)
+      g.block(0, 0, 0, 48, 178, 72, '#FFF', { tint: true });
+      g.block(0, 0, 0, 49, 9, 73, '#E3DCEB');                                       // base course
+      for (let f = 0; f < 4; f++) {                                                   // four floors of windows
+        const y = 36 + f * 38;
+        for (const x of [-11, 11]) {
+          if (!(f === 0 && x === -11)) { g.panel('z+', x, y, 36.4, 13, 22, WIN); g.block(x, y - 13, 37.4, 17, 2.4, 2.6, '#FFFFFF'); }
+          g.panel('z-', x, y, -36.4, 13, 22, WIN);
+        }
+        g.block(0, y + 16, 36.6, 48, 2, 1.2, '#FFFFFF');                                // string course
+      }
+      g.panel('z+', -11, 21, 36.4, 14, 32, '#8D5A3B'); g.block(-11, 38, 37.6, 19, 3, 3, '#FFFFFF');   // door + hood
+      for (let k = 0; k < 3; k++) g.block(-11, k * 3, 39 - k * 2, 20, 3, 6 - k * 2, '#E9E4F2');        // stoop
+      g.block(0, 178, 0, 52, 8, 76, '#FFFFFF');                                         // cornice
+      g.block(0, 186, 0, 44, 3, 68, '#A8A3BD');
+      g.block(12, 186, -14, 10, 14, 10, '#B33951');                                      // chimney
+    } });
+
+  // ---------- supertall skyscrapers (round or octagonal, twice the height of a level's tallest) ----------
+  // o: { h, r, seg (24 = round, 8 = octagonal), body, glass, lit, accent, ledge, twist, glow }
+  HC.buildSupertall = function (g, o) {
+    const H = o.h, seg = o.seg, oct = seg === 8, base = 0.06 * H;
+    const tiers = [[base, 0.44 * H, 1, 0.94], [0.44 * H, 0.72 * H, 0.8, 0.74], [0.72 * H, 0.88 * H, 0.6, 0.55]];
+    const R = o.r, rot = (i) => oct ? Math.PI / 8 + (o.twist ? i * Math.PI / 8 : 0) : 0;
+    const glowing = (fn) => (o.glow ? g.glowing(fn) : fn());
+    g.cyl(0, 0, 0, R * 1.08, R * 1.12, base, seg, o.ledge, { ry: rot(0) });                     // podium
+    g.cyl(0, base - 4, 0, R * 1.14, R * 1.14, 6, seg, o.accent, { ry: rot(0) });
+    glowing(() => g.cyl(0, 6, 0, R * 1.085, R * 1.125, base * 0.55, seg, o.glass, { ry: rot(0) })); // lobby glass
+    tiers.forEach(([y0, y1, k0, k1], i) => {
+      const r0 = R * k0, r1 = R * k1, ry = rot(i);
+      g.cyl(0, y0, 0, r1, r0, y1 - y0, seg, '#FFF', { tint: true, ry });
+      // Window bands wrap the shaft; every few floors one band is lit.
+      const n = Math.floor((y1 - y0) / 46);
+      for (let b = 0; b < n; b++) {
+        const t = (b + 0.35) / n, y = y0 + (y1 - y0) * t, rr = r0 + (r1 - r0) * t + 1.6, lit = (b * 5 + i * 3) % 7 === 0;
+        const band = () => g.cyl(0, y, 0, rr - 0.4, rr, 19, seg, lit ? o.lit : o.glass, { ry });
+        if (lit || o.glow) g.glowing(band); else band();
+      }
+      if (oct) for (let k = 0; k < 8; k++) { // corner fins
+        const a = ry + k * Math.PI / 4, rr = (r0 + r1) / 2;   // three.js puts cylinder corners at (r·sin, r·cos)
+        g.box(Math.sin(a) * rr, (y0 + y1) / 2, Math.cos(a) * rr, 8, y1 - y0, 8, o.accent, { ry: a });
+      }
+      g.cyl(0, y1 - 8, 0, r1 * 1.07, r1 * 1.07, 12, seg, o.ledge, { ry });                     // setback ledge
+      glowing(() => g.cyl(0, y1 + 4, 0, r1 * 1.08, r1 * 1.08, 3, seg, o.accent, { ry }));
+    });
+    const top = 0.88 * H, rt = R * 0.55;
+    glowing(() => g.cyl(0, top, 0, rt * 0.9, rt, 0.03 * H, seg, o.accent, { ry: rot(3) }));      // crown
+    g.cone(0, top + 0.03 * H, 0, rt * 0.82, 0.05 * H, seg, o.ledge, { ry: rot(3) });
+    g.cyl(0, top + 0.07 * H, 0, 3, 7, H * 0.115, 6, '#C9CCD9');                                   // spire
+    g.glowing(() => g.ball(0, H - 7, 0, 7, '#FF4757'));
+  };
+  def('skyneedle', { w: 340, d: 340, h: 2100, points: 260, mass: 4000000, tints: ['#7CC6FF', '#9AE3D9', '#B3A6FF', '#A6E3FF'],
+    build(g) { HC.buildSupertall(g, { h: 2100, r: 155, seg: 24, glass: '#E8FBFF', lit: '#FFF6C9', accent: '#FF5A8A', ledge: '#E9E4F2' }); } });
+  def('skyocta', { w: 340, d: 340, h: 2100, points: 260, mass: 4000000, tints: ['#FFC1D9', '#B3A6FF', '#C9F2C7', '#FFD9A6'],
+    build(g) { HC.buildSupertall(g, { h: 2100, r: 155, seg: 8, twist: true, glass: '#E8FBFF', lit: '#FFF6C9', accent: '#5CC8FF', ledge: '#F6F2FC' }); } });
 
   HC.CATALOG = K;
   HC.PALETTE = P;

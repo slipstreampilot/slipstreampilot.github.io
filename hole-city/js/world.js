@@ -16,12 +16,14 @@
     for (const src of city.objects) {
       const def = HC.CATALOG[src.kind];
       const o = { id: id++, kind: src.kind, def, tint: src.tint, inst: src.inst, x: src.x, z: src.z, rot: src.rot || 0,
-        p: [src.x, 0, src.z], q: yawQ(src.rot || 0), state: 'static', body: null, mover: src.mover ? Object.assign({}, src.mover) : null };
+        p: [src.x, src.y || 0, src.z], q: src.q ? src.q.slice() : yawQ(src.rot || 0), state: src.state || 'static', body: null, mover: src.mover ? Object.assign({}, src.mover) : null };
+      if (src.piece != null) o.piece = src.piece; if (src.car != null) o.car = src.car;
       W.objects.push(o);
       W.totalPoints += def.points;
     }
     if (HC.Movers) HC.Movers.init(W);
     for (const o of W.objects) { o.entry = { ref: o, x: o.x - W.off, y: o.z - W.off }; W.grid.insert(o.entry); }
+    if (HC.Coaster) HC.Coaster.init(W);
   };
 
   W.query = function (x, z, r, out = []) {

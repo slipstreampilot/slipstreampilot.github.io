@@ -26,6 +26,7 @@
     if (!G.headless) HC.Render.buildCity(G.city);
     HC.World.init(G.city);
     for (const o of HC.World.objects) if (!G.headless) HC.Render.setObject(o);
+    if (!G.headless) HC.Coaster.buildVisual(HC.Render.cityGroup);
     HC.Physics.reset();
     if (!G.headless) HC.Render.clearHoles();
     G.holes = []; G.player = null; G.time = G.cfg.seconds; G.elapsed = 0; G.acc = 0; G.events = []; G.killFeed = [];
@@ -38,18 +39,22 @@
       const prof = HC.Progress ? HC.Progress.data : { name: 'You', skin: 'classic' };
       const s = pick();
       G.player = new HC.Hole({ name: prof.name || 'You', isPlayer: true, skin: HC.Skins.get(prof.skin), x: s.x, z: s.z });
+      // Easier difficulties start you a size up (and you never respawn smaller than that).
+      G.playerMinXp = 0; for (let k = 1; k < (opts.playerStartLevel || 1); k++) G.playerMinXp += CFG.levelStep(k);
+      if (G.playerMinXp) { G.player.setTotalXp(G.playerMinXp); G.player.rv = G.player.r; }
       G.holes.push(G.player);
     }
     const names = U.shuffle(CFG.bots.names.slice(), rng);
     const skins = U.shuffle(HC.Skins.botSkins.slice(), rng);
     for (let i = 0; i < G.cfg.bots; i++) {
       const s = pick();
-      // Rivals top out a few sizes below you (easier difficulty = lower cap), so a great run always ends on top.
+      // Rivals top out a few sizes below you, so a great run always ends on top.
       const bonus = opts.botSkillBonus || 0, cap = bonus < -0.05 ? 16 : bonus > 0.05 ? 20 : 18;
       const h = new HC.Hole({ name: names[i], skin: skins[i % skins.length], x: s.x, z: s.z, maxLevel: mode === 'attract' ? 20 : cap });
       // Skill spread: one shark, a few solid players, a couple of snackers.
       const skill = i === 0 ? 0.84 : i < 3 ? 0.76 : 0.64;
       HC.Bots.init(h, rng, skill + (opts.botSkillBonus || 0) + G.level.mods.botSkill);
+      if (opts.botSpeedMul) h.baseSpeed *= opts.botSpeedMul;
       G.holes.push(h);
     }
     if (!G.headless) for (const h of G.holes) HC.Render.addHole(h);
@@ -109,6 +114,7 @@
   }
 
   function respawn(h) {
+    if (h.isPlayer) h.keepXp = Math.max(h.keepXp || 0, G.playerMinXp || 0);
     let s = h.isPlayer && h.ghost ? h.ghost : safeSpot(CFG.hole.startRadius);
     // Never respawn inside a bigger hole.
     if (G.holes.some((o) => o !== h && o.alive && Math.hypot(o.x - s.x, o.z - s.z) < o.r + 60)) s = safeSpot(CFG.hole.startRadius);
@@ -156,6 +162,7 @@
     }
     for (const h of G.holes) { h.tick(dt); if (h.dying != null && h.deathTo) { h.x = U.lerp(h.x, h.deathTo.x, Math.min(1, dt * 8)); h.z = U.lerp(h.z, h.deathTo.z, Math.min(1, dt * 8)); } }
     HC.Movers.update(dt);
+    HC.Coaster.update(dt);
     for (const h of G.holes) h.physical = h.alive && isVisible(h);
     HC.Physics.step(dt, G.holes);
     if (playing) {

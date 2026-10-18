@@ -57,6 +57,13 @@ so one end hangs over the void and it tips in.
   place-value numbers now range up to 9,999,999.
 - Difficulty: Hard = the original game; Normal starts you at level 2; Easy also slows rivals by 15%.
 
+## Camera zoom cap
+
+The camera used to keep pulling back with hole size: at level 20 a phone showed about 6,700 units
+across (the whole island). It now eases toward a limit of 2,700 (`camera.viewKnee` 1,700 →
+`viewMax` 2,700 in config.js), so the max-size hole fills about 40% of the screen width instead of 16%
+and you can see what you're swallowing. Levels 1–10 are unchanged.
+
 ## Fixed from playtesting
 
 - **The invisible ring around the player pushed things away.** Cause: overly wide physics activation

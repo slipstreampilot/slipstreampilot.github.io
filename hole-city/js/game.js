@@ -69,7 +69,8 @@
   G.viewWidth = function (h) {
     const C = CFG.camera, lv = (h.level - 1) / (CFG.hole.maxLevel - 1);
     const n = U.lerp(C.viewHoleDiameters, C.viewHoleDiametersMax, Math.pow(lv, 0.7));
-    return Math.max(C.minView, h.rv * 2 * n);
+    const raw = Math.max(C.minView, h.rv * 2 * n), k = C.viewKnee, span = C.viewMax - k;
+    return raw <= k ? raw : k + span * (1 - Math.exp(-(raw - k) / span));
   };
 
   function emit(type, data) { G.events.push(Object.assign({ type }, data)); if (G.onEvent) G.onEvent(type, data); }
@@ -229,7 +230,7 @@
       let vw = G.viewWidth(f);
       if (G.state === 'attract') vw = 1500;
       if (HC.flags && HC.flags.view) vw = HC.flags.view;
-      if (G.state === 'end' || G.state === 'results') vw *= 1.25;
+      if (G.state === 'end' || G.state === 'results') vw = Math.min(vw * 1.25, CFG.camera.viewMax * 1.1);
       HC.Render.updateCamera(tx, tz, vw, dt, lead);
       HC.Render.updateHoles(G.holes);
       HC.Render.setFocus(G.state === 'attract' ? null : (G.player && G.player.alive ? G.player : null));

@@ -71,6 +71,11 @@ HC.CONFIG = {
     viewHoleDiameters: 16, // how many hole diameters fit across the short screen axis at level 1
     viewHoleDiametersMax: 6.2,
     minView: 600,
+    // Zoom-out limit: past `viewKnee` the camera eases toward `viewMax` (world units across the
+    // screen's short side) and never goes further, so a giant hole fills more of the screen and you
+    // can still see what you're eating.
+    viewKnee: 1700,
+    viewMax: 2700,
     ease: 2.6,
   },
 

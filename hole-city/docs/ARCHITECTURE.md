@@ -44,7 +44,7 @@ main.js boots ─► Game.frame (requestAnimationFrame)
 | `holes.js` | `Hole` class: level/xp/score, eased radius, speed curve, respawn helpers. |
 | `bots.js` | Rival AI: forage → eat a chosen target, hunt, flee, wander. Each bot has a personality. |
 | `progress.js` | Skins catalog, save data (localStorage, fail-safe), rank stars, unlock rules, match recording. |
-| `render.js` | three.js scene, lighting, the island, the sea shader, instanced objects, hole pits and rims, camera, and the see-through dither. Walkers' legs and arms swing in the vertex shader (per-instance `aWalk` = stride phase, walking amount); a matching depth material keeps their shadows in step. |
+| `render.js` | three.js scene, lighting, the island, the sea shader, instanced objects, hole pits and rims (your own rim also draws faintly through anything in front of it), and the camera. Walkers' legs and arms swing in the vertex shader (per-instance `aWalk` = stride phase, walking amount); a matching depth material keeps their shadows in step. |
 | `fx.js` | Particle bursts, dust, confetti, level-up shockwaves, screen shake. |
 | `audio.js` | Web Audio synth: swallow bloops scaled by size and combo, level-up chime, kill, countdown, a music loop. |
 | `input.js` | Drag-anywhere virtual joystick, plus WASD and arrow keys. |
@@ -98,8 +98,9 @@ The approach is the one hole.io uses, built with cannon-es. Physics runs in mete
    counts as eaten after it has sat inside the opening for about as long as the real fall would take.
 
 The ground shader discards fragments inside each hole, and a dark cylinder below forms the pit. The
-object shader darkens anything below street level. A screen-space dither makes buildings between the
-camera and your hole see-through.
+object shader darkens anything below street level. Objects are never made see-through: instead, your own
+hole's rim draws faintly on top of everything, so you can find it behind a tall building. (The old
+see-through dither is still in render.js behind `camera.seeThrough`, off.)
 
 ## Testing hooks
 

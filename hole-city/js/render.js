@@ -262,10 +262,18 @@
     vis.pit = new T.Mesh(pitGeo, pitMat.clone()); vis.pit.material.uniforms.uTint.value = new T.Color(h.skin.colors[0]).multiplyScalar(0.6);
     vis.rim = new T.Mesh(rimGeo, rimMaterial(h.skin)); vis.rim.rotation.x = -Math.PI / 2; vis.rim.renderOrder = 2;
     vis.group.add(vis.pit); vis.group.add(vis.rim);
+    // Your own hole's rim also draws faintly on top of everything, so you can always find it behind a
+    // tall building without making the building see-through.
+    if (h.isPlayer) {
+      vis.xray = new T.Mesh(rimGeo, new T.MeshBasicMaterial({ color: new T.Color(h.skin.colors[0]), transparent: true, opacity: 0.85, depthTest: false, depthWrite: false }));
+      vis.xray.rotation.x = -Math.PI / 2; vis.xray.renderOrder = 6; vis.group.add(vis.xray);
+      vis.xrayIn = new T.Mesh(new T.CircleGeometry(1, 48), new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthTest: false, depthWrite: false }));
+      vis.xrayIn.rotation.x = -Math.PI / 2; vis.xrayIn.renderOrder = 5; vis.group.add(vis.xrayIn);
+    }
     R.scene.add(vis.group); R.holesVis.set(h, vis);
   };
-  R.setHoleSkin = function (h) { const v = R.holesVis.get(h); if (!v) return; v.rim.material.dispose(); v.rim.material = rimMaterial(h.skin); v.pit.material.uniforms.uTint.value = new T.Color(h.skin.colors[0]).multiplyScalar(0.6); };
-  R.removeHole = function (h) { const v = R.holesVis.get(h); if (!v) return; R.scene.remove(v.group); v.rim.material.dispose(); v.pit.material.dispose(); R.holesVis.delete(h); };
+  R.setHoleSkin = function (h) { const v = R.holesVis.get(h); if (!v) return; v.rim.material.dispose(); v.rim.material = rimMaterial(h.skin); if (v.xray) v.xray.material.color.set(h.skin.colors[0]); v.pit.material.uniforms.uTint.value = new T.Color(h.skin.colors[0]).multiplyScalar(0.6); };
+  R.removeHole = function (h) { const v = R.holesVis.get(h); if (!v) return; R.scene.remove(v.group); v.rim.material.dispose(); v.pit.material.dispose(); if (v.xray) { v.xray.material.dispose(); v.xrayIn.material.dispose(); v.xrayIn.geometry.dispose(); } R.holesVis.delete(h); };
   R.clearHoles = function () { for (const h of [...R.holesVis.keys()]) R.removeHole(h); };
 
   R.updateHoles = function (holes) {
@@ -284,8 +292,10 @@
       if (!v.ringGeo || Math.abs(v.ringR - r) > 0.25) {
         if (v.ringGeo) v.ringGeo.dispose();
         v.ringGeo = new T.RingGeometry(r, r + rimW, 72, 1); v.rim.geometry = v.ringGeo; v.ringR = r;
+        if (v.xray) { if (v.xrayGeo) v.xrayGeo.dispose(); v.xrayGeo = new T.RingGeometry(r, r + Math.max(5, r * 0.13), 72, 1); v.xray.geometry = v.xrayGeo; }
       }
       v.rim.position.y = 3.6;
+      if (v.xray) { v.xray.position.y = 3.6; v.xrayIn.position.y = 3.5; v.xrayIn.scale.set(r, r, r); }
       v.rim.material.uniforms.uAlpha.value = h.protect > 0 ? 0.35 + 0.65 * (Math.sin(performance.now() / 70) > 0 ? 1 : 0) : 1;
       if (i < MAX_HOLES) R.holeUniform[i++].set(h.x, h.z, r, 0);
     }
@@ -326,7 +336,8 @@
 
   // Screen-space circle around the followed hole for the see-through effect.
   R.setFocus = function (h) {
-    if (!h || !h.alive) { R.focusU.value.z = -1; return; }
+    // The see-through effect is off: objects are always fully solid (the player's rim x-ray replaces it).
+    if (!CFG.camera.seeThrough || !h || !h.alive) { R.focusU.value.z = -1; return; }
     projV.set(h.x, 0, h.z).project(R.camera);
     const W = R.renderer.domElement.width, Hh = R.renderer.domElement.height;
     projV2.set(h.x + h.rv, 0, h.z).project(R.camera);

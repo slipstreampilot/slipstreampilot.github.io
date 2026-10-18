@@ -66,6 +66,11 @@ and you can see what you're swallowing. Levels 1–10 are unchanged.
 
 ## Fixed from playtesting
 
+- **Things went see-through near a big hole (a dinosaur nearly vanished).** Cause: the see-through
+  effect for tall objects in front of your hole covered a circle 2.6× your hole's size on screen, so at
+  big sizes it faded half the screen. Fix: the effect is off; nothing is ever translucent. Your own
+  rim draws faintly through anything blocking it instead.
+
 - **The invisible ring around the player pushed things away.** Cause: overly wide physics activation
   plus a rim that moved with velocity. Fix: only things over the opening wake up; resting objects
   don't collide with each other; the rim moves without dragging anything.

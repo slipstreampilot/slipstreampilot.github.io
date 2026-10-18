@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#5BC8FF">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hole City">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+  <link rel="icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./css/style.css">
+  <title>Hole City</title>
+</head>
+<body>
+  <canvas id="game" aria-label="Hole City game view"></canvas>
+  <div id="labels" aria-hidden="true"></div>
+  <div id="popups" aria-hidden="true"></div>
+
+  <!-- In-match HUD -->
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <ol id="board" class="board" aria-label="Leaderboard"></ol>
+      <div class="timer-wrap"><div id="timer" class="timer">2:00</div><div id="modeTag" class="mode-tag">CLASSIC</div></div>
+      <div class="hud-right">
+        <button id="pauseBtn" class="icon-btn" aria-label="Pause">❚❚</button>
+        <div id="kills" class="pill" title="Holes eaten">💀 <b>0</b></div>
+      </div>
+    </div>
+    <div id="soloBar" class="solo-bar" hidden><div class="solo-fill"></div><span>0%</span><i style="left:20%"></i><i style="left:35%"></i><i style="left:50%"></i></div>
+    <div id="feed" class="feed" aria-live="polite"></div>
+    <div id="arrows"></div>
+    <div id="centerMsg" class="center-msg"></div>
+    <div id="levelToast" class="level-toast"></div>
+  </div>
+  <div id="stick" aria-hidden="true"><div id="stickKnob"></div></div>
+
+  <!-- Menus -->
+  <div id="home" class="screen" hidden>
+    <div class="home-top">
+      <div class="rank-chip"><span id="rankStar">★</span> <b id="rankNum">1</b><div class="rank-bar"><i id="rankFill"></i></div></div>
+      <div class="home-actions">
+        <button id="soundBtn" class="icon-btn" aria-label="Toggle sound">🔊</button>
+        <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙︎</button>
+      </div>
+    </div>
+    <div class="logo" aria-label="Hole City"><span class="l1">H<span class="o" aria-hidden="true"></span>LE</span><span class="l2">CITY</span></div>
+    <div class="home-bottom">
+      <div class="level-pick">
+        <button id="lvPrev" class="lv-arrow" aria-label="Previous level">‹</button>
+        <button id="lvCard" class="lv-card" aria-label="Choose level"><span id="lvIcon" class="lv-icon">🏙️</span><span class="lv-text"><small id="lvNum">Level 1</small><b id="lvName">Hole City</b><span id="lvStars" class="lv-stars">☆☆☆</span></span></button>
+        <button id="lvNext" class="lv-arrow" aria-label="Next level">›</button>
+      </div>
+      <label class="name-field"><span>Your name</span><input id="nameInput" maxlength="12" autocomplete="off" spellcheck="false"></label>
+      <div class="modes" role="tablist">
+        <button class="mode" data-mode="classic" role="tab"><b>Classic</b><small>2 min · biggest wins</small></button>
+        <button class="mode" data-mode="battle" role="tab"><b>Battle</b><small>last hole standing</small></button>
+        <button class="mode" data-mode="solo" role="tab"><b>Solo</b><small>eat the whole city</small></button>
+      </div>
+      <button id="playBtn" class="play">PLAY</button>
+      <button id="skinsBtn" class="ghost-btn">🎨 Skins <span id="skinCount"></span></button>
+      <p class="hint">Drag anywhere to move · WASD / arrows on desktop</p>
+    </div>
+  </div>
+
+  <div id="skins" class="screen sheet" hidden>
+    <div class="sheet-card">
+      <h2>Hole Skins</h2>
+      <div id="skinGrid" class="skin-grid"></div>
+      <p id="skinInfo" class="skin-info"></p>
+      <button id="skinsClose" class="play small">DONE</button>
+    </div>
+  </div>
+
+  <div id="levels" class="screen sheet" hidden>
+    <div class="sheet-card wide">
+      <h2>Pick a level</h2>
+      <div id="levelGrid" class="level-grid"></div>
+      <button id="levelsClose" class="play small">DONE</button>
+    </div>
+  </div>
+
+  <div id="settings" class="screen sheet" hidden>
+    <div class="sheet-card">
+      <h2>Settings</h2>
+      <label class="row">Music <input type="checkbox" id="musicToggle"></label>
+      <label class="row">Sound effects <input type="checkbox" id="sfxToggle"></label>
+      <label class="row">Math before each match <input type="checkbox" id="mathToggle"></label>
+      <div id="parentBox" class="parent-box" hidden><span>Grown-up check: <b id="parentQ"></b> =</span><input id="parentA" inputmode="numeric" autocomplete="off"><button id="parentOk" class="ghost-btn">OK</button></div>
+      <label class="row">Rival holes
+        <select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
+      </label>
+      <label class="row">Graphics
+        <select id="qualitySel"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (battery saver)</option></select>
+      </label>
+      <p class="fine">Stats: <span id="statsLine"></span></p>
+      <button id="resetBtn" class="ghost-btn danger">Reset progress</button>
+      <button id="settingsClose" class="play small">DONE</button>
+    </div>
+  </div>
+
+  <div id="pause" class="screen sheet" hidden>
+    <div class="sheet-card">
+      <h2>Paused</h2>
+      <button id="resumeBtn" class="play">RESUME</button>
+      <button id="quitBtn" class="ghost-btn">Quit to menu</button>
+    </div>
+  </div>
+
+  <div id="results" class="screen" hidden>
+    <div class="results-card">
+      <div id="resTitle" class="res-title">1st!</div>
+      <div id="resSub" class="res-sub"></div>
+      <ol id="resList" class="res-list"></ol>
+      <div id="resStats" class="res-stats"></div>
+      <div id="resUnlock" class="res-unlock" hidden></div>
+      <button id="againBtn" class="play">PLAY AGAIN</button>
+      <button id="nextLvBtn" class="ghost-btn">Next level ›</button>
+      <button id="menuBtn" class="ghost-btn">Menu</button>
+    </div>
+  </div>
+
+  <!-- Brain Boost math gate -->
+  <div id="brain" class="screen brain" hidden>
+    <div class="mb-card">
+      <div id="mbIntro" class="mb-stage">
+        <div class="mb-logo">🧠 Brain Boost</div>
+        <p class="mb-lead">Get <b>9 of 10</b> right to play<br><span id="mbTarget" class="mb-target">Hole City</span></p>
+        <ul class="mb-kinds"><li><b>+</b> add</li><li><b>−</b> subtract</li><li><b>×</b> times</li><li><b>2</b> even / odd</li><li><b>#</b> place value</li></ul>
+        <button id="mbStart" class="play">START</button>
+        <button id="mbBack" class="ghost-btn">Back to menu</button>
+        <p id="mbIntroStats" class="mb-stats"></p>
+      </div>
+      <div id="mbPlay" class="mb-stage" hidden>
+        <div class="mb-top"><div id="mbDots" class="mb-dots"></div><div class="mb-meta"><span id="mbScore">0 ✓</span><span id="mbClock" class="mb-clock">0:00.0</span></div></div>
+        <div id="mbCount" class="mb-count" hidden>3</div>
+        <div id="mbCard" class="mb-problem"><small id="mbNum">Problem 1 of 10</small><div id="mbProb" class="mb-prob"></div></div>
+        <div id="mbChoices" class="mb-choices"></div>
+      </div>
+      <div id="mbDone" class="mb-stage" hidden>
+        <div id="mbBig" class="mb-big">10/10</div>
+        <div id="mbBrain" class="mb-brain"></div>
+        <p id="mbMsg" class="mb-lead"></p>
+        <div id="mbReview" class="mb-review"></div>
+        <button id="mbGo" class="play">PLAY!</button>
+        <button id="mbRetry" class="play">NEW SET</button>
+        <button id="mbBack2" class="ghost-btn">Back to menu</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bootError" class="boot-error" hidden></div>
+
+  <script src="./vendor/three.min.js"></script>
+  <script src="./vendor/cannon.min.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/util.js"></script>
+  <script src="./js/geo.js"></script>
+  <script src="./js/catalog.js"></script>
+  <script src="./js/gentools.js"></script>
+  <script src="./js/levels/registry.js"></script>
+  <script src="./js/levels/01-city.js"></script>
+  <script src="./js/levels/02-suburbia.js"></script>
+  <script src="./js/levels/03-beach.js"></script>
+  <script src="./js/levels/04-farm.js"></script>
+  <script src="./js/levels/05-funland.js"></script>
+  <script src="./js/levels/06-frost.js"></script>
+  <script src="./js/levels/07-neon.js"></script>
+  <script src="./js/levels/08-gulch.js"></script>
+  <script src="./js/levels/09-dino.js"></script>
+  <script src="./js/levels/10-moon.js"></script>
+  <script src="./js/world.js"></script>
+  <script src="./js/movers.js"></script>
+  <script src="./js/physics.js"></script>
+  <script src="./js/holes.js"></script>
+  <script src="./js/bots.js"></script>
+  <script src="./js/progress.js"></script>
+  <script src="./js/render.js"></script>
+  <script src="./js/fx.js"></script>
+  <script src="./js/audio.js"></script>
+  <script src="./js/input.js"></script>
+  <script src="./js/game.js"></script>
+  <script src="./js/math.js"></script>
+  <script src="./js/hud.js"></script>
+  <script src="./js/menus.js"></script>
+  <script src="./js/main.js"></script>
+</body>
+</html>

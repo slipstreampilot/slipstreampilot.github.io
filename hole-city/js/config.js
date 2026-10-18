@@ -74,6 +74,7 @@ HC.CONFIG = {
     // Zoom-out limit: past `viewKnee` the camera eases toward `viewMax` (world units across the
     // screen's short side) and never goes further, so a giant hole fills more of the screen and you
     // can still see what you're eating.
+    seeThrough: false,     // old effect that dithered tall things in front of your hole; off = never translucent
     viewKnee: 1700,
     viewMax: 2700,
     ease: 2.6,

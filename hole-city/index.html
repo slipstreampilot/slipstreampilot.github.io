@@ -59,6 +59,7 @@
         <button class="mode" data-mode="battle" role="tab"><b>Battle</b><small>last hole standing</small></button>
         <button class="mode" data-mode="solo" role="tab"><b>Solo</b><small>eat the whole city</small></button>
       </div>
+      <div class="diffs" role="radiogroup" aria-label="Rival speed"><span>Rivals</span><button class="diff" data-diff="easy" role="radio">🐢 Easy</button><button class="diff" data-diff="normal" role="radio">🐇 Normal</button><button class="diff" data-diff="hard" role="radio">🔥 Hard</button></div>
       <button id="playBtn" class="play">PLAY</button>
       <button id="skinsBtn" class="ghost-btn">🎨 Skins <span id="skinCount"></span></button>
       <p class="hint">Drag anywhere to move · WASD / arrows on desktop</p>
@@ -89,9 +90,6 @@
       <label class="row">Sound effects <input type="checkbox" id="sfxToggle"></label>
       <label class="row">Math before each match <input type="checkbox" id="mathToggle"></label>
       <div id="parentBox" class="parent-box" hidden><span>Grown-up check: <b id="parentQ"></b> =</span><input id="parentA" inputmode="numeric" autocomplete="off"><button id="parentOk" class="ghost-btn">OK</button></div>
-      <label class="row">Rival holes
-        <select id="diffSel"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
-      </label>
       <label class="row">Graphics
         <select id="qualitySel"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (battery saver)</option></select>
       </label>
@@ -173,6 +171,7 @@
   <script src="./js/levels/10-moon.js"></script>
   <script src="./js/world.js"></script>
   <script src="./js/movers.js"></script>
+  <script src="./js/coaster.js"></script>
   <script src="./js/physics.js"></script>
   <script src="./js/holes.js"></script>
   <script src="./js/bots.js"></script>

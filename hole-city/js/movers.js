@@ -76,7 +76,9 @@
         const dx = m.tx - o.x, dz = m.tz - o.z, d = Math.hypot(dx, dz);
         if (d < 4) { m.wait -= dt; m.vx = m.vz = 0; if (m.wait <= 0) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * m.r; m.tx = m.cx + Math.cos(a) * r; m.tz = m.cz + Math.sin(a) * r; m.wait = 0.3 + Math.random() * 2.5; } }
         else { const st = Math.min(d, m.speed * dt); o.x += dx / d * st; o.z += dz / d * st; m.vx = dx / d * m.speed; m.vz = dz / d * m.speed; m.fx = dx / d; m.fz = dz / d; m.ph = (m.ph || 0) + dt * m.speed * 0.25; }
-        place(o, m.fx ?? 1, m.fz ?? 0, m.bob && d >= 4 ? Math.abs(Math.sin(m.ph)) * 2 : 0);
+        place(o, m.fx ?? 1, m.fz ?? 0, m.bob && d >= 4 ? Math.abs(Math.sin(m.ph)) * 2 * (m.amt || 0) : 0);
+        // Legs ease into the stride when it sets off and settle back to standing when it stops.
+        m.amt = HC.U.damp(m.amt || 0, d >= 4 ? 1 : 0, 8, dt);
         if (m.spin) { // tumbleweeds roll forward: yaw × roll-about-local-z
           m.roll = (m.roll || 0) + dt * m.speed * 0.06;
           const hy = Math.atan2(-(m.fz ?? 0), m.fx ?? 1) / 2, ay = Math.sin(hy), aw = Math.cos(hy), bz = -Math.sin(m.roll / 2), bw = Math.cos(m.roll / 2);
@@ -86,10 +88,10 @@
       else {
         m.t += m.dir * m.speed * dt / m.loop.len;
         loopPoint(m.loop, m.t, m.lane, tmp); m.vx = tmp.dx * m.dir * m.speed; m.vz = tmp.dz * m.dir * m.speed;
-        o.x = tmp.x; o.z = tmp.z; m.ph = (m.ph || 0) + dt * m.speed * 0.25;
+        o.x = tmp.x; o.z = tmp.z; m.ph = (m.ph || 0) + dt * m.speed * 0.25; m.amt = 1;
         place(o, tmp.dx * m.dir, tmp.dz * m.dir, m.bob === false ? 0 : Math.abs(Math.sin(m.ph)) * 2.2);
       }
-      W.moved(o); HC.Render && HC.Render.kinds && HC.Render.setObject(o);
+      W.moved(o); HC.Render && HC.Render.kinds && (HC.Render.setObject(o), HC.Render.setWalk(o, m.ph || 0, m.amt || 0));
     }
     const R = M.R;
     for (const o of M.drivers) {

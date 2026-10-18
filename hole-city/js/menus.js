@@ -13,6 +13,7 @@
     $('nameInput').placeholder = 'You';
     $('nameInput').addEventListener('input', (e) => { P.data.name = e.target.value.trim().slice(0, 12) || 'You'; P.save(); });
     document.querySelectorAll('.mode').forEach((b) => b.addEventListener('click', () => { P.data.mode = b.dataset.mode; P.save(); M.syncModes(); A.unlock(); A.click(); }));
+    document.querySelectorAll('.diff').forEach((b) => b.addEventListener('click', () => { P.data.pace = b.dataset.diff; P.save(); M.syncModes(); A.unlock(); A.click(); }));
     $('playBtn').addEventListener('click', () => { A.unlock(); M.requestMatch(P.data.mode); });
     $('lvPrev').addEventListener('click', () => { A.unlock(); A.click(); M.selectLevel(-1); });
     $('lvNext').addEventListener('click', () => { A.unlock(); A.click(); M.selectLevel(1); });
@@ -37,7 +38,6 @@
     $('soundBtn').addEventListener('click', () => { A.unlock(); const on = !(A.sfxOn || A.musicOn); A.setSfx(on); A.setMusic(on); M.syncHome(); });
     $('musicToggle').addEventListener('change', (e) => { A.unlock(); A.setMusic(e.target.checked); M.syncHome(); });
     $('sfxToggle').addEventListener('change', (e) => { A.unlock(); A.setSfx(e.target.checked); M.syncHome(); });
-    $('diffSel').addEventListener('change', (e) => { P.data.difficulty = e.target.value; P.save(); });
     $('qualitySel').addEventListener('change', (e) => { P.data.quality = e.target.value; P.save(); HC.Render.setQuality(e.target.value === 'auto' ? 'high' : e.target.value); M.autoQ = e.target.value === 'auto'; });
     $('resetBtn').addEventListener('click', () => {
       const b = $('resetBtn');
@@ -58,7 +58,11 @@
     M.autoQ = P.data.quality === 'auto';
   };
 
-  M.syncModes = function () { document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === HC.Progress.data.mode)); };
+  M.syncModes = function () {
+    document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('on', b.dataset.mode === HC.Progress.data.mode));
+    const pace = HC.Progress.data.pace || 'normal';
+    document.querySelectorAll('.diff').forEach((b) => { b.classList.toggle('on', b.dataset.diff === pace); b.setAttribute('aria-checked', b.dataset.diff === pace); });
+  };
   M.syncHome = function () {
     const P = HC.Progress, r = P.rankInfo();
     $('rankNum').textContent = r.rank; $('rankFill').style.width = (r.into / r.need * 100) + '%';
@@ -93,7 +97,7 @@
     }
   };
   M.syncSettings = function () {
-    $('musicToggle').checked = HC.Audio.musicOn; $('sfxToggle').checked = HC.Audio.sfxOn; $('mathToggle').checked = HC.Progress.data.mathGate !== false; $('parentBox').hidden = true; $('diffSel').value = HC.Progress.data.difficulty || 'easy'; $('qualitySel').value = HC.Progress.data.quality;
+    $('musicToggle').checked = HC.Audio.musicOn; $('sfxToggle').checked = HC.Audio.sfxOn; $('mathToggle').checked = HC.Progress.data.mathGate !== false; $('parentBox').hidden = true;  $('qualitySel').value = HC.Progress.data.quality;
     const d = HC.Progress.data; $('statsLine').textContent = `${d.games} games · ${d.wins} wins · best ${d.bestScore} pts · ${d.kills} holes eaten`;
   };
 
@@ -116,8 +120,9 @@
 
   M.startMatch = function (mode, opts = {}) {
     ['home', 'results', 'pause', 'skins', 'settings', 'levels'].forEach((id) => show(id, false));
-    const diff = { easy: -0.14, normal: 0, hard: 0.12 }[HC.Progress.data.difficulty || 'easy'] || 0;
-    HC.Game.setup(mode, Object.assign({ level: HC.Progress.data.level, botSkillBonus: diff }, opts)); HC.HUD.reset(); HC.HUD.show(true);
+    // Difficulty only changes rival speed and the size you start at (see CONFIG.difficulty).
+    const D = HC.CONFIG.difficulty[HC.Progress.data.pace] || HC.CONFIG.difficulty.normal;
+    HC.Game.setup(mode, Object.assign({ level: HC.Progress.data.level, botSkillBonus: HC.CONFIG.bots.skillBonus, botSpeedMul: D.botSpeed, playerStartLevel: D.playerStartLevel }, opts)); HC.HUD.reset(); HC.HUD.show(true);
     HC.Input.enabled = true; HC.Game.paused = false;
     HC.Audio.startMusic();
     M.perf = { frames: 0, t: 0, checked: false };

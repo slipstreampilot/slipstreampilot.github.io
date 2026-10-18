@@ -29,7 +29,7 @@
     // ---------- tiny (1 pt) ----------
     def('fun_kid', { w: 10, d: 8, h: 40, points: 1, mass: 30, tints: SHIRTS, mover: 'walk',
       build(g) { // faces +x, holding a balloon that matches the shirt
-        g.block(0, 0, -2, 3, 9, 3, '#3B4A6B'); g.block(0, 0, 2, 3, 9, 3, '#3B4A6B');
+        g.limb(-1, 0, 9, () => g.block(0, 0, -2, 3, 9, 3, '#3B4A6B')); g.limb(1, 0, 9, () => g.block(0, 0, 2, 3, 9, 3, '#3B4A6B'));
         g.block(0, 9, 0, 5, 8, 8, '#FFF', { tint: true }); g.block(0, 12, 5, 2.4, 9, 2.4, '#FFF', { tint: true });
         g.ball(0, 21, 0, 4, C.skin, { detail: 1 }); g.ball(-0.5, 23, 0, 4.1, C.hot, { sy: 0.55 }); g.block(3, 23.4, 0, 4, 0.8, 5, C.hot);
         g.block(0, 21, 5, 0.5, 12, 0.5, C.white); g.ball(0, 35.5, 5, 4.5, '#FFF', { tint: true, sy: 1.15 });
@@ -48,16 +48,16 @@
     // ---------- small (2–3 pts) ----------
     def('fun_mascot', { w: 18, d: 16, h: 42, points: 2, mass: 90, tints: ['#D9954A', '#FF9FD2', '#8FD3FF', '#FFE36B'], mover: 'walk',
       build(g) { // a costumed teddy, faces +x
-        g.block(0, 0, -4, 6, 8, 5, '#FFF', { tint: true }); g.block(0, 0, 4, 6, 8, 5, '#FFF', { tint: true });
+        g.limb(-1, 0, 8, () => g.block(0, 0, -4, 6, 8, 5, '#FFF', { tint: true })); g.limb(1, 0, 8, () => g.block(0, 0, 4, 6, 8, 5, '#FFF', { tint: true }));
         g.ball(0, 16, 0, 9, '#FFF', { tint: true, sy: 1.1 }); g.ball(4, 15, 0, 6, C.cream, { sx: 0.6 });
-        g.ball(0, 18, -9, 3.5, '#FFF', { tint: true }); g.ball(0, 18, 9, 3.5, '#FFF', { tint: true });
+        g.limb(0.6, 0, 20, () => g.ball(0, 18, -9, 3.5, '#FFF', { tint: true })); g.limb(-0.6, 0, 20, () => g.ball(0, 18, 9, 3.5, '#FFF', { tint: true }));
         g.ball(0, 31, 0, 8.5, '#FFF', { tint: true, detail: 1 }); g.ball(0, 38, -6.5, 3.4, '#FFF', { tint: true }); g.ball(0, 38, 6.5, 3.4, '#FFF', { tint: true });
         g.ball(7, 29.5, 0, 3.4, C.cream); g.ball(10, 30.5, 0, 1.3, C.tire); g.ball(7, 34, -3, 1.1, C.tire); g.ball(7, 34, 3, 1.1, C.tire);
         g.block(7.5, 22.5, 0, 2, 3, 8, C.hot);
       } });
     def('fun_balloonman', { w: 24, d: 24, h: 82, points: 2, mass: 80, tints: SHIRTS, mover: 'walk',
       build(g) {
-        g.block(0, 0, -3, 4, 15, 5, '#3B4A6B'); g.block(0, 0, 3, 4, 15, 5, '#3B4A6B');
+        g.limb(-1, 0, 15, () => g.block(0, 0, -3, 4, 15, 5, '#3B4A6B')); g.limb(1, 0, 15, () => g.block(0, 0, 3, 4, 15, 5, '#3B4A6B'));
         g.block(0, 14, 0, 7, 12, 12, '#FFF', { tint: true }); g.block(0, 18, 7.5, 3, 14, 3, '#FFF', { tint: true });
         g.ball(0, 30, 0, 5, C.skin, { detail: 1 }); g.cyl(0, 33, 0, 3.5, 3.5, 7, 8, C.hot); g.cyl(0, 33, 0, 6.5, 6.5, 1, 8, C.hot);
         g.block(0, 32, 8, 0.5, 28, 0.5, C.white);
@@ -137,6 +137,31 @@
         for (let i = 0; i < 3; i++) { const x = -20 + i * 20; g.block(x - 5, 11, 0, 4, 18, 30, C.cream); rider(g, x, 22, -8, SHIRTS[i * 2], hair[i]); rider(g, x, 22, 8, SHIRTS[i * 2 + 3], hair[(i + 1) % 3]); }
         for (const [x, z] of [[-31, -16], [31, -16], [-31, 16], [31, 16]]) g.block(x, 27, z, 2, 18, 2, C.white);
         for (let i = 0; i < 6; i++) g.block(-29 + i * 11.6, 45, 0, 11.6, 3, 40, i % 2 ? C.white : C.hot);
+      } });
+    // ---------- the big roller coaster (js/coaster.js) ----------
+    // One 36-unit track piece, centred on its origin, running along +x. Eaten when its support is
+    // inside a hole at least 41 across (scripted; see Physics).
+    def('coaster_rail', { centered: true, scripted: true, minHole: 41, w: 36, d: 26, h: 16, points: 2, mass: 300, tints: [C.hot],
+      build(g) {
+        for (const z of [-9, 9]) g.block(0, -1.6, z, 36.4, 3.2, 3.2, '#FFF', { tint: true });               // rails
+        for (let x = -15; x <= 15; x += 10) g.block(x, -4.5, 0, 3, 2.6, 22, C.white);                      // ties
+        g.block(0, -9, 0, 36.4, 5, 7, C.lemon);                                                              // spine
+        g.block(0, -11.5, 0, 36.4, 1.4, 12, C.hot);
+      } });
+    def('coaster_car', { w: 46, d: 28, h: 30, points: 6, mass: 900, tints: [C.sky, C.lemon, C.mint, C.hot, C.lilac, C.orange],
+      build(g) { // faces +x; riders throw their arms up
+        g.block(0, 2, 0, 44, 12, 26, '#FFF', { tint: true }); g.block(19, 2, 0, 8, 16, 26, '#FFF', { tint: true });
+        g.cone(26, 8, 0, 10, 10, 6, '#FFF', { tint: true, rz: -PI / 2 });
+        for (const x of [-14, 14]) for (const z of [-11, 11]) g.cyl(x, 0, z, 3.4, 3.4, 3, 8, C.tire, { rx: PI / 2 });
+        for (const [x, i] of [[-12, 0], [6, 1]]) {
+          g.block(x - 5, 14, 0, 4, 12, 24, C.white); g.block(x + 6, 14, 0, 2, 4, 24, C.dark);
+          for (const z of [-6, 6]) {
+            const shirt = SHIRTS[(i * 3 + (z > 0 ? 1 : 0) * 5) % SHIRTS.length];
+            g.block(x, 14, z, 7, 7, 8, shirt); g.ball(x, 25, z, 3.8, C.skin); g.ball(x - 0.6, 27, z, 3.9, i ? '#F2C14E' : '#5A3825', { sy: 0.55 });
+            for (const s of [-1, 1]) g.box(x + 1, 28, z + s * 4.5, 2, 9, 2, shirt, { rx: s * 0.35 });
+          }
+        }
+        g.block(21, 18, 0, 2, 6, 24, C.lemon);
       } });
     // ---------- bus-size ----------
     def('fun_coaster', { w: 240, d: 60, h: 150, points: 14, mass: 20000,
@@ -531,9 +556,7 @@
       big('fun_haunted', 470, 1360, PI / 2); big('fun_funhouse', 470, 1980, PI / 2); big('fun_haunted', 470, 2620, PI / 2); big('fun_funhouse', 470, 3250, PI / 2);
       for (const z of [1360, 2620]) for (let k = 0; k < 6; k++) T.put('pumpkin', 625, z - 100 + k * 40);
       edgeProps(westLane, 64, 80, { lamp: 2, fun_trash: 1, fun_balloons: 1, bench: 1, pumpkin: 2, none: 1 });
-      // east: the coaster line
-      for (let i = 0; i < 10; i++) big('fun_coaster', 4525, 1262 + i * 242, PI / 2);
-      for (let i = 0; i < 9; i++) big('fun_coaster', 4610, 1383 + i * 242, PI / 2);
+      // east: the queue for the big coaster (built at the end, over the top of everything)
       // the ghost coaster rattles along behind Spooky Lane
       for (let i = 0; i < 9; i++) big('fun_coaster', 285, 1300 + i * 242, PI / 2);
       big('kiosk', 4390, 1150, -PI / 2); queue(4400, 1210, 4400, 1400, 16);
@@ -580,6 +603,30 @@
       const inPlay = (x, z) => x < 230 || x > 4770 || z < 230 || z > 4770;
       T.scatter({ parktree: 1.3, blossom: 1.3, bush: 4, flowerpot: 2, fun_balloons: 1, fun_kid: 2, person: 2, bench: 1, fun_trash: 1, fun_popcorn: 0.35, fun_cotton: 0.35, fun_icecream: 0.35, cafeset: 0.4 }, { x0: 240, z0: 240, x1: 4760, z1: 4760 }, 1180, { gap: 10, avoid: inPlay });
       T.beach({ parasol: 3, beachball: 3, person: 3, fun_balloons: 1 }, 50);
+
+      // ---- THE BIG COASTER (east side) ----
+      // Station on Coaster Walk, a chain lift to 600, a screaming drop, airtime hill, a vertical loop by
+      // the castle plaza, then a swoop back south. The circuit spans ~1450 × 2430 units.
+      const CP = [
+        [4560, 3330, 40], [4560, 3130, 40], [4560, 2950, 55], [4560, 2520, 320], [4560, 2120, 590], [4545, 1960, 610],
+        [4470, 1780, 330], [4300, 1480, 45], [3980, 1230, 140], [3620, 1130, 400], [3270, 1270, 210], [3155, 1620, 50],
+        [3160, 1950, 45], [3175, 2110, 200], [3192, 1950, 360], [3208, 1790, 200], [3225, 1950, 45],
+        [3260, 2250, 70], [3330, 2650, 290], [3560, 3020, 110], [3900, 3330, 200], [4250, 3520, 60], [4520, 3560, 40],
+      ];
+      const cd = HC.Coaster.layout(T, CP, { lift: [2, 5], station: [22, 1], stop: 0 });
+      // Clear anything the track would run through, and anything standing where a support goes.
+      const objs = T.city.objects, keep = [];
+      const hits = (o, k) => {
+        for (const [x, z, y] of cd.samples) if (Math.abs(x - o.x) < 300 && Math.abs(z - o.z) < 300 && Math.hypot(x - o.x, z - o.z) < k.radius * 0.75 + 24 && k.h > y - 34) return true;
+        for (const p of cd.posts) if (Math.hypot(p.x - o.x, p.z - o.z) < k.radius * 0.7 + 12) return true;
+        return false;
+      };
+      for (const o of objs) { const k = HC.CATALOG[o.kind]; if (o.mover || o.kind === 'coaster_rail' || o.kind === 'coaster_car' || !hits(o, k)) keep.push(o); }
+      objs.length = 0; for (const o of keep) objs.push(o);
+      // Station platform, queue and riders waiting.
+      T.rect(4500, 3170, 4620, 3380, 2.9, '#FFFFFF'); T.rect(4508, 3178, 4612, 3372, 3.0, '#FFD9EC');
+      for (let k = 0; k < 8; k++) T.put(T.pick({ person: 3, fun_kid: 2 }), 4640, 3190 + k * 22, PI);
+      T.put('fun_ticket', 4660, 3400, PI);
     },
   });
 })();

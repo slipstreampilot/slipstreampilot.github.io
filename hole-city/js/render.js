@@ -27,11 +27,38 @@
     #endif
   `;
 
+  // Walk cycle: vertices tagged by Geo.limb() swing around their hip/shoulder by an angle driven by
+  // the per-instance aWalk = (stride phase, how much it's walking 0..1), set from movers.js.
+  const legVertex = `
+    #ifdef USE_INSTANCING
+      if (aLeg.x != 0.0 && aWalk.y > 0.0) {
+        float hcA = aLeg.x * sin(aWalk.x) * 0.62 * aWalk.y, hcC = cos(hcA), hcS = sin(hcA);
+        vec2 hcP = transformed.xy - aLeg.yz;
+        transformed.xy = aLeg.yz + vec2(hcP.x * hcC - hcP.y * hcS, hcP.x * hcS + hcP.y * hcC);
+      }
+    #endif`;
+  const legNormal = `
+    #ifdef USE_INSTANCING
+      if (aLeg.x != 0.0 && aWalk.y > 0.0) {
+        float hcA = aLeg.x * sin(aWalk.x) * 0.62 * aWalk.y, hcC = cos(hcA), hcS = sin(hcA);
+        objectNormal.xy = vec2(objectNormal.x * hcC - objectNormal.y * hcS, objectNormal.x * hcS + objectNormal.y * hcC);
+      }
+    #endif`;
+  const legDecl = 'attribute vec3 aLeg;\nattribute vec2 aWalk;\n';
+  // Shadow pass for walkers, so their shadows stride too.
+  function legDepthMaterial() {
+    const m = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking });
+    m.onBeforeCompile = (s) => { s.vertexShader = legDecl + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>' + legVertex); };
+    return m;
+  }
+
   function objectMaterial() {
     const m = new T.MeshLambertMaterial({ vertexColors: true });
     m.onBeforeCompile = (s) => {
-      s.vertexShader = 'attribute float aTint;\nattribute float aGlow;\nvarying float vGlowV;\nvarying float vHcY;\n' + s.vertexShader
+      s.vertexShader = legDecl + 'attribute float aTint;\nattribute float aGlow;\nvarying float vGlowV;\nvarying float vHcY;\n' + s.vertexShader
         .replace('#include <color_vertex>', tintVertex)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>' + legVertex)
+        .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>' + legNormal)
         .replace('#include <project_vertex>', `#include <project_vertex>
           vec4 hcW = vec4(transformed, 1.0);
           #ifdef USE_INSTANCING
@@ -169,11 +196,15 @@
     for (const kind in counts) {
       const def = HC.CATALOG[kind], geo = new HC.Geo(); def.build(geo);
       const bg = geo.toGeometry(); if (def.hs) { bg.scale(1, def.hs, 1); bg.computeBoundingSphere(); }
+      const legs = !!bg.attributes.aLeg;
+      if (legs && def.hs) { const a = bg.attributes.aLeg; for (let i = 0; i < a.count; i++) a.setZ(i, a.getZ(i) * def.hs); }
+      if (legs) bg.setAttribute('aWalk', new T.InstancedBufferAttribute(new Float32Array(counts[kind] * 2), 2).setUsage(T.DynamicDrawUsage));
       const mesh = new T.InstancedMesh(bg, R.objMat, counts[kind]);
+      if (legs) { R.legDepth = R.legDepth || legDepthMaterial(); mesh.customDepthMaterial = R.legDepth; }
       mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
       mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
       const colors = new Float32Array(counts[kind] * 3).fill(1); mesh.instanceColor = new T.InstancedBufferAttribute(colors, 3);
-      R.kinds[kind] = { mesh, next: 0, dirty: true };
+      R.kinds[kind] = { mesh, next: 0, dirty: true, walk: legs ? bg.attributes.aWalk : null, walkDirty: false };
       group.add(mesh);
     }
     const c = new T.Color();
@@ -190,6 +221,11 @@
     const k = R.kinds && R.kinds[o.kind]; if (!k) return;
     tmpP.set(o.p[0], o.p[1], o.p[2]); tmpQ.set(o.q[0], o.q[1], o.q[2], o.q[3]);
     tmpM.compose(tmpP, tmpQ, ONE); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true;
+  };
+  // Stride phase and walking amount (0 = legs at rest) for one walker.
+  R.setWalk = function (o, phase, amt) {
+    const k = R.kinds && R.kinds[o.kind]; if (!k || !k.walk) return;
+    k.walk.setXY(o.inst, phase, amt); k.walkDirty = true;
   };
   R.hideObject = function (o) { const k = R.kinds && R.kinds[o.kind]; if (!k) return; tmpM.compose(tmpP.set(0, -9999, 0), tmpQ.identity(), ZERO); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true; };
 
@@ -305,7 +341,7 @@
 
   R.render = function (dt) {
     R.time.value += dt;
-    for (const k in R.kinds) { const kk = R.kinds[k]; if (kk.dirty) { kk.mesh.instanceMatrix.needsUpdate = true; kk.dirty = false; } }
+    for (const k in R.kinds) { const kk = R.kinds[k]; if (kk.dirty) { kk.mesh.instanceMatrix.needsUpdate = true; kk.dirty = false; } if (kk.walkDirty) { kk.walk.needsUpdate = true; kk.walkDirty = false; } }
     HC.FX && HC.FX.update(dt);
     R.renderer.render(R.scene, R.camera);
   };

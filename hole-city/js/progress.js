@@ -27,7 +27,7 @@
 
   const KEY = 'holecity.v2';
   const P = {};
-  P.defaults = () => ({ name: 'You', skin: 'classic', rankPoints: 0, wins: 0, games: 0, kills: 0, bestScore: 0, bestLevel: 1, bestSolo: 0, battleWins: 0, unlocked: SKINS.filter((s) => s.unlock.type === 'free').map((s) => s.id), sound: true, music: true, quality: 'auto', mode: 'classic', tutorialDone: false, level: 'city', stars: {}, bestByLevel: {}, mathGate: true, math: null, difficulty: 'easy' });
+  P.defaults = () => ({ name: 'You', skin: 'classic', rankPoints: 0, wins: 0, games: 0, kills: 0, bestScore: 0, bestLevel: 1, bestSolo: 0, battleWins: 0, unlocked: SKINS.filter((s) => s.unlock.type === 'free').map((s) => s.id), sound: true, music: true, quality: 'auto', mode: 'classic', tutorialDone: false, level: 'city', stars: {}, bestByLevel: {}, mathGate: true, math: null, pace: 'normal' });
   P.load = function () {
     let d = {};
     try { d = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) { d = {}; }

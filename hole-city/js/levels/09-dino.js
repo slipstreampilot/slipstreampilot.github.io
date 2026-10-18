@@ -34,7 +34,7 @@
   function longneck(g, s) {
     const S = (p) => p.map((v) => v * s);
     const c = S([-10, 115, 0]), ax = S([101, 55, 64]);
-    for (const [x, z] of [[52, 40], [52, -40], [-66, 40], [-66, -40]]) { g.cyl(x * s, 0, z * s, 15 * s, 17 * s, 100 * s, 8, '#FFF', { tint: true }); g.cyl(x * s, 0, z * s, 19 * s, 19 * s, 6 * s, 8, CREAM); }
+    for (const [x, z] of [[52, 40], [52, -40], [-66, 40], [-66, -40]]) g.limb(x * z > 0 ? 0.45 : -0.45, x * s, 100 * s, () => { g.cyl(x * s, 0, z * s, 15 * s, 17 * s, 100 * s, 8, '#FFF', { tint: true }); g.cyl(x * s, 0, z * s, 19 * s, 19 * s, 6 * s, 8, CREAM); });
     g.ball(c[0], c[1], c[2], 70 * s, '#FFF', { tint: true, sx: 1.45, sy: 0.78, sz: 0.92, detail: 1 });
     g.ball(-5 * s, 98 * s, 0, 60 * s, CREAM, { sx: 1.35, sy: 0.62, sz: 0.86 });
     chain(g, [S([70, 140, 0]), S([100, 190, 0]), S([118, 235, 0]), S([128, 262, 0])], [26 * s, 20 * s, 15 * s, 12 * s], 8, '#FFF', { tint: true });
@@ -60,7 +60,7 @@
         for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 + 0.5; g.ball(Math.cos(a) * 2.6, 13.4, Math.sin(a) * 2.6, 3, '#FFF', { tint: true, sy: 0.45 }); }
         g.ball(0, 14.4, 0, 1.9, '#7A4A2A'); } });
     def('dino_baby', { w: 19, d: 7, h: 16, points: 1, mass: 15, tints: DINO,
-      build(g) { for (const [x, z] of [[2.8, 2], [2.8, -2], [-3.6, 2], [-3.6, -2]]) g.block(x, 0, z, 2.2, 4.5, 2.2, '#FFF', { tint: true });
+      build(g) { for (const [x, z] of [[2.8, 2], [2.8, -2], [-3.6, 2], [-3.6, -2]]) g.limb(x * z > 0 ? 1 : -1, x, 4.5, () => g.block(x, 0, z, 2.2, 4.5, 2.2, '#FFF', { tint: true }));
         g.ball(-0.5, 6.6, 0, 4, '#FFF', { tint: true, sx: 1.35, sz: 0.9 }); g.ball(-0.4, 5.6, 0, 3.4, CREAM, { sx: 1.25, sz: 0.85 });
         limb(g, [3, 8, 0], [6.4, 12.8, 0], 1.7, 1.2, 5, '#FFF', { tint: true }); g.ball(7.6, 13.8, 0, 2.3, '#FFF', { tint: true, sx: 1.35 });
         for (const z of [-1.6, 1.6]) g.ball(8.6, 14.6, z, 0.6, DARK); limb(g, [-5, 7, 0], [-9.6, 3.6, 0], 2, 0.4, 4, '#FFF', { tint: true });
@@ -68,7 +68,7 @@
     // ---------- small stuff ----------
     def('dino_raptor', { w: 34, d: 10, h: 24, points: 2, mass: 40, tints: DINO,
       build(g) {
-        for (const z of [-2.6, 2.6]) { limb(g, [-1, 12, z], [1.4, 6, z], 2.3, 1.7, 5, '#FFF', { tint: true }); limb(g, [1.4, 6, z], [-0.6, 0.8, z], 1.5, 1.1, 5, '#FFF', { tint: true }); g.block(0.6, 0, z, 4.4, 1.2, 2, DARK); }
+        for (const z of [-2.6, 2.6]) g.limb(z > 0 ? 0.9 : -0.9, -1, 12, () => { limb(g, [-1, 12, z], [1.4, 6, z], 2.3, 1.7, 5, '#FFF', { tint: true }); limb(g, [1.4, 6, z], [-0.6, 0.8, z], 1.5, 1.1, 5, '#FFF', { tint: true }); g.block(0.6, 0, z, 4.4, 1.2, 2, DARK); });
         g.ball(0, 13, 0, 5.5, '#FFF', { tint: true, sx: 1.7, sz: 0.85 }); g.ball(1.5, 11.4, 0, 4, CREAM, { sx: 1.45, sz: 0.8 });
         limb(g, [7, 15, 0], [10, 19, 0], 2.5, 2.1, 5, '#FFF', { tint: true }); g.ball(11.6, 20, 0, 3.1, '#FFF', { tint: true, sx: 1.6 });
         for (const z of [-2.3, 2.3]) g.ball(12.8, 21.4, z, 0.8, DARK); limb(g, [-8, 13.6, 0], [-17, 15.5, 0], 3.2, 0.4, 5, '#FFF', { tint: true });
@@ -155,7 +155,7 @@
     // ---------- dinos ----------
     def('dino_stego', { w: 134, d: 54, h: 74, points: 12, mass: 3000, tints: DINO,
       build(g) {
-        for (const [x, z] of [[26, 15], [26, -15], [-30, 15], [-30, -15]]) { g.cyl(x, 0, z, 6.5, 7.5, 24, 7, '#FFF', { tint: true }); g.cyl(x, 0, z, 8.4, 8.4, 3, 7, CREAM); }
+        for (const [x, z] of [[26, 15], [26, -15], [-30, 15], [-30, -15]]) g.limb(x * z > 0 ? 0.6 : -0.6, x, 24, () => { g.cyl(x, 0, z, 6.5, 7.5, 24, 7, '#FFF', { tint: true }); g.cyl(x, 0, z, 8.4, 8.4, 3, 7, CREAM); });
         g.ball(-4, 32, 0, 26, '#FFF', { tint: true, sx: 1.75, sy: 0.95, sz: 0.95, detail: 1 }); g.ball(-2, 26, 0, 22, CREAM, { sx: 1.7, sy: 0.72, sz: 0.88 });
         limb(g, [34, 30, 0], [50, 22, 0], 10, 7, 7, '#FFF', { tint: true }); g.ball(56, 20, 0, 8.5, '#FFF', { tint: true, sx: 1.35, sy: 0.85 });
         eyes(g, 60, 23.5, 6, 1.9);
@@ -168,7 +168,7 @@
       } });
     def('dino_trike', { w: 116, d: 56, h: 58, points: 10, mass: 4000, tints: DINO,
       build(g) {
-        for (const [x, z] of [[14, 15], [14, -15], [-36, 15], [-36, -15]]) { g.cyl(x, 0, z, 7.5, 8, 20, 7, '#FFF', { tint: true }); g.cyl(x, 0, z, 9, 9, 3, 7, CREAM); }
+        for (const [x, z] of [[14, 15], [14, -15], [-36, 15], [-36, -15]]) g.limb(x * z > 0 ? 0.6 : -0.6, x, 20, () => { g.cyl(x, 0, z, 7.5, 8, 20, 7, '#FFF', { tint: true }); g.cyl(x, 0, z, 9, 9, 3, 7, CREAM); });
         g.ball(-14, 28, 0, 24, '#FFF', { tint: true, sx: 1.65, sy: 0.9, sz: 1.0, detail: 1 }); g.ball(-12, 22, 0, 20, CREAM, { sx: 1.6, sy: 0.7, sz: 0.9 });
         limb(g, [-50, 28, 0], [-60, 16, 0], 9, 2, 6, '#FFF', { tint: true });
         g.cyl(22, 32, 0, 22, 22, 4, 10, '#FFD23F', { rz: Math.PI / 2 });
@@ -180,7 +180,7 @@
       } });
     def('dino_rex', { w: 212, d: 86, h: 172, points: 16, mass: 7000, tints: ['#7BD84A', '#FF7A45', '#A66CFF', '#2EC4B6'],
       build(g) {
-        for (const z of [-30, 30]) { g.ball(-12, 80, z, 20, '#FFF', { tint: true, sx: 1.3, sy: 1.2, sz: 0.6 }); limb(g, [-6, 64, z], [-14, 10, z], 9, 7, 7, '#FFF', { tint: true }); g.block(-6, 0, z, 30, 9, 16, '#E8A04A'); for (const dz of [-5, 0, 5]) g.cone(10, 1, z + dz, 2.4, 6, 4, CREAM, { rz: -Math.PI / 2 }); }
+        for (const z of [-30, 30]) { g.ball(-12, 80, z, 20, '#FFF', { tint: true, sx: 1.3, sy: 1.2, sz: 0.6 }); g.limb(z > 0 ? 0.55 : -0.55, -8, 70, () => { limb(g, [-6, 64, z], [-14, 10, z], 9, 7, 7, '#FFF', { tint: true }); g.block(-6, 0, z, 30, 9, 16, '#E8A04A'); for (const dz of [-5, 0, 5]) g.cone(10, 1, z + dz, 2.4, 6, 4, CREAM, { rz: -Math.PI / 2 }); }); }
         g.ball(-10, 100, 0, 38, '#FFF', { tint: true, sx: 1.5, sy: 0.95, sz: 1.0, rz: 0.25, detail: 1 }); g.ball(4, 92, 0, 30, '#FFE58A', { sx: 1.2, sy: 0.9, sz: 0.9, rz: 0.3 });
         chain(g, [[-60, 104, 0], [-90, 88, 0], [-106, 68, 0]], [26, 15, 3], 7, '#FFF', { tint: true });
         limb(g, [25, 118, 0], [45, 140, 0], 22, 20, 7, '#FFF', { tint: true });

@@ -12,7 +12,7 @@
     const near = HC.World.query(h.x, h.z, 1200);
     let best = null, bs = -1;
     for (const o of near) {
-      if (!HC.Physics.likelyFits(o.def, h.r, 0.95)) continue;
+      if (o.state === 'riding' || !HC.Physics.likelyFits(o.def, h.r, 0.95)) continue;
       const d = Math.hypot(o.x - h.x, o.z - h.z), s = o.def.points / (d + 80);
       if (s > bs) { bs = s; best = o; }
     }
@@ -24,7 +24,7 @@
   // Headless simulation for balance testing: runs N seconds of a match as fast as possible.
   HC.sim = function (mode, seconds, opts = {}) {
     const G = HC.Game; G.headless = true; G.allPhysical = !!opts.allPhysical; G.nonePhysical = !!opts.nonePhysical;
-    G.setup(mode, { seed: opts.seed, level: opts.level, botSkillBonus: opts.botSkillBonus || 0 }); G.state = 'play'; G.autopilot = opts.idle ? (() => [0, 0]) : HC.autopilot;
+    G.setup(mode, { seed: opts.seed, level: opts.level, botSkillBonus: opts.botSkillBonus || 0, botSpeedMul: opts.botSpeedMul, playerStartLevel: opts.playerStartLevel }); G.state = 'play'; G.autopilot = opts.idle ? (() => [0, 0]) : HC.autopilot;
     if (opts.botPilot && G.player) { HC.Bots.init(G.player, HC.U.rng(5), opts.botPilot); G.autopilot = (h) => HC.Bots.steer(h, G.holes, 1 / 60); }
     const t0 = performance.now(), log = [], lv = {};
     let steps = Math.round(seconds * 60);

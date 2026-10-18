@@ -85,6 +85,15 @@ HC.CONFIG = {
     rubberMax: 1.06,       // speed factor for a bot far behind
     growMin: 0.45,         // a bot far ahead of you grows at no less than 45% of the normal rate
     playerHuntFactor: 0.55, // bots are less keen to chase you than each other
+    skillBonus: -0.14,     // rival skill offset used for every match (all difficulties)
+  },
+
+  // Title-screen difficulty. Hard is the original game; Normal starts you one size bigger; Easy also
+  // slows the rival holes by 15%. Rivals always start at level 1.
+  difficulty: {
+    easy:   { botSpeed: 0.85, playerStartLevel: 2 },
+    normal: { botSpeed: 1,    playerStartLevel: 2 },
+    hard:   { botSpeed: 1,    playerStartLevel: 1 },
   },
 
   scoring: {

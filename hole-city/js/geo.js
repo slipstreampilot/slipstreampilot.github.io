@@ -3,17 +3,23 @@
 // The extra attribute `aTint` (0/1) marks vertices that take the per-instance body color.
 (function () {
   const T = THREE;
-  const tmpM = new T.Matrix4(), tmpQ = new T.Quaternion(), tmpE = new T.Euler(), tmpS = new T.Vector3(), tmpP = new T.Vector3();
+  const tmpY = new T.Matrix4(), tmpM = new T.Matrix4(), tmpQ = new T.Quaternion(), tmpE = new T.Euler(), tmpS = new T.Vector3(), tmpP = new T.Vector3();
 
   class Geo {
-    constructor() { this.pos = []; this.nor = []; this.col = []; this.tint = []; this.glow = []; }
+    constructor() { this.pos = []; this.nor = []; this.col = []; this.tint = []; this.glow = []; this.leg = []; this._leg = null; this.hasLegs = false; }
 
     // Mark everything drawn inside fn() as glowing (lit windows, neon, lanterns) for night levels.
     glowing(fn) { this._glow = 1; fn(); this._glow = 0; return this; }
+    // Mark everything drawn inside fn() as a swinging limb for the walk cycle. `swing` is the signed
+    // share of the stride (+1 / -1 for legs in opposite phase, about ∓0.6 for arms), and (px, py) is
+    // the hip or shoulder it pivots around. Models face +x, so limbs swing in the x-y plane.
+    // Turn everything drawn inside fn() about the vertical axis (used to make older models face +x).
+    turned(yaw, fn) { const prev = this._yaw || 0; this._yaw = prev + yaw; fn(); this._yaw = prev; return this; }
+    limb(swing, px, py, fn) { const prev = this._leg; this._leg = [swing, px, py]; this.hasLegs = true; fn(); this._leg = prev; return this; }
     _add(geom, x, y, z, rx, ry, rz, sx, sy, sz, color, tint, shade) {
       let g = geom.index ? geom.toNonIndexed() : geom;
       tmpE.set(rx, ry, rz); tmpQ.setFromEuler(tmpE); tmpP.set(x, y, z); tmpS.set(sx, sy, sz);
-      tmpM.compose(tmpP, tmpQ, tmpS); g.applyMatrix4(tmpM); g.computeVertexNormals();
+      tmpM.compose(tmpP, tmpQ, tmpS); if (this._yaw) tmpM.premultiply(tmpY.makeRotationY(this._yaw)); g.applyMatrix4(tmpM); g.computeVertexNormals();
       const p = g.attributes.position.array, n = g.attributes.normal.array;
       // Colors are authored in sRGB; three.js expects linear vertex colors.
       const c = (typeof color === 'string' ? HC.U.hexToRgb(color) : color).map((v) => Math.pow(v, 2.2));
@@ -22,6 +28,7 @@
         // Gentle top-lit shading baked into vertex color keeps flat faces readable even in shadow.
         const up = n[i + 1], k = shade === false ? 1 : 0.9 + 0.1 * up;
         this.col.push(c[0] * k, c[1] * k, c[2] * k); this.tint.push(tint ? 1 : 0); this.glow.push(this._glow || 0);
+        const L = this._leg; if (L) this.leg.push(L[0], L[1], L[2]); else this.leg.push(0, 0, 0);
       }
       g.dispose(); if (g !== geom) geom.dispose();
       return this;
@@ -38,7 +45,7 @@
     quadXZ(pts, y, color) {
       const c = (typeof color === 'string' ? HC.U.hexToRgb(color) : color).map((v) => Math.pow(v, 2.2));
       // Wind every triangle so it faces up (+y), whatever order the corners came in.
-      const tri = (a, b, d) => { if ((b[1] - a[1]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[1] - a[1]) < 0) [b, d] = [d, b]; for (const p of [a, b, d]) { this.pos.push(p[0], y, p[1]); this.nor.push(0, 1, 0); this.col.push(c[0], c[1], c[2]); this.tint.push(0); this.glow.push(0); } };
+      const tri = (a, b, d) => { if ((b[1] - a[1]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[1] - a[1]) < 0) [b, d] = [d, b]; for (const p of [a, b, d]) { this.pos.push(p[0], y, p[1]); this.nor.push(0, 1, 0); this.col.push(c[0], c[1], c[2]); this.tint.push(0); this.glow.push(0); this.leg.push(0, 0, 0); } };
       tri(pts[0], pts[1], pts[2]); tri(pts[0], pts[2], pts[3]);
       return this;
     }
@@ -83,6 +90,7 @@
       g.setAttribute('color', new T.Float32BufferAttribute(this.col, 3));
       g.setAttribute('aTint', new T.Float32BufferAttribute(this.tint, 1));
       g.setAttribute('aGlow', new T.Float32BufferAttribute(this.glow, 1));
+      if (this.hasLegs) g.setAttribute('aLeg', new T.Float32BufferAttribute(this.leg, 3));
       g.computeBoundingSphere(); g.computeBoundingBox();
       return g;
     }

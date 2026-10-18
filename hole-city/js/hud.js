@@ -85,6 +85,9 @@
       else if (v === P) { H.feed(`${dot(k)}<b>${esc(k.name)}</b> ate <b>you</b>!`, 'bad'); A.death(); A.haptic(200); F.addShake(0.6); }
       else H.feed(`${dot(k)}<b>${esc(k.name)}</b> ate ${dot(v)}<b>${esc(v.name)}</b>`);
       if (visible(v)) F.dust(v.x, v.z, v.r);
+    } else if (type === 'coasterCrash') {
+      if (d.x != null && visible({ x: d.x, z: d.z })) { F && F.addShake(0.7); A && A.kill(); popup(d.x, d.z, 'CRASH!', 'combo', 1.6); }
+      H.feed('🎢 <b>The coaster</b> flew off the tracks!', 'bad');
     } else if (type === 'respawn' && d.hole === P) { H.el.center.className = 'center-msg'; }
     else if (type === 'count') { H.message(`<span class="count">${d.n || 'GO!'}</span>`, 'count-wrap', 700); A && A.count(d.n); }
     else if (type === 'go') { H.message('<span class="count go">GO!</span>', 'count-wrap', 650); A && A.count(0); }

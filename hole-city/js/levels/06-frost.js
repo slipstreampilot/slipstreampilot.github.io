@@ -29,7 +29,7 @@
     // ---------- tiny ----------
     def('frost_skater', { w: 12, d: 10, h: 39, points: 1, mass: 70, tints: JACKETS, mover: 'walk',
       build(g) { // faces +x
-        for (const z of [-2.4, 2.4]) { g.block(0, 2, z, 3.4, 12, 3.4, '#3B4A6B'); g.block(0.5, 0, z, 9, 1, 1, '#C9D2E3'); g.block(0.5, 1, z, 6, 2.5, 3.6, C.dark); }
+        for (const z of [-2.4, 2.4]) g.limb(z > 0 ? 0.8 : -0.8, 0, 14, () => { g.block(0, 2, z, 3.4, 12, 3.4, '#3B4A6B'); g.block(0.5, 0, z, 9, 1, 1, '#C9D2E3'); g.block(0.5, 1, z, 6, 2.5, 3.6, C.dark); });
         g.block(0, 13, 0, 6.5, 13, 9, '#FFF', { tint: true }); g.block(0, 16, -7, 3, 3, 8, '#FFF', { tint: true }); g.block(0, 16, 7, 3, 3, 8, '#FFF', { tint: true });
         g.block(0.5, 25, 0, 7, 3, 9.6, C.snow); g.block(3.6, 20, 2.4, 1, 7, 2.4, C.red);
         g.ball(0, 30, 0, 4.8, C.skin, { detail: 1 }); g.ball(-0.4, 32.5, 0, 5, C.red, { sy: 0.7 }); g.block(-0.6, 36, 0, 3, 3, 3, C.snow);
@@ -45,7 +45,7 @@
         g.ball(0, 8, 0, 5, '#2B2D42', { sy: 1.4, sx: 0.9 }); g.ball(1.8, 7.5, 0, 3.8, C.snow, { sy: 1.3, sx: 0.7 });
         g.ball(0, 15.5, 0, 3.6, '#2B2D42'); g.block(3.8, 15, 0, 2.6, 1.2, 1.6, '#FF9F1C'); g.ball(2.6, 16.5, -1.5, 0.8, C.snow); g.ball(2.6, 16.5, 1.5, 0.8, C.snow);
         g.block(0, 6, -4.6, 2, 6, 1, '#2B2D42', { rx: 0.3 }); g.block(0, 6, 4.6, 2, 6, 1, '#2B2D42', { rx: -0.3 });
-        g.block(1.5, 0, -1.6, 3, 1, 2, '#FF9F1C'); g.block(1.5, 0, 1.6, 3, 1, 2, '#FF9F1C');
+        g.limb(-0.7, 0, 3, () => g.block(1.5, 0, -1.6, 3, 1, 2, '#FF9F1C')); g.limb(0.7, 0, 3, () => g.block(1.5, 0, 1.6, 3, 1, 2, '#FF9F1C'));
       } });
     def('frost_snowman', { w: 18, d: 18, h: 44, points: 2, mass: 60, tints: ['#FF4757', '#1E90FF', '#2ED573', '#FFC312', '#A55EEA'],
       build(g) {
@@ -65,7 +65,7 @@
     def('frost_reindeer', { w: 34, d: 12, h: 38, points: 2, mass: 120, mover: 'walk',
       build(g) { // faces +x
         g.block(-2, 12, 0, 22, 10, 10, '#9A6343'); g.block(-13, 15, 0, 3, 4, 4, C.snow);
-        for (const [x, z] of [[-9, -3], [-9, 3], [6, -3], [6, 3]]) g.block(x, 0, z, 2.6, 13, 2.6, '#6E4A33');
+        for (const [x, z] of [[-9, -3], [-9, 3], [6, -3], [6, 3]]) g.limb(x * z > 0 ? 1 : -1, x, 13, () => g.block(x, 0, z, 2.6, 13, 2.6, '#6E4A33'));
         g.block(9, 20, 0, 5, 10, 6, '#9A6343', { rz: -0.4 }); g.block(14, 26, 0, 9, 6, 6, '#9A6343'); g.ball(18.8, 26.6, 0, 2.2, C.red);
         for (const z of [-2.5, 2.5]) { g.block(12, 31, z, 1.4, 7, 1.4, '#E9D4B0', { rx: z * 0.12 }); g.block(10, 35, z * 1.6, 6, 1.4, 1.4, '#E9D4B0', { rz: 0.4 }); }
         g.ball(15, 29.5, -2.5, 0.8, C.tire); g.ball(15, 29.5, 2.5, 0.8, C.tire); g.block(8, 18, 0, 2, 3, 10.4, C.red);

@@ -20,13 +20,13 @@ giant tower downtown. Grow bigger than the six rival holes before the 2-minute t
 
 | # | Level | World | Finale |
 |---|---|---|---|
-| 1 | 🏙️ Hole City | downtown island, parks, traffic | the giant tower |
+| 1 | 🏙️ Hole City | downtown island, parks, traffic, a townhouse district, two supertalls (round and octagonal) | the giant tower |
 | 2 | 🏡 Maple Hills | autumn suburbia, yards full of toys (easiest) | the Mega Mall |
 | 3 | 🏖️ Sunny Shores | crescent bay, boardwalk, hotels, marina | the lighthouse |
 | 4 | 🐄 Cluckington Farm | patchwork fields, animals, tractors | the windmill |
-| 5 | 🎡 Funland | theme park, rides, crowds, park train | the castle |
+| 5 | 🎡 Funland | theme park, rides, crowds, park train, a giant looping roller coaster (eat its track and it may fly off!) | the castle |
 | 6 | ⛄ Frostville | snowy village on a frozen lake (the hole slides on ice) | the ice palace |
-| 7 | 🏮 Neon Ward | night market city, canals, glowing signs | the pagoda |
+| 7 | 🏮 Neon Ward | night market city, canals, glowing signs, two glowing supertalls | the pagoda |
 | 8 | 🌵 Dusty Gulch | wild-west town, steam trains, tumbleweeds | Thunder Butte |
 | 9 | 🦖 Dino Valley | jungle river, dinosaur herds, research camp | the volcano |
 | 10 | 🚀 Lunar Base | moon domes and rovers (low gravity) | the rocket |
@@ -34,11 +34,11 @@ giant tower downtown. Grow bigger than the six rival holes before the 2-minute t
 ## Brain Boost (math gate)
 
 Ten multiple-choice problems run before every match, two of each kind, shuffled:
-- addition: 0–999 + 0–999
-- subtraction: 0–999 − 0–999, never negative
+- addition: 1-, 2- or 3-digit numbers (each size equally likely, picked separately for each number)
+- subtraction: the same sizes, larger number on top, so the answer is never negative
 - times tables: 0–12 × 0–12
-- even or odd: a number from 0 to 1,000,000 (two choices: Even / Odd)
-- place value: one digit of a number up to 1,000,000 is underlined in pink; pick its place
+- even or odd: a number from 0 to 9,999,999 (two choices: Even / Odd)
+- place value: one digit of a number up to 9,999,999 is underlined in pink; pick its place
   (ones, tens, hundreds, …)
 
 Answers are always listed lowest to highest (place names from ones upward). Problems use the
@@ -49,8 +49,10 @@ answers are built from common mistakes (forgetting to carry or borrow, off by 10
 times-table fact). Results show a speed rating and best time. A grown-up can switch it off in
 Settings after answering a two-digit multiplication.
 
-Settings also has **Rival holes: Easy / Normal / Hard**; Easy is the default. Easier rivals are less
-skilled and top out at a smaller size.
+The title screen has **Rivals: 🐢 Easy / 🐇 Normal / 🔥 Hard**.
+- Hard: the original game (you and the rivals all start at level 1).
+- Normal: you start one size up, at level 2 (and never respawn smaller than that). Rivals unchanged.
+- Easy: like Normal, and the rival holes also move 15% slower.
 
 ## Modes
 

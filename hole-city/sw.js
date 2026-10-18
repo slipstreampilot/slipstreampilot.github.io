@@ -1,6 +1,6 @@
 // Offline support. Network-first so a new build shows up as soon as you're online;
 // falls back to the cached copy when offline. Bump VERSION when shipping.
-const VERSION = 'hole-city-v3.4.0';
+const VERSION = 'hole-city-v3.5.0';
 const FILES = ['./',
   './assets/icons/apple-touch-icon.png',
   './assets/icons/icon-192.png',

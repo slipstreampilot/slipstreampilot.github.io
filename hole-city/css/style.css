@@ -86,6 +86,22 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .pop { position: absolute; left: 0; top: 0; font-weight: 700; font-size: calc(20px * var(--s, 1)); color: #fff; -webkit-text-stroke: 2.5px var(--ink); paint-order: stroke fill; opacity: 0; pointer-events: none; transform: translate(-50%, -50%); }
 .pop.mid { color: var(--sun); } .pop.big { color: var(--pink); } .pop.combo { color: var(--mint); }
 .pop.go { animation: floatUp .9s ease-out forwards; }
+/* Score tally: one small running "+N" above your name tag (replaces a number per object). */
+.tally { position: absolute; left: 0; top: 0; font-weight: 700; font-size: calc(17px * var(--s, 1)); color: #fff; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; opacity: 0; pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums; will-change: transform; transition: opacity .3s; }
+.tally.on { opacity: .95; }
+.tally.on.out { opacity: 0; }
+.tally span { display: block; }
+.tally.bump span { animation: tallyBump .2s ease-out; }
+@keyframes tallyBump { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+/* Callouts for big bites and multi-eats: one small banner near the top, never over the hole. */
+.callout { position: absolute; left: 50%; top: calc(var(--safe-t) + 142px); transform: translateX(-50%); opacity: 0; pointer-events: none; white-space: nowrap;
+  background: rgba(255,255,255,.94); border: 2.5px solid var(--ink); border-radius: var(--r-pill); box-shadow: 0 3px 0 var(--ink); padding: 3px 14px; font-size: 16px; font-weight: 600; }
+.callout b { color: var(--pink); font-weight: 700; }
+.callout.huge { background: var(--sun); font-size: 18px; }
+.callout.multi { background: var(--pink); color: #fff; font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+.callout.show { animation: callout 1.4s ease-out forwards; }
+@keyframes callout { 0% { opacity: 0; transform: translateX(-50%) scale(.6); } 10% { opacity: 1; transform: translateX(-50%) scale(1.08); } 18% { transform: translateX(-50%) scale(1); } 78% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-8px); } }
+.hud-solo .callout { top: calc(var(--safe-t) + 128px); }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.5); } 15% { opacity: 1; transform: translate(-50%, -80%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -260%) scale(1); } }
 .arrow { position: absolute; left: 0; top: 0; width: 0; height: 0; display: none; }
 .arrow::before { content: ''; position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; border-radius: 50%; background: var(--c); border: 3px solid var(--ink); box-sizing: border-box; }
@@ -387,3 +403,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .mb-review span.mb-under { border: 0; padding: 0; background: none; border-radius: 0; font-size: inherit; color: #FF4F9A; }
 .lv-tile b { overflow-wrap: break-word; }
 @media (orientation: landscape) and (max-height: 620px) { .level-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
+/* Short landscape screens: the top is busy with the timer and solo bar, so callouts sit at the bottom. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .callout, .hud-solo .callout { top: auto; bottom: calc(var(--safe-b) + 14px); }
+}

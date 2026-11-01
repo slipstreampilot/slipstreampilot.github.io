@@ -86,6 +86,9 @@
     if (gained) emit('levelup', { hole: h, level: h.level });
   };
 
+  HC.Physics.onWedge = function (o, h) { emit('wedgeShake', { hole: h, obj: o }); };
+  HC.Physics.onSpit = function (o, h) { o.avoidUntil = G.elapsed + 12; emit('spit', { hole: h, obj: o }); };   // rivals leave it alone for a while
+
   function isVisible(h) {
     if (G.headless) return !G.nonePhysical && (G.allPhysical || h === G.focus);
     const c = HC.Render.cam, w = c.view;
@@ -127,6 +130,8 @@
 
   G.step = function (dt) {
     const playing = G.state === 'play' || G.state === 'attract';
+    // Remember where everything was, so drawn frames can blend between this step and the next.
+    if (!G.headless) { HC.Render.beginStep && HC.Render.beginStep(); for (const h of G.holes) { h.ipx = h.x; h.ipz = h.z; h.irv = h.rv; } }
     if (G.state === 'countdown') {
       const prev = Math.ceil(G.countdown - 0.6);
       G.countdown -= dt;
@@ -225,6 +230,15 @@
     }
     // While the math gate is open the city behind it just holds still (saves battery, keeps taps snappy).
     if (G.city && !G.headless && !(HC.Brain && HC.Brain.on && G.state !== 'play')) {
+      // Draw one step behind, blended by how far the clock is into the next step. Without this a
+      // 120 Hz screen shows each 60 Hz step for two frames and the zoomed-in view judders.
+      const a = Math.max(0, Math.min(1, G.acc / STEP)), real = [];
+      for (const h of G.holes) {
+        if (h.ipx == null || Math.abs(h.x - h.ipx) + Math.abs(h.z - h.ipz) > 300) continue;
+        real.push(h, h.x, h.z, h.rv);
+        h.x = h.ipx + (h.x - h.ipx) * a; h.z = h.ipz + (h.z - h.ipz) * a; h.rv = h.irv + (h.rv - h.irv) * a;
+      }
+      HC.Render.interpolate && HC.Render.interpolate(a);
       const f = G.focusHole();
       const tx = f.ghost ? f.ghost.x : f.x, tz = f.ghost ? f.ghost.z : f.z;
       const lead = [f.vx * 0.25, f.vz * 0.25];
@@ -232,12 +246,19 @@
       if (G.state === 'attract') vw = 1500;
       if (HC.flags && HC.flags.view) vw = HC.flags.view;
       if (G.state === 'end' || G.state === 'results') vw = Math.min(vw * 1.25, CFG.camera.viewMax * 1.1);
-      HC.Render.updateCamera(tx, tz, vw, dt, lead);
+      // Mouse-wheel zoom override (optional): scales whatever the automatic zoom wants right now, and
+      // eases in quickly while you're turning the wheel.
+      const I = HC.Input; let ease;
+      if (I && I.zoom && G.state !== 'attract') vw = Math.max(120, Math.min(CFG.camera.viewMax * 1.6, vw * I.zoomFactor()));
+      if (I && I.zoomT > 0) { I.zoomT -= dt; ease = 10; }
+      HC.HUD && HC.HUD.zoomTag && HC.HUD.zoomTag(I && I.zoom && G.state === 'play' ? I.zoomFactor() : 0);
+      HC.Render.updateCamera(tx, tz, vw, dt, lead, false, ease);
       HC.Render.updateHoles(G.holes);
       HC.Render.setFocus(G.state === 'attract' ? null : (G.player && G.player.alive ? G.player : null));
       HC.Render.setGhost && HC.Render.setGhost(G.player && G.player.ghost, G.player);
       HC.HUD && HC.HUD.frame(dt);
       HC.Render.render(dt);
+      for (let i = 0; i < real.length; i += 4) { const h = real[i]; h.x = real[i + 1]; h.z = real[i + 2]; h.rv = real[i + 3]; }
     }
     requestAnimationFrame(G.frame);
   };

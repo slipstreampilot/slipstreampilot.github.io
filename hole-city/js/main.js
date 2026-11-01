@@ -12,7 +12,7 @@
     const near = HC.World.query(h.x, h.z, 1200);
     let best = null, bs = -1;
     for (const o of near) {
-      if (o.state === 'riding' || !HC.Physics.likelyFits(o.def, h.r, 0.95)) continue;
+      if (o.state === 'riding' || o.avoidUntil > HC.Game.elapsed || !HC.Physics.likelyFitsNow(o, h.r, 0.95)) continue;
       const d = Math.hypot(o.x - h.x, o.z - h.z), s = o.def.points / (d + 80);
       if (s > bs) { bs = s; best = o; }
     }

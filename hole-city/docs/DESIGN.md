@@ -9,8 +9,11 @@ build on Poki. Full links are at the end.
 **What makes it great**
 - **Ten-second readability.** One finger, one verb. You eat 1-point props in your first second.
 - **Physics swallowing.** Objects are rigid bodies that teeter, tip and fall in. Long cars go in
-  end-first, and trees topple. Towers are the exception: they drop straight down once their footprint
-  is inside the hole (a toppled tower lying across the street could never be eaten). Voodoo's own tuning knobs are "friction, bounce, suction force, camera
+  end-first, and buildings tip over the lip when more than half of them hangs over it. The hole is a
+  cliff-edged shaft: slide under a tipping skyscraper and it falls in at the angle it reached, scraping
+  down the far wall. Small things get hole.io's pull and ride along with a moving hole, so driving
+  through them still eats them; big buildings are all edge and gravity. Stuck things get shaken after
+  3 s and spat back out after 6 s. Voodoo's own tuning knobs are "friction, bounce, suction force, camera
   and movement easing."
 - **Quiet score display.** hole.io has no combo points: each swallow pops a small "+N" and the big
   callouts are for kills. Ours shows one running "+N" tally above your hole, a single callout for the
@@ -33,7 +36,7 @@ build on Poki. Full links are at the end.
 | Ads every round, lag | No ads, no network, instanced rendering (60 fps on a desktop GPU for the whole match). |
 | Respawn at base size is too punishing | You respawn with 35% of your size progress. You pick the spot with a ghost circle, then get 3 s of protection. |
 | Objects stuck on the rim | Jammed objects slip through after 0.9 s. The opening is 7% wider physically than it looks. |
-| Small things need you to stop over them | Fast swallow: anything under ~⅓ of your radius drops in on contact, even at full speed. |
+| Small things need you to stop over them | Physics only (user's call): things go in when the street under them runs out. Testing how that plays before deciding on any help. |
 | Battle mode could stall forever | Battle is capped at 3:00, and the biggest hole wins at the cap. |
 | Few maps, memorized layouts | The block plan stays the same, but props, traffic and spawns re-roll every match. |
 | Predictable, unfair bots | Bots have personalities (greed, aggression, caution, focus), commit to targets, and give up chases. A gentle rubber band slows a bot that runs away with the lead. |

@@ -15,6 +15,8 @@ giant tower downtown. Grow bigger than the six rival holes before the 2-minute t
   ```
 - **Controls:** drag anywhere to move (a joystick appears under your finger or mouse).
   On a keyboard, use WASD or the arrow keys. Esc or P pauses; Enter starts the next round.
+  The mouse wheel zooms in or out on top of the automatic zoom; 0 or a middle-click goes back to automatic
+  (Settings → Mouse-wheel zoom turns it off).
 
 ## Levels (all unlocked; best ★★★ saved per level)
 

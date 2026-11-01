@@ -18,7 +18,7 @@ main.js boots ─► Game.frame (requestAnimationFrame)
                    │    ├─ Input.dir() / Bots.steer()  → Hole.move()
                    │    ├─ Movers.update()              pedestrians, ducks, traffic (+ walk-cycle phase)
                    │    ├─ Coaster.update()             the Funland roller coaster train
-                   │    ├─ Physics.step()               rims, fast-swallow, bodies, consume
+                   │    ├─ Physics.step()               rims, bodies, overflow swallow, consume
                    │    ├─ Physics.consumeInstant()     off-screen holes (no physics)
                    │    └─ hole-vs-hole, respawn, end-of-match checks
                    │         └─ emit events ──► HUD.onEvent ─► FX + Audio + popups + feed
@@ -36,6 +36,7 @@ main.js boots ─► Game.frame (requestAnimationFrame)
 | `util.js` | Seeded RNG, easing, a uniform spatial `Grid`. |
 | `geo.js` | Low-poly geometry builder (boxes, cylinders, gables, window panels) that merges into one vertex-colored `BufferGeometry`. The `aTint` attribute marks the parts that take the per-instance color. `g.limb(swing, px, py, fn)` tags legs/arms for the walk cycle (attribute `aLeg`); `g.turned(yaw, fn)` rotates a sub-model. Every walking model faces +x. |
 | `catalog.js` | Every swallowable kind: layout size (`w × d × h`, in units of 5 cm; the collision shape is derived from the mesh), mass, points, tint palette, mover type, and its `build()` mesh recipe. |
+| `people.js` | Themed people for every level (doctors, beekeepers, moon engineers…) and `HC.PEOPLE`: which types each level uses. About half of each level's ordinary walkers are swapped for them as the level is built (`gentools` `T.put`, on its own random stream, so layouts don't change). |
 | `citygen.js` | Seeded city layout as pure data: ground decals, object placements, sidewalk loops, roads, spawn points. Uses a 5×5 block plan (parks, homes, shops, apartments, downtown, landmark, parking, works). |
 | `world.js` | Live object list and states (`static` → `active` → `captured` → `gone`), plus a spatial grid for queries. |
 | `movers.js` | Scripted life: walk loops (people, trains, rovers, boats), roaming animals (with optional rolling), right-hand grid traffic that picks turns and brakes for the car ahead. Walkers feed their stride phase and "how much they're walking" (eases to 0 when they stop) to `Render.setWalk`. |
@@ -47,22 +48,13 @@ main.js boots ─► Game.frame (requestAnimationFrame)
 | `render.js` | three.js scene, lighting, the island, the sea shader, instanced objects, hole pits and rims (your own rim also draws faintly through anything in front of it), and the camera. Walkers' legs and arms swing in the vertex shader (per-instance `aWalk` = stride phase, walking amount); a matching depth material keeps their shadows in step. |
 | `fx.js` | Particle bursts, dust, confetti, level-up shockwaves, screen shake. |
 | `audio.js` | Web Audio synth: swallow bloops scaled by size and combo, level-up chime, kill, countdown, a music loop. |
-| `input.js` | Drag-anywhere virtual joystick, plus WASD and arrow keys. |
+| `input.js` | Drag-anywhere virtual joystick, plus WASD and arrow keys; optional mouse-wheel zoom override (0 or middle-click = automatic). |
 | `game.js` | Modes, the simulation loop, hole-vs-hole eating, respawns, results, camera focus. |
 | `hud.js` | HUD DOM plus the event director (routes game events to FX, Audio, the score tally, callouts and the kill feed). Score display: one running "+N" tally above your name tag (fades after a 0.75 s pause; moves beside the tag if the top HUD is in the way), and one callout banner at a time for the first of each big kind (25+ points) per match, giant landmarks (250+) and multi-eats (2+ holes within 8 s: DOUBLE/TRIPLE/MEGA/MONSTER EAT!). No per-object numbers and no combo banners. |
 | `menus.js` | Home (over a live "attract" match of the selected level), level picker, skins, settings, pause, results. Every match goes through the Brain Boost gate. |
 | `main.js` | Boot, URL and hash test flags, the greedy demo autopilot, `HC.sim()` headless simulation. |
 
 ## How swallowing works (`physics.js`)
-
-**Towers** (`P.upright`: at least 250 tall, height ≥ 1.4× the narrow side, roughly square footprint —
-offices, skyscrapers, supertalls, lighthouses, pagodas) are a special case. Teetering on the lip
-always ended with the top swinging far past the hole and the tower lying across the street, longer
-than any hole that could eat it. So a tower is only simulated once its whole outline fits the
-opening; it stands on solid ground (ignoring debris tumbling into the hole beside it) until its
-footprint is entirely inside the opening, sliding toward the hole's centre once its middle is over
-it. Then it drops straight down, carried along with the hole and touching nothing, like in hole.io.
-
 
 The approach is the one hole.io uses, built with cannon-es. Physics runs in meters; world units × 0.05.
 
@@ -74,33 +66,66 @@ The approach is the one hole.io uses, built with cannon-es. Physics runs in mete
    through a hole about as wide as itself, while a long bus is still long. The cached shape also gives
    the footprint numbers everything else uses: `min`, `max` and `diag` (widest span of the outline).
    Level layout spacing still uses the catalog's `w × d`.
-3. **Fast swallow.** If an object's outline is tiny next to the hole (`diag / 2 < captureRatio × r`)
-   and it has been inside the circle for 0.06 s, it is *captured*. A short scripted fall makes it tip,
-   drift toward the middle, ride along with the moving hole and drop into the pit. Large holes never
-   need to stop for small things.
-4. **Physics swallow (nothing is ever forced through).** Anything whose narrow side fits the opening
-   and that is short enough that it could tip in end-first (`max < 2.1 × opening`) gets a compound
-   body when it overlaps the opening. The opening is the drawn hole + 2% (`holeSlack`).
-   - Collision groups decide what touches what:
-     - Resting bodies touch only the ground plane and falling bodies.
-     - Bodies over a hole stop touching the ground and touch that hole's kinematic **rim** instead: a
-       thin (0.5 m) lip of boxes flush with the street, so long things can tip in end-first.
-   - Whether it falls is up to the collision: things bridge across the hole, teeter, tip, wedge or drop.
-   - Only things that already fit flat are pulled toward the middle (suction). Centring something
-     longer than the hole would just park it bridged across.
-   - The downward pull is applied at the point of the footprint nearest the hole's centre, so a car
-     nosing over the edge is pulled down by the nose and tips in end-first if the geometry allows.
-   - Once something is falling down the pit, it is carried along with the hole, so the lip doesn't
-     clip it as you drive on.
-   - Jams: something sunk into the pit and barely moving for 1 s gets a small physical jostle. If its
-     whole outline fits the opening, it is only snagged under the thin lip, so it slips past it.
-     Nothing whose outline doesn't fit is ever let through.
-   - Crashed coaster cars fly as `G_SMASH` bodies: they hit the ground and resting objects (which wake
-     up for a few seconds and get shoved) but never hole rims, and nothing is destroyed.
+3. **Everything you can see is simulated.** Whatever a visible hole eats gets a real body and falls in by
+   physics, tumbling and knocking into whatever else is going down with it. Bodies are woken nearest
+   the opening first; small props (diag/2 < `captureRatio` × r) leave `bigReserve` bodies free for
+   anything bigger. Only when the budget (`maxBodies`) is used up does tiny clutter that ends up inside
+   the opening without a body take a short scripted drop instead (the *overflow swallow*, timed by
+   the same gravity). Off-screen rivals eat without physics (`consumeInstant`).
+4. **Physics swallow: a sandbox with real holes in the ground.** Anything whose narrow side fits the
+   opening and that is at most twice as long as the opening is wide gets a compound body when it comes
+   near. A fallen-over object is judged by how it's lying now (`Physics.footNow(o)`), so a toppled
+   skyscraper is a long thing that tips in end-first once the hole is wider than half its length.
+   - **The street is one still ground plane with the holes cut out of it.** Ground contacts at points
+     over an opening are dropped (a wrapper around cannon's narrowphase), so the street holds up exactly
+     the part of a base that's on solid ground. Each base carries a grid of small "feet" (up to 6×6)
+     that touch only the street, so support follows the lip precisely instead of the base's corners.
+     Ground contacts deeper than `groundSkin` belong to the shaft and are dropped too. The edge is
+     rounded and crumbly: on the strip just beyond the opening (`lipBand`, at most `lipMax`) a contact
+     only holds if the thing's middle is over solid street, so nothing hangs by a sliver. The hole is
+     drawn at the physical opening size. A body that can't
+     touch the street at all (all of it over the opening or down the shaft) leaves the street out of its
+     collision mask, and drops its feet for good once it's wholly down the shaft: that keeps a busy
+     hole cheap. Props under `propSize` across (not trees) collide as plain boxes. Everything else
+     (buildings, trees, lamp posts, towers) has the top edge of its top part bevelled (`roofRound`).
+   - **Below each opening is an Erlenmeyer flask cut into solid ground** (user's design, Nov 2026): a
+     vertical neck as wide as the opening, flush with the street, `neckDepth` (25 cm) deep; then a cone
+     widening at `flareAngle` (45° from vertical) for `flareLength` (10 m of slope: 7.1 m down and 7.1 m
+     out); then nothing — no floor. The ground around it is solid: 22 thick wedges of earth (convex
+     polyhedra) whose inner faces are the neck and the cone, from the street down past the cone's bottom
+     and `earthBeyond` metres outward. Anything not in the flask or above the street is inside solid
+     ground and is pushed back out. The walls move with the hole by velocity (not teleported), so a moving
+     hole's edge hits things. Only the earth's top surface (the street, which holds things already) and
+     the crumbly lip strip don't hold anything up. Walls are slippery (`wallFriction`). Things wholly above
+     the street skip the wall checks.
+   - **Buried = eaten:** anything wholly below the street with part of it out under the pavement (slid
+     into the cone) counts as eaten at once, so nothing is left buried when the hole moves on.
+   - So what's over the edge decides: under half over, it stands; over half (centre of mass over the
+     void), it tips on the lip; if the hole slides under it mid-tip, nothing holds it and it falls at the
+     tilt it reached (its spin dies away: `freeFallSpinDamp`), its upper floors hit the far wall and it
+     scrapes down. Something longer than the opening can bridge it until you move so an end loses its edge.
+   - **No help from the hole** (removed at the user's request, Nov 2026): no suction, no carry, no funnel,
+     no riding along with the hole, no tree straightening. The moving shaft walls simply push whatever is
+     down the shaft. What remains beyond plain physics: the tilt freeze above, the wedge shake/spit below,
+     and the tuning (gravity 26 m/s², `inertiaScale`, slippery street near holes, shrunk colliders, caps).
+   - **Wedged** (partly down a shaft, top dropping less than 2.5 m a second for a full second): while the
+     player is *wiggling* (two or more direction reversals within a second — ordinary steering doesn't
+     count), each change in the hole's speed jolts it (no automatic shake: removed at the user's
+     request); at `wedgeSpit` (6 s) it's spat out (every stuck thing at once) up and away in a random direction (walls off until
+     it lands) and can be eaten again. Rivals leave a spat item alone for 12 s.
+   - **Eaten** once its top is `sinkDepth` hole radii below the street (at most `sinkMax` m), so things
+     visibly fall a way down the pit first; sooner (as soon as it's under the street) if it's resting
+     on a pile or more than `deepBudget` bodies are in play.
+   - Bodies are 4% smaller than their meshes so tightly packed rows (townhouses) aren't held up by
+     friction against each other; masses are square-root squashed but uncapped up to 30,000, so a
+     skyscraper isn't shoved around by debris; objects turn 2.5× more readily than solid blocks
+     (`inertiaScale`) so tipping reads at game speed; speeds and spins are capped (nothing explodes).
+   - Crashed coaster cars fly as `G_SMASH` bodies: they hit the ground and objects (which wake up for a
+     few seconds and get shoved) but never the shafts, and nothing is destroyed.
    - Scripted kinds (`def.scripted`, the coaster track) never get a body: a piece is eaten when its
      support stands inside an opening at least `minHole` across, and it drops from its height.
 5. **Scoring.** An object scores when its top falls below street level. Points go to the hole it fell into.
-6. **"Likely fits" rule.** `Physics.likelyFits(def, r)` says what reliably goes in, calibrated against
+6. **"Likely fits" rule.** `Physics.likelyFits(def, r)` (and `likelyFitsNow(o, r)` for an object as it's lying) says what reliably goes in, calibrated against
    `tools/fitprobe.js`: the outline diagonal is under 85% of the opening, or the object is slim
    (narrow side < 60%) and at most 1.2× as long. Bots and the demo autopilot use it to pick targets,
    the HUD uses it for "now fit!" toasts, and off-screen holes use it in place of physics: an object

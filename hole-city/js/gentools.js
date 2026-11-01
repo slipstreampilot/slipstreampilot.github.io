@@ -22,10 +22,20 @@
     T.occupy = (x, z, r) => occ.insert({ x: x + OFF, y: z + OFF, r });
     T.free = (x, z, r) => { for (const e of occ.query(x + OFF, z + OFF, r + 120)) if (Math.hypot(e.x - OFF - x, e.y - OFF - z) < e.r + r) return false; return true; };
 
+    // Themed people (js/people.js): about half of the level's ordinary walkers become one of its own
+    // types. Uses its own random stream so the rest of the layout comes out exactly as before.
+    const PEOPLE = HC.PEOPLE && level && HC.PEOPLE[level.id], swap = HC.U.rng((seed ^ 0x5eed1e) >>> 0);
     T.put = (kind, x, z, rot = 0, extra = {}) => {
-      const k = HC.CATALOG[kind]; if (!k) { console.warn('Unknown kind', kind); return null; }
-      const o = Object.assign({ kind, x, z, rot, tint: k.tints ? rng.int(0, k.tints.length - 1) : 0 }, extra);
-      O.push(o); if (!extra.mover && extra.occupy !== false) T.occupy(x, z, k.radius * 0.8);
+      let k = HC.CATALOG[kind]; if (!k) { console.warn('Unknown kind', kind); return null; }
+      const k0 = k;   // the layout (spacing, occupancy) always follows the kind that was asked for
+      let tint = k.tints ? rng.int(0, k.tints.length - 1) : 0;
+      if (PEOPLE && PEOPLE.base.includes(kind) && swap() < PEOPLE.share) {
+        kind = PEOPLE.types[Math.floor(swap() * PEOPLE.types.length)]; k = HC.CATALOG[kind];
+        tint = k.tints ? Math.floor(swap() * k.tints.length) : 0;
+        if (extra.tint != null) { extra = Object.assign({}, extra); delete extra.tint; }
+      }
+      const o = Object.assign({ kind, x, z, rot, tint }, extra);
+      O.push(o); if (!extra.mover && extra.occupy !== false) T.occupy(x, z, k0.radius * 0.8);
       return o;
     };
     // Place `kind` repeatedly along a line, e.g. fences, crop rows, bollards. Rotation follows the line.

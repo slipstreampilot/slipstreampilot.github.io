@@ -35,6 +35,7 @@
     <div id="centerMsg" class="center-msg"></div>
     <div id="levelToast" class="level-toast"></div>
     <div id="callout" class="callout"></div>
+    <div id="zoomTag" class="zoom-tag" hidden></div>
   </div>
   <div id="stick" aria-hidden="true"><div id="stickKnob"></div></div>
 
@@ -90,6 +91,7 @@
       <label class="row">Music <input type="checkbox" id="musicToggle"></label>
       <label class="row">Sound effects <input type="checkbox" id="sfxToggle"></label>
       <label class="row">🧠 Brain Boost before each match <input type="checkbox" id="mathToggle"></label>
+      <label class="row">🖱️ Mouse-wheel zoom <input type="checkbox" id="wheelToggle"></label>
       <div id="parentBox" class="parent-box" hidden><span>Grown-up check: <b id="parentQ"></b> =</span><input id="parentA" inputmode="numeric" autocomplete="off"><button id="parentOk" class="ghost-btn">OK</button></div>
       <label class="row">Graphics
         <select id="qualitySel"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (battery saver)</option></select>
@@ -158,6 +160,7 @@
   <script src="./js/util.js"></script>
   <script src="./js/geo.js"></script>
   <script src="./js/catalog.js"></script>
+  <script src="./js/people.js"></script>
   <script src="./js/gentools.js"></script>
   <script src="./js/levels/registry.js"></script>
   <script src="./js/levels/01-city.js"></script>

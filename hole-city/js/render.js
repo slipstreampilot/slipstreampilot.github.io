@@ -150,6 +150,7 @@
 
   // ---------------- city ----------------
   R.buildCity = function (city) {
+    R.moving && R.moving.clear();
     if (R.cityGroup) { R.scene.remove(R.cityGroup); R.cityGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
     const group = new T.Group(); R.cityGroup = group; R.scene.add(group);
     R.applyTheme(city.theme);
@@ -217,17 +218,48 @@
 
   const tmpM = new T.Matrix4(), tmpP = new T.Vector3(), tmpQ = new T.Quaternion(), ONE = new T.Vector3(1, 1, 1), ZERO = new T.Vector3(0, 0, 0);
   // o.p = mesh origin (base center) [x,y,z]; o.q = quaternion [x,y,z,w]
+  // Render interpolation. The simulation steps at a fixed 60 Hz but screens draw at 60–120 Hz,
+  // so each drawn frame blends an object's last two simulated poses (see R.interpolate).
+  R.stepNo = 0; R.moving = new Set();
+  R.beginStep = function () { R.stepNo++; };
   R.setObject = function (o) {
     const k = R.kinds && R.kinds[o.kind]; if (!k) return;
+    if (!o.cp) { o.cp = o.p.slice(); o.cq = o.q.slice(); o.ip = o.p.slice(); o.iq = o.q.slice(); o.iStep = R.stepNo; }
+    else if (o.iStep !== R.stepNo) {
+      o.ip[0] = o.cp[0]; o.ip[1] = o.cp[1]; o.ip[2] = o.cp[2];
+      o.iq[0] = o.cq[0]; o.iq[1] = o.cq[1]; o.iq[2] = o.cq[2]; o.iq[3] = o.cq[3]; o.iStep = R.stepNo;
+    }
+    // A jump (respawn, re-placement) snaps rather than sliding across the map.
+    if (Math.abs(o.p[0] - o.ip[0]) + Math.abs(o.p[1] - o.ip[1]) + Math.abs(o.p[2] - o.ip[2]) > 400) { o.ip[0] = o.p[0]; o.ip[1] = o.p[1]; o.ip[2] = o.p[2]; o.iq[0] = o.q[0]; o.iq[1] = o.q[1]; o.iq[2] = o.q[2]; o.iq[3] = o.q[3]; }
+    o.cp[0] = o.p[0]; o.cp[1] = o.p[1]; o.cp[2] = o.p[2];
+    o.cq[0] = o.q[0]; o.cq[1] = o.q[1]; o.cq[2] = o.q[2]; o.cq[3] = o.q[3];
+    R.moving.add(o);
     tmpP.set(o.p[0], o.p[1], o.p[2]); tmpQ.set(o.q[0], o.q[1], o.q[2], o.q[3]);
     tmpM.compose(tmpP, tmpQ, ONE); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true;
+  };
+  const iQa = new T.Quaternion(), iQb = new T.Quaternion();
+  // a = how far the clock has run into the next (not yet simulated) step, 0..1.
+  R.interpolate = function (a) {
+    for (const o of R.moving) {
+      const k = R.kinds[o.kind];
+      if (o.iStep !== R.stepNo) {
+        R.moving.delete(o);
+        tmpP.set(o.cp[0], o.cp[1], o.cp[2]); tmpQ.set(o.cq[0], o.cq[1], o.cq[2], o.cq[3]);
+      } else {
+        // Draw one step behind, blending toward the newest pose.
+        tmpP.set(o.ip[0] + (o.cp[0] - o.ip[0]) * a, o.ip[1] + (o.cp[1] - o.ip[1]) * a, o.ip[2] + (o.cp[2] - o.ip[2]) * a);
+        iQa.set(o.iq[0], o.iq[1], o.iq[2], o.iq[3]); iQb.set(o.cq[0], o.cq[1], o.cq[2], o.cq[3]);
+        tmpQ.slerpQuaternions(iQa, iQb, a);
+      }
+      tmpM.compose(tmpP, tmpQ, ONE); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true;
+    }
   };
   // Stride phase and walking amount (0 = legs at rest) for one walker.
   R.setWalk = function (o, phase, amt) {
     const k = R.kinds && R.kinds[o.kind]; if (!k || !k.walk) return;
     k.walk.setXY(o.inst, phase, amt); k.walkDirty = true;
   };
-  R.hideObject = function (o) { const k = R.kinds && R.kinds[o.kind]; if (!k) return; tmpM.compose(tmpP.set(0, -9999, 0), tmpQ.identity(), ZERO); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true; };
+  R.hideObject = function (o) { const k = R.kinds && R.kinds[o.kind]; if (!k) return; R.moving.delete(o); o.cp = null; tmpM.compose(tmpP.set(0, -9999, 0), tmpQ.identity(), ZERO); k.mesh.setMatrixAt(o.inst, tmpM); k.dirty = true; };
 
   // ---------------- holes ----------------
   const pitGeo = (() => { const g = new T.CylinderGeometry(1, 1, 1, 48, 6, true); g.translate(0, -0.5, 0); return g; })();
@@ -280,7 +312,9 @@
     let i = 0;
     for (const h of holes) {
       const v = R.holesVis.get(h); if (!v) continue;
-      const r = h.rv * (h.dying != null ? Math.max(0, 1 - h.dying) : 1);
+      // Drawn at the physical opening (holeSlack wider than the hole's nominal radius), so the black is
+      // exactly where the street ends.
+      const r = h.rv * CFG.physics.holeSlack * (h.dying != null ? Math.max(0, 1 - h.dying) : 1);
       const visible = (h.alive || h.dying != null) && r > 0.5;
       v.group.visible = visible;
       if (!visible) continue;
@@ -317,9 +351,9 @@
   };
 
   // ---------------- camera ----------------
-  R.updateCamera = function (tx, tz, viewW, dt, lead = [0, 0], snap = false) {
+  R.updateCamera = function (tx, tz, viewW, dt, lead = [0, 0], snap = false, ease) {
     const c = R.cam, U = HC.U;
-    const e = snap ? 1e6 : CFG.camera.ease;
+    const e = snap ? 1e6 : (ease || CFG.camera.ease);
     c.x = U.damp(c.x, tx + lead[0], 6, snap ? 1e3 : dt); c.z = U.damp(c.z, tz + lead[1], 6, snap ? 1e3 : dt);
     c.view = U.damp(c.view, viewW, e, snap ? 1e3 : dt);
     const cam = R.camera, fovV = cam.fov * Math.PI / 180, fovH = 2 * Math.atan(Math.tan(fovV / 2) * cam.aspect);

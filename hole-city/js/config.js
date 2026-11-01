@@ -40,30 +40,55 @@ HC.CONFIG = {
 
   // Points needed to go from level k to k+1. hole.io's measured cumulative thresholds are
   // 10, 27, 51, 82, 120, 165, 217 … i.e. steps of 10, 17, 24, 31 … (+7 each level).
-  // We match it exactly; fast-swallow of small things keeps the pace up.
+  // We match it exactly.
   levelStep: (k) => Math.round(5.5 * k + 2),   // XP to go from level k to k+1 (tuned for physics-only swallowing)
 
   physics: {
     gravity: -26,          // m/s², a bit heavier than earth for snappy falls
-    suction: 14,            // m/s² pull toward hole center for objects over the hole
-    sink: 16,              // extra m/s² downward for objects over the hole
     rimSegments: 22,
     holeSlack: 1.02,       // physical opening is 2% wider than drawn (just enough to absorb rim polygon edges)
     groundFriction: 0.55,
     cornerRound: 0.3,      // collision shapes have corners cut back by 30% of their narrow side
-    rimThickness: 0.5,     // metres; a thin lip like a real hole edge, so long things can tip in end-first
-    rimFriction: 0.12,
+    slenderWidth: 90,
+    nearHoleFriction: 0.25, // street friction under things near a hole (the hole's pull slides them; they still pivot on the lip)
+    objFriction: 0.08,     // things sliding against each other (a crowd of buildings dropping into one shaft slides apart)
+    wallFriction: 0.08,    // shaft walls are slippery: something wedged across the shaft slides down at its angle
+    neckDepth: 0.25,       // metres: the flask's vertical neck, flush with the street, as wide as the opening
+    flareAngle: 45,        // degrees from vertical: below the neck the flask widens at this angle...
+    flareLength: 10,       //   ...for this many metres of slope (7.1 m down, 7.1 m out), then nothing — no floor
+    earthBeyond: 2,        // metres of solid ground modelled beyond the cone's widest point
+    lipBand: 0.08,         // the outer 8% of the radius beyond the opening can't hold anything whose middle is over it
+    lipMax: 0.25,          //   ...at most 25 cm (no sliver catches: an umbrella can't hang by 1 cm of its rim)
+    roofRound: 0.25,       // roof edges of buildings and tall thin things are bevelled by this share of the narrow side
+    roofRoundMax: 1.5,     //   ...at most this many metres
+    groundSkin: 0.2,       // metres: ground contacts deeper than this belong to the shaft and are dropped
+    feetGrid: 6,           // up to 6×6 support points under each base
+    inertiaScale: 0.4,     // objects turn 2.5× more readily than solid blocks (tipping reads at game speed)
+    maxSpeed: 45,          // m/s cap on any simulated object (holes top out around 32 m/s)
+    maxRise: 9,            // m/s cap on upward speed: contacts never launch things into the sky
+    maxSpin: 6,            // rad/s cap
+    freeFallSpinDamp: 8,   // 1/s: once nothing holds it up, its tipping dies away (it falls at the tilt it reached)
+    wiggleWindow: 1,       // seconds: two or more direction reversals within this counts as wiggling the hole
+    wiggleFlips: 2,
+    wiggleMinSpeed: 1.5,   // m/s: slower than this doesn't count as heading anywhere
+    wedgeSpit: 6,          // seconds stuck before the hole spits it out
     maxBodies: 170,
+    bigReserve: 20,        // bodies small props leave free for anything bigger
+    sinkDepth: 0.8,        // something counts as eaten once its top is this many hole radii below the street
+    propSize: 150,         // world units: things smaller across than this collide as plain boxes (cheaper)
+    sinkMax: 10,           //   ...or this many metres, whichever is less
+    deepBudget: 100,       // with more bodies than this in play, things are eaten as soon as they're under the street
     activationPad: 0.4,    // meters beyond the opening at which objects get a physics body
-    jamSeconds: 1.0,       // a truly-fitting object stuck on the lip this long gets a small physical wiggle
-    tipLength: 2.1,        // simulate things up to 2.1× the opening long (they may tip in end-first, physics decides)
+    tipLength: 2.0,        // simulate things up to 2× the opening long: they may tip in end-first (physics decides)
     likelyFlat: 0.85,      // "reliably fits" (bots, off-screen rivals, toasts): outline diagonal < 85% of the opening,
     likelyLong: 1.2,       //   or slim (narrow side < 60% of the opening) and at most 1.2× as long
     likelySlim: 0.6,
-    // Fast swallow: anything whose footprint radius is under this fraction of the hole radius drops in
-    // the moment it's inside the circle — no need to stop over it, even at full speed.
+    // Overflow swallow, only while every body is in use: a prop whose footprint radius is under this
+    // fraction of the hole radius and that's inside the circle takes a scripted drop instead of physics.
+    // The same size also decides which things must leave `bigReserve` bodies free.
     captureRatio: 0.34,
-    captureDwell: 0.06,    // seconds it must stay inside the circle first   // objects jammed on the rim this long lose rim collision
+    captureHeight: 2.5,    // ...and is shorter than 2.5× the hole radius (a skyscraper always gets real physics)
+    captureDwell: 0.06,    // seconds it must stay inside the circle first
   },
 
   camera: {

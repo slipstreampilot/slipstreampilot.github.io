@@ -70,6 +70,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .center-msg.respawn small { display: block; font-size: 15px; font-weight: 500; opacity: .85; margin-top: 3px; }
 @keyframes pop { from { transform: scale(.3); } }
 .level-toast { position: absolute; left: 50%; top: 22%; transform: translate(-50%, 0); opacity: 0; font-size: 38px; font-weight: 700; color: var(--sun); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 5px 0 var(--ink); white-space: nowrap; pointer-events: none; }
+.zoom-tag { position: absolute; left: 12px; bottom: 12px; padding: 5px 10px; border-radius: 999px; background: rgba(20, 16, 40, .55); color: #fff; font-size: 13px; font-weight: 600; pointer-events: none; }
+@media (pointer: coarse) { .zoom-tag { display: none; } }
 .level-toast.unlock { font-size: 26px; color: #fff; }
 .level-toast.show { animation: toast 1.5s ease-out forwards; }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 20px) scale(.6); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 20% { transform: translate(-50%, 0) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -24px); } }

@@ -33,7 +33,7 @@ giant tower downtown. Grow bigger than the six rival holes before the 2-minute t
 
 ## Brain Boost (math gate)
 
-Ten multiple-choice problems run before every match, two of each kind, shuffled:
+A set starts with ten multiple-choice problems, two of each kind, shuffled:
 - addition: 1-, 2- or 3-digit numbers (each size equally likely, picked separately for each number)
 - subtraction: the same sizes, larger number on top, so the answer is never negative
 - times tables: 0–12 × 0–12
@@ -44,15 +44,20 @@ Ten multiple-choice problems run before every match, two of each kind, shuffled:
 Answers are always listed lowest to highest (place names from ones upward). Problems use the
 browser's cryptographic random generator with unbiased sampling.
 
-You need 9/10 to play. Addition and subtraction are shown stacked in columns like on paper. Wrong
+You need **10 right** to play. Every miss puts another problem of the same kind on the end of the set
+(same digit sizes for + and −, the same times table, the same number length for even/odd, the same
+place for place value), so a set can run past 10 but always ends; the results list the ones missed.
+ Addition and subtraction are shown stacked in columns like on paper. Wrong
 answers are built from common mistakes (forgetting to carry or borrow, off by 10, the neighboring
-times-table fact). Results show a speed rating and best time. A grown-up can switch it off in
-Settings after answering a two-digit multiplication.
+times-table fact). Results show a speed rating and best time. To turn it off, open Settings (⚙︎) and untick **🧠 Brain Boost before each match** (it's on by default).
+A quick grown-up check (a two-digit multiplication) keeps kids from switching it off themselves; ticking
+it back on needs no check. The choice is saved on the device.
 
 The title screen has **Rivals: 🐢 Easy / 🐇 Normal / 🔥 Hard**.
 - Hard: the original game (you and the rivals all start at level 1).
 - Normal: you start one size up, at level 2 (and never respawn smaller than that). Rivals unchanged.
-- Easy: like Normal, and the rival holes also move 15% slower.
+- Easy: like Normal, and the rival holes move 15% slower and play dumber: they're less skilled,
+  sometimes wander off for a moment, notice danger late and give up chases sooner.
 
 ## Modes
 
@@ -60,7 +65,7 @@ The title screen has **Rivals: 🐢 Easy / 🐇 Normal / 🔥 Hard**.
 |---|---|
 | Classic | 2:00 against 6 rival holes. The highest score wins. Getting eaten costs size, not points; you respawn in 4 s at a spot you steer to. |
 | Battle | Last hole standing against 5 rivals. If you're eaten, you're out. The round is capped at 3:00, and the biggest hole wins at the cap. |
-| Solo | No rivals. Eat as much of the city as you can in 2:00. |
+| Solo | No rivals and no time limit: the clock counts up, and the level is cleared when you've eaten 95% of its items. Stars by time: clearing ★, under 5:00 ★★, under 3:30 ★★★. Best time saved per level. |
 
 Rank points (Classic: 20 / 10 / 5 / 2 / 2 / 1 / 1) earn rank stars and unlock hole skins.
 

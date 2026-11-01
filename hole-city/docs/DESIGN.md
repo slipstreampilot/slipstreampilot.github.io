@@ -9,8 +9,13 @@ build on Poki. Full links are at the end.
 **What makes it great**
 - **Ten-second readability.** One finger, one verb. You eat 1-point props in your first second.
 - **Physics swallowing.** Objects are rigid bodies that teeter, tip and fall in. Long cars go in
-  end-first, and trees topple. Voodoo's own tuning knobs are "friction, bounce, suction force, camera
+  end-first, and trees topple. Towers are the exception: they drop straight down once their footprint
+  is inside the hole (a toppled tower lying across the street could never be eaten). Voodoo's own tuning knobs are "friction, bounce, suction force, camera
   and movement easing."
+- **Quiet score display.** hole.io has no combo points: each swallow pops a small "+N" and the big
+  callouts are for kills. Ours shows one running "+N" tally above your hole, a single callout for the
+  first of each big kind of thing per match (and for giant landmarks), and DOUBLE/TRIPLE EAT! for
+  eating rival holes in quick succession. A rising swallow pitch still rewards eating streaks.
 - **The size ladder.** People, cones and posts, then benches and trees, then cars, buses, houses,
   apartments, offices and finally skyscrapers. Measured cumulative points to reach each size:
   10, 27, 51, 82, 120, 165, 217, so the step grows by +7 per level.
@@ -77,8 +82,8 @@ build on Poki. Full links are at the end.
 
 Ten worlds (see README). Each has its own layout, 20–25 unique objects, a palette and theme, a
 landmark worth 320–340 points to finish on, and sometimes a twist: ice (Frostville, grip 0.3), low
-gravity (Lunar Base, 0.4), night glow (Neon Ward). Brain Boost math runs before every match (9/10
-needed). Rivals are tuned for kids (Hard is the original balance; Normal starts you a size up; Easy also slows rivals 15%): lower skill, they top out at level 16, they won't chase a
+gravity (Lunar Base, 0.4), night glow (Neon Ward). Brain Boost math runs before every match (10
+right needed; misses bring another of the same kind). Rivals are tuned for kids (Hard is the original balance; Normal starts you a size up; Easy also slows rivals 15%): lower skill, they top out at level 16, they won't chase a
 player at level 3 or below, they get a smaller cut when eating each other, and they slow down when
 far ahead of you.
 

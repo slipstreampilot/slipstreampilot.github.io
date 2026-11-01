@@ -57,12 +57,52 @@ so one end hangs over the void and it tips in.
   place-value numbers now range up to 9,999,999.
 - Difficulty: Hard = the original game; Normal starts you at level 2; Easy also slows rivals by 15%.
 
-## Camera zoom cap
+## Solo goal lowered to 95%
 
-The camera used to keep pulling back with hole size: at level 20 a phone showed about 6,700 units
-across (the whole island). It now eases toward a limit of 2,700 (`camera.viewKnee` 1,700 →
-`viewMax` 2,700 in config.js), so the max-size hole fills about 40% of the screen width instead of 16%
-and you can see what you're swallowing. Levels 1–10 are unchanged.
+Solo now clears at 95% of the level's items (`match.soloGoal`), so you no longer have to hunt down the
+last scattered people and beach balls. On autopilot, 95% came at 184 s (city), 146 s (neon), 176 s
+(beach) and 131 s (moon), against 208/171/195/153 s for 99%. The star times (under 5:00 ★★, under
+3:30 ★★★) are unchanged, so stars come a little easier.
+
+## Score display and skyscrapers
+
+- **Score pop-ups.** Replaced the number-per-object pop-ups (up to 40 at once) and the COMBO ×N
+  banners (which never added points) with: one running "+N" tally above your name tag; one callout at
+  a time near the top of the screen (at the bottom on short landscape phones) for the first of each
+  big kind per match (25+ points) and giant landmarks (250+); and DOUBLE/TRIPLE/MEGA EAT! for eating
+  rival holes within 8 s of each other. Checked in iPhone portrait and landscape screenshots; at
+  level 20 on autopilot there's never more than the tally and one callout on screen.
+- **Skyscrapers toppling.** Reported: skyscrapers always tip over. Cause: a tower hanging over the
+  lip pivots and its top swings far past the hole, so it lands lying across the street, too long to
+  eat. Driving across towers at full speed (6 tries each, real city with neighbours): before, the
+  tower was eaten 0/5 at levels 15–16 and toppled 5/5; after, towers, supertalls and offices are
+  eaten every time from the size where their whole outline fits (tower and supertalls from level
+  15, the landmark from 17), and parked or a little off-centre they go in within 0.1–2.5 s. Solo
+  still clears 99% (city 208 s, neon 171 s, beach 195 s, moon 153 s on autopilot).
+
+## Camera framing
+
+The camera keeps your hole at a set share of the screen's short side, by level: 12% at level 1, 18%
+at 5, 25% at 10, 33% at 15 and 46% at 20 (`camera.holeShare` in config.js; never more than 2,700
+units across). That's a middle ground between hole.io (about 25% at size 1 and about 60% from size 6
+on, measured from screenshots) and our first camera (6% at level 1 to 40% at level 20, which showed
+far too much of the map mid-game).
+
+## Easy rivals
+
+Easy rivals are also less skilled (−0.16) and "dazed": now and then they wander off for a second or
+two, they notice bigger holes late, and they chase less and give up sooner. Against a weak simulated
+player (skill 0.55, Classic, 4 levels × 3 seeds) the best rival's score fell from about 800–1,500 to
+about 250–750, and the player won 12 of 12 (11 of 12 before).
+
+## Solo clear-the-level and Brain Boost retries
+
+- Solo now has no time limit and ends at 99% of the level's items (by count). Long runs with the bot
+  pilot cleared every level: skill 0.85 took 2:23–3:41 (Frostville slowest), skill 0.7 took
+  2:28–3:18 on the six levels tried. The last 1% is mostly stray beach balls, parasols and walkers.
+- Brain Boost: a scripted set with 4 deliberate misses ran 14 problems; each extra problem matched the
+  one missed (same times table, same 7-digit length for even/odd, same place, same 3-digit + 2-digit
+  shape) and the set ended at 10 right.
 
 ## Fixed from playtesting
 

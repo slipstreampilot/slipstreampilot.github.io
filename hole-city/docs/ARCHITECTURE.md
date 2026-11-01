@@ -49,11 +49,20 @@ main.js boots ─► Game.frame (requestAnimationFrame)
 | `audio.js` | Web Audio synth: swallow bloops scaled by size and combo, level-up chime, kill, countdown, a music loop. |
 | `input.js` | Drag-anywhere virtual joystick, plus WASD and arrow keys. |
 | `game.js` | Modes, the simulation loop, hole-vs-hole eating, respawns, results, camera focus. |
-| `hud.js` | HUD DOM plus the event director (routes game events to FX, Audio, popups and the kill feed). |
+| `hud.js` | HUD DOM plus the event director (routes game events to FX, Audio, the score tally, callouts and the kill feed). Score display: one running "+N" tally above your name tag (fades after a 0.75 s pause; moves beside the tag if the top HUD is in the way), and one callout banner at a time for the first of each big kind (25+ points) per match, giant landmarks (250+) and multi-eats (2+ holes within 8 s: DOUBLE/TRIPLE/MEGA/MONSTER EAT!). No per-object numbers and no combo banners. |
 | `menus.js` | Home (over a live "attract" match of the selected level), level picker, skins, settings, pause, results. Every match goes through the Brain Boost gate. |
 | `main.js` | Boot, URL and hash test flags, the greedy demo autopilot, `HC.sim()` headless simulation. |
 
 ## How swallowing works (`physics.js`)
+
+**Towers** (`P.upright`: at least 250 tall, height ≥ 1.4× the narrow side, roughly square footprint —
+offices, skyscrapers, supertalls, lighthouses, pagodas) are a special case. Teetering on the lip
+always ended with the top swinging far past the hole and the tower lying across the street, longer
+than any hole that could eat it. So a tower is only simulated once its whole outline fits the
+opening; it stands on solid ground (ignoring debris tumbling into the hole beside it) until its
+footprint is entirely inside the opening, sliding toward the hole's centre once its middle is over
+it. Then it drops straight down, carried along with the hole and touching nothing, like in hole.io.
+
 
 The approach is the one hole.io uses, built with cannon-es. Physics runs in meters; world units × 0.05.
 

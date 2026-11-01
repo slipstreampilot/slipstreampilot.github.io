@@ -38,6 +38,7 @@
     $('soundBtn').addEventListener('click', () => { A.unlock(); const on = !(A.sfxOn || A.musicOn); A.setSfx(on); A.setMusic(on); M.syncHome(); });
     $('musicToggle').addEventListener('change', (e) => { A.unlock(); A.setMusic(e.target.checked); M.syncHome(); });
     $('sfxToggle').addEventListener('change', (e) => { A.unlock(); A.setSfx(e.target.checked); M.syncHome(); });
+    $('wheelToggle').addEventListener('change', (e) => { P.data.wheelZoom = e.target.checked; P.save(); if (!e.target.checked) HC.Input.resetZoom(); });
     $('qualitySel').addEventListener('change', (e) => { P.data.quality = e.target.value; P.save(); HC.Render.setQuality(e.target.value === 'auto' ? 'high' : e.target.value); M.autoQ = e.target.value === 'auto'; });
     $('resetBtn').addEventListener('click', () => {
       const b = $('resetBtn');
@@ -97,7 +98,7 @@
     }
   };
   M.syncSettings = function () {
-    $('musicToggle').checked = HC.Audio.musicOn; $('sfxToggle').checked = HC.Audio.sfxOn; $('mathToggle').checked = HC.Progress.data.mathGate !== false; $('parentBox').hidden = true;  $('qualitySel').value = HC.Progress.data.quality;
+    $('musicToggle').checked = HC.Audio.musicOn; $('sfxToggle').checked = HC.Audio.sfxOn; $('mathToggle').checked = HC.Progress.data.mathGate !== false; $('parentBox').hidden = true;  $('qualitySel').value = HC.Progress.data.quality; $('wheelToggle').checked = HC.Progress.data.wheelZoom !== false;
     const d = HC.Progress.data; $('statsLine').textContent = `${d.games} games · ${d.wins} wins · best ${d.bestScore} pts · ${d.kills} holes eaten`;
   };
 

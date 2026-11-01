@@ -24,7 +24,7 @@
     const cells = new Map(), cs = 240;
     const Ph = HC.Physics;
     for (const o of near) {
-      if (o.state === 'riding' || !Ph.likelyFits(o.def, h.r, 0.9)) continue;
+      if (o.state === 'riding' || o.avoidUntil > HC.Game.elapsed || !Ph.likelyFitsNow(o, h.r, 0.9)) continue;
       const k = Math.floor(o.x / cs) * 1000 + Math.floor(o.z / cs);
       let c = cells.get(k); if (!c) { c = { x: 0, z: 0, v: 0, n: 0 }; cells.set(k, c); }
       // Big-but-fitting things are worth chasing more than crumbs.
@@ -75,7 +75,7 @@
     }
     if (ai.prey) { ai.mood = 'hunt'; return; }
     // Stick with the current snack until it's gone (so we actually sit over it while it falls).
-    const Ph = HC.Physics, fits = (o) => Ph.likelyFits(o.def, h.r, 0.9);
+    const Ph = HC.Physics, fits = (o) => !(o.avoidUntil > HC.Game.elapsed) && Ph.likelyFitsNow(o, h.r, 0.9);
     const o0 = ai.obj;
     if (o0 && ai.objT > 3.5 && o0.state !== 'gone') { ai.skip = ai.skip || new Map(); ai.skip.set(o0, performance.now() + 15000); }
     if (o0 && (o0.state === 'gone' || !fits(o0) || ai.objT > 3.5 || Math.hypot(o0.x - h.x, o0.z - h.z) > 500 + h.r * 4)) ai.obj = null;

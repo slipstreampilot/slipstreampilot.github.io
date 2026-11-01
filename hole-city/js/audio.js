@@ -57,6 +57,8 @@
     [523, 659, 784, 1047].forEach((f, i) => { tone(f, t + i * 0.06, 0.22, 'triangle', 0.18); tone(f * 2, t + i * 0.06, 0.12, 'sine', 0.05); });
   };
   A.kill = function () { if (!ok()) return; const t = now(); tone(220, t, 0.45, 'sawtooth', 0.12, 55); noise(t, 0.5, 0.25, 2000, 100, 0.7); tone(880, t + 0.25, 0.25, 'triangle', 0.15, 1320); };
+  // A big "blech" when a hole spits out something stuck: a low gurgle rising into a whoosh.
+  A.spit = function (vol = 1) { if (!ok()) return; const t = now(); tone(70, t, 0.35, 'sawtooth', 0.14 * vol, 160); noise(t + 0.05, 0.5, 0.3 * vol, 300, 2400, 0.8); tone(240, t + 0.15, 0.3, 'triangle', 0.12 * vol, 620); };
   A.death = function () { if (!ok()) return; const t = now(); [523, 466, 392, 330].forEach((f, i) => tone(f, t + i * 0.12, 0.25, 'triangle', 0.16)); noise(t, 0.6, 0.2, 1500, 80, 0.7); };
   A.count = function (n) { if (!ok()) return; tone(n > 0 ? 660 : 990, now(), n > 0 ? 0.12 : 0.35, 'square', 0.08); };
   A.tick = function () { if (!ok()) return; tone(1400, now(), 0.04, 'square', 0.05); };

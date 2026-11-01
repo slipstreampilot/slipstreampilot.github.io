@@ -175,6 +175,16 @@
     } else if (type === 'coasterCrash') {
       if (d.x != null && visible({ x: d.x, z: d.z })) { F && F.addShake(0.7); A && A.kill(); popup(d.x, d.z, 'CRASH!', 'combo', 1.6); }
       H.feed('🎢 <b>The coaster</b> flew off the tracks!', 'bad');
+    } else if (type === 'wedgeShake') {
+      // Something's stuck in a hole: it rumbles by itself.
+      if (visible(d.hole)) { F && F.addShake(d.hole === P ? 0.35 : 0.12); if (d.hole === P) A.haptic([20, 30, 20]); }
+    } else if (type === 'spit') {
+      // Stuck too long: the hole spits it back out (it can be eaten again).
+      if (visible(d.hole)) { F && F.addShake(d.hole === P ? 0.55 : 0.2); A && A.spit && A.spit(d.hole === P ? 1 : 0.35); }
+      if (d.hole === P) {
+        const nm = NAMES[d.obj.def.id] ? NAMES[d.obj.def.id].replace(/^\S+\s/, '') : 'it';
+        H.feed(`🤢 <b>Blech!</b> Your hole spat out ${nm === 'it' ? 'something stuck' : 'the ' + esc(nm.toLowerCase().replace(/^the /, ''))}`, 'bad');
+      }
     } else if (type === 'respawn' && d.hole === P) { H.el.center.className = 'center-msg'; }
     else if (type === 'count') { H.message(`<span class="count">${d.n || 'GO!'}</span>`, 'count-wrap', 700); A && A.count(d.n); }
     else if (type === 'go') { H.message('<span class="count go">GO!</span>', 'count-wrap', 650); A && A.count(0); }
@@ -187,6 +197,12 @@
   };
 
   // Per-frame HUD work.
+  // Little tag while the mouse-wheel zoom override is on.
+  H.zoomTag = function (f) {
+    const el = H.zoomEl || (H.zoomEl = document.getElementById('zoomTag')); if (!el) return;
+    const show = f > 0; if (el.hidden === show) el.hidden = !show;
+    if (show) { const t = `🔍 ${f >= 1 ? 'out' : 'in'} ×${(f >= 1 ? f : 1 / f).toFixed(1)} · 0 or middle-click = auto`; if (el.textContent !== t) el.textContent = t; }
+  };
   H.frame = function (dt) {
     const G = HC.Game, P = G.player;
     if (H.el.hud.hidden) { labels(G, false); return; }

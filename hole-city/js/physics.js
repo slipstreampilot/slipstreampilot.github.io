@@ -170,7 +170,21 @@
   P.opening = (h) => h.r * 2 * PC.holeSlack;               // physical hole diameter (world units)
   // Worth simulating: the narrow side passes and it is short enough that it could tip in end-first.
   // Physics alone decides whether it actually falls.
-  const canFit = (o, h) => { if (o.def.scripted) return false; const s = P.shape(o.def), D = P.opening(h); return s.min < D * 0.98 && s.max < D * PC.tipLength; };
+  const canFit = (o, h) => { if (o.def.scripted) return false; const s = P.shape(o.def), D = P.opening(h); return upright(o.def) ? s.diag < D : s.min < D * 0.98 && s.max < D * PC.tipLength; };
+  // Towers: tall with a roughly square footprint (office blocks, skyscrapers, supertalls, lighthouses).
+  // A tower can't usefully teeter on the lip: whichever way it pivots, its top swings far past the
+  // hole and it ends up lying across the street, longer than any hole that could eat it. So a tower
+  // only goes in when its whole footprint fits the opening and is inside it; then nothing can snag it
+  // (it truly fits), so it drops straight down, riding along with the hole like in hole.io. Until
+  // then it stands on solid ground.
+  const upright = (d) => {
+    if (d._upright == null) { const s = P.shape(d); d._upright = d.h >= 250 && d.h >= 1.4 * s.min && s.max < 1.3 * s.min; }
+    return d._upright;
+  };
+  P.upright = upright;
+  // A standing tower isn't shoved by debris tumbling into the hole beside it (only by the ground and
+  // crashing coaster cars).
+  const restMask = (d) => upright(d) ? G_GROUND | G_SMASH : MASK_REST;
   // Scripted kinds (roller-coaster track) are eaten when their support stands inside the opening and
   // the hole is at least `minHole` across; they drop into the pit with the scripted fall.
   const scriptedEdible = (o, h, d) => o.state === 'static' && h.r * 2 >= o.def.minHole && d < h.r * PC.holeSlack - 6;
@@ -188,8 +202,10 @@
 
   function activate(o) {
     const d = o.def;
-    const mass = Math.max(4, Math.min(4000, 6 * Math.sqrt(d.mass)));
-    const body = new C.Body({ mass, material: P.matObj, collisionFilterGroup: G_REST, collisionFilterMask: MASK_REST,
+    // Towers are much heavier than everything else, so debris tumbling into the hole beside one
+    // can't knock it over.
+    const mass = Math.max(4, Math.min(4000, 6 * Math.sqrt(d.mass))) * (upright(d) ? 8 : 1);
+    const body = new C.Body({ mass, material: P.matObj, collisionFilterGroup: G_REST, collisionFilterMask: restMask(d),
       linearDamping: 0.04, angularDamping: 0.12, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.6 });
     // Compound body built from the mesh-derived boxes, centred on the collider's middle.
     const sh = P.shape(d), cy = d.centered ? 0 : d.h / 2;
@@ -312,11 +328,27 @@
       const o = P.active[i], b = o.body;
       o.x = b.position.x / M; o.z = b.position.z / M;
       if (o.smash) { smashStep(o, b, dt); continue; }
-      const h = o.committed ? o.owner : holeFor(o, holes);
+      let h = o.committed ? o.owner : holeFor(o, holes);
+      // A tower isn't over the hole until its whole footprint is (see `upright`).
+      if (h && !o.committed && !o.upFall && upright(o.def)) {
+        const dc = Math.hypot(o.x - h.x, o.z - h.z);
+        if (dc + P.shape(o.def).diag / 2 < h.r * PC.holeSlack) { o.upFall = true; b.angularDamping = 0.9; b.collisionFilterMask = 0; }
+        else {
+          // Mostly over the hole already (its middle is over the opening): the hole draws it in,
+          // sliding it across the street toward its centre, so parking a little off-centre still works.
+          const rim = P.rims.get(h);
+          if (rim && dc < h.r * PC.holeSlack) {
+            const f = Math.min(1, dt * 6), dxm = (h.x - o.x) * M, dzm = (h.z - o.z) * M;
+            b.velocity.x += (rim.vx * 0.8 + dxm * 2.5 - b.velocity.x) * f; b.velocity.z += (rim.vz * 0.8 + dzm * 2.5 - b.velocity.z) * f;
+            b.angularVelocity.scale(0.8, b.angularVelocity); b.wakeUp();
+          }
+          h = null;
+        }
+      }
       if (h && !o.committed) o.owner = h;
       const over = !!h;
-      if (over && o.groundOn) { o.groundOn = false; b.collisionFilterGroup = G_FALL; b.collisionFilterMask = MASK_FALL; b.wakeUp(); }
-      else if (!over && !o.groundOn && !o.committed && b.aabb.lowerBound.y > -0.03) { o.groundOn = true; o.inHoleT = 0; b.collisionFilterGroup = G_REST; b.collisionFilterMask = MASK_REST; }
+      if (over && o.groundOn) { o.groundOn = false; b.collisionFilterGroup = G_FALL; b.collisionFilterMask = o.upFall ? 0 : MASK_FALL; b.wakeUp(); }
+      else if (!over && !o.groundOn && !o.committed && b.aabb.lowerBound.y > -0.03) { o.groundOn = true; o.inHoleT = 0; o.upFall = false; b.angularDamping = 0.12; b.collisionFilterGroup = G_REST; b.collisionFilterMask = restMask(o.def); }
       if (h) {
         const dx = h.x * M - b.position.x, dz = h.z * M - b.position.z, dist = Math.hypot(dx, dz) || 1, r = h.r * PC.holeSlack * M;
         if (dist < r * 1.3) {
@@ -353,13 +385,16 @@
             b.wakeUp();
           }
         }
-        // Once it is falling down the pit (its middle is below the surface, or it fits the opening and
-        // its base has dropped below the lip), the pit travels with the hole: it is carried along
-        // instead of being clipped by the lip as the hole moves on.
+        // Once it is falling down the pit (its middle is below the surface, it fits the opening and its
+        // base has dropped below the lip, or it's a tower dropping straight down), the pit travels with
+        // the hole: it is carried along instead of being clipped by the lip as the hole moves on.
         const rim = P.rims.get(h);
-        if (rim && dist < r && (b.position.y < 0 || (P.shape(o.def).diag < r * 2 / M && b.aabb.lowerBound.y < -0.2))) {
-          const f = Math.min(1, dt * 12);
+        if (rim && dist < r && (b.position.y < 0 || o.upFall || (P.shape(o.def).diag < r * 2 / M && b.aabb.lowerBound.y < -0.2))) {
+          // A tower is held tightly (it has the least room to spare and the most to lose) and kept
+          // from rocking, so it drops straight down even while the hole races on.
+          const f = o.upFall ? 1 : Math.min(1, dt * 12);
           b.velocity.x += (rim.vx + dx * 2 - b.velocity.x) * f; b.velocity.z += (rim.vz + dz * 2 - b.velocity.z) * f;
+          if (o.upFall) b.angularVelocity.scale(0.5, b.angularVelocity);
         }
         if (b.position.y < 0 && b.aabb.upperBound.y < 0.5) o.committed = true;
       }
@@ -419,7 +454,7 @@
     if (o.settleT > 0.8 || b.position.y < -40) {
       // Settled: from now on it's an ordinary object a hole can swallow.
       o.smash = false; o.groundOn = true; o.inHoleT = 0; b.allowSleep = true;
-      b.collisionFilterGroup = G_REST; b.collisionFilterMask = MASK_REST;
+      b.collisionFilterGroup = G_REST; b.collisionFilterMask = restMask(o.def);
     }
   }
 

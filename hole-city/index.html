@@ -29,11 +29,12 @@
         <div id="kills" class="pill" title="Holes eaten">💀 <b>0</b></div>
       </div>
     </div>
-    <div id="soloBar" class="solo-bar" hidden><div class="solo-fill"></div><span>0%</span><i style="left:20%"></i><i style="left:35%"></i><i style="left:50%"></i></div>
+    <div id="soloBar" class="solo-bar" hidden><div class="solo-fill"></div><span>0%</span></div>
     <div id="feed" class="feed" aria-live="polite"></div>
     <div id="arrows"></div>
     <div id="centerMsg" class="center-msg"></div>
     <div id="levelToast" class="level-toast"></div>
+    <div id="callout" class="callout"></div>
   </div>
   <div id="stick" aria-hidden="true"><div id="stickKnob"></div></div>
 
@@ -88,7 +89,7 @@
       <h2>Settings</h2>
       <label class="row">Music <input type="checkbox" id="musicToggle"></label>
       <label class="row">Sound effects <input type="checkbox" id="sfxToggle"></label>
-      <label class="row">Math before each match <input type="checkbox" id="mathToggle"></label>
+      <label class="row">🧠 Brain Boost before each match <input type="checkbox" id="mathToggle"></label>
       <div id="parentBox" class="parent-box" hidden><span>Grown-up check: <b id="parentQ"></b> =</span><input id="parentA" inputmode="numeric" autocomplete="off"><button id="parentOk" class="ghost-btn">OK</button></div>
       <label class="row">Graphics
         <select id="qualitySel"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low (battery saver)</option></select>
@@ -125,7 +126,7 @@
     <div class="mb-card">
       <div id="mbIntro" class="mb-stage">
         <div class="mb-logo">🧠 Brain Boost</div>
-        <p class="mb-lead">Get <b>9 of 10</b> right to play<br><span id="mbTarget" class="mb-target">Hole City</span></p>
+        <p class="mb-lead">Get <b>10 right</b> to play. Miss one? You get another like it!<br><span id="mbTarget" class="mb-target">Hole City</span></p>
         <ul class="mb-kinds"><li><b>+</b> add</li><li><b>−</b> subtract</li><li><b>×</b> times</li><li><b>2</b> even / odd</li><li><b>#</b> place value</li></ul>
         <button id="mbStart" class="play">START</button>
         <button id="mbBack" class="ghost-btn">Back to menu</button>

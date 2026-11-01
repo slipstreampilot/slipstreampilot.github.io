@@ -74,21 +74,24 @@
     let rp = 0;
     if (res.mode === 'classic') rp = HC.CONFIG.scoring.rankPoints[res.place - 1] || 0;
     if (res.mode === 'battle') rp = [25, 12, 6, 3, 2, 1][res.place - 1] || 0;
-    if (res.mode === 'solo') rp = Math.round(res.percent * 40);
+    const soloStars = res.cleared ? 1 + HC.CONFIG.scoring.soloStarTimes.filter((t) => res.elapsed <= t).length : 0;
+    if (res.mode === 'solo') rp = res.cleared ? 15 + 5 * soloStars : Math.round((res.items || 0) * 15);
     d.rankPoints += rp; d.games++; d.kills += p.kills;
     if (res.mode === 'classic' && res.place === 1) d.wins++;
     if (res.mode === 'battle' && res.place === 1) d.battleWins++;
-    if (res.mode === 'solo') d.bestSolo = Math.max(d.bestSolo, res.percent);
+    if (res.mode === 'solo') d.bestSolo = Math.max(d.bestSolo, res.items || 0);
+    let newBestTime = false;
+    if (res.mode === 'solo' && res.cleared) { d.soloBest = d.soloBest || {}; const lvId = res.level || 'city'; newBestTime = !(d.soloBest[lvId] <= res.elapsed); if (newBestTime) d.soloBest[lvId] = res.elapsed; }
     const newBest = p.score > d.bestScore; d.bestScore = Math.max(d.bestScore, p.score); d.bestLevel = Math.max(d.bestLevel, p.level);
     // Level stars: Classic/Battle 1st = 3, 2nd = 2, 3rd = 1; Solo by share of the city eaten.
     const lv = res.level || 'city';
-    const stars = res.mode === 'solo' ? HC.CONFIG.scoring.soloStars.filter((v) => res.percent >= v).length : Math.max(0, 4 - res.place);
+    const stars = res.mode === 'solo' ? soloStars : Math.max(0, 4 - res.place);
     const prevStars = d.stars[lv] || 0; d.stars[lv] = Math.max(prevStars, stars);
     d.bestByLevel[lv] = Math.max(d.bestByLevel[lv] || 0, p.score);
     const unlocked = P.checkUnlocks();
     P.save();
     const after = P.rankInfo();
-    return { rp, unlocked, newBest, rankUp: after.rank > before.rank, rank: after, stars, newStars: stars > prevStars };
+    return { rp, unlocked, newBest, newBestTime, bestTime: d.soloBest && d.soloBest[lv], rankUp: after.rank > before.rank, rank: after, stars, newStars: stars > prevStars };
   };
 
   HC.Progress = P;

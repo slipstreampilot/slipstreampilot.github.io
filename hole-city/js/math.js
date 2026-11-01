@@ -2,11 +2,13 @@
 // 10 multiple-choice problems: addition and subtraction of 1-, 2- and 3-digit numbers (each size equally
 // likely; subtraction is never negative), times tables to 12×12, even-or-odd and place value (numbers up
 // to 9,999,999). Answers are always listed lowest → highest.
-// Score 9/10 or better to play. Stacked column layout for + and −.
+// Get 10 right to play: every miss adds another problem of the same kind (same digit sizes, same
+// times-table, same place) to the end of the set, so a set can run longer than 10 but always ends.
+// Stacked column layout for + and −.
 (function () {
   const $ = (id) => document.getElementById(id);
   const MB = { on: false };
-  const N = 10, PASS = 9;
+  const GOAL = 10;   // correct answers needed to play
   // Crypto-grade randomness: unbiased integers via rejection sampling (falls back to Math.random).
   const rand32 = (() => {
     const c = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto : null, buf = new Uint32Array(64); let i = 64;
@@ -22,28 +24,36 @@
     return t;
   }
   // A 1-, 2- or 3-digit number, each size equally likely (1 digit = 0–9, 2 = 10–99, 3 = 100–999).
-  const sized = () => { const d = R(1, 3); return d === 1 ? R(0, 9) : d === 2 ? R(10, 99) : R(100, 999); };
+  const ofLen = (d) => d === 1 ? R(0, 9) : R(Math.pow(10, d - 1), Math.pow(10, d) - 1);
+  const sized = () => ofLen(R(1, 3));
+  const len = (n) => String(n).length;
   const PLACES = ['ones', 'tens', 'hundreds', 'thousands', 'ten thousands', 'hundred thousands', 'millions'];
   MB.TYPES = { add: 'Add', sub: 'Subtract', mul: 'Times tables', parity: 'Even or odd', place: 'Place value' };
 
   // ---------- problem generation ----------
-  function makeProblem(type) {
+  // `like` (optional) is a missed problem: the new one is the same kind and size.
+  function makeProblem(type, like) {
     if (type === 'parity') {
-      const n = R(0, 9999999);
+      const n = like ? ofLen(len(like.n)) : R(0, 9999999);
       return { type, n, ans: n % 2 === 0 ? 'Even' : 'Odd', choices: ['Even', 'Odd'] };
     }
     if (type === 'place') {
       // "What place is the underlined digit in?" The digit is underlined and colored in the number.
-      const n = R(10, 9999999), len = String(n).length, k = R(0, len - 1);
+      const n = like ? ofLen(len(like.n)) : R(10, 9999999), k = like ? like.k : R(0, len(n) - 1);
       // Five neighboring place names that include the answer, listed lowest place → highest.
       const lo = R(Math.max(0, k - 4), Math.min(k, PLACES.length - 5));
       return { type, n, k, digit: Math.floor(n / Math.pow(10, k)) % 10, ans: PLACES[k], choices: PLACES.slice(lo, lo + 5) };
     }
     let a, b, ans, op;
-    if (type === 'add') { a = sized(); b = sized(); ans = a + b; op = '+'; }
+    if (type === 'add') { a = like ? ofLen(len(like.a)) : sized(); b = like ? ofLen(len(like.b)) : sized(); ans = a + b; op = '+'; }
     // Both numbers are drawn the same way; the larger goes on top, so the answer is never negative
     // (a 1- or 2-digit number is never minus a 3-digit one).
-    else if (type === 'sub') { a = sized(); b = sized(); if (b > a) [a, b] = [b, a]; ans = a - b; op = '−'; }
+    else if (type === 'sub') { a = like ? ofLen(len(like.a)) : sized(); b = like ? ofLen(len(like.b)) : sized(); if (b > a) [a, b] = [b, a]; ans = a - b; op = '−'; }
+    else if (like) {
+      // Same times table: keep one of the missed factors, pick a new partner for it.
+      const keep = R(0, 1) ? like.a : like.b; let other; do { other = R(0, 12); } while (other === (keep === like.a ? like.b : like.a) && R(0, 3));
+      [a, b] = R(0, 1) ? [keep, other] : [other, keep]; ans = a * b; op = '×';
+    }
     else { a = R(0, 12); b = R(0, 12); ans = a * b; op = '×'; }
     return { type, a, b, op, ans, choices: choicesFor(type, a, b, ans) };
   }
@@ -67,7 +77,7 @@
   function makeSet() {
     // Two of each of the five kinds, shuffled.
     const types = ['add', 'add', 'sub', 'sub', 'mul', 'mul', 'parity', 'parity', 'place', 'place'];
-    return shuffle(types).map(makeProblem);
+    return shuffle(types).map((t) => makeProblem(t));
   }
   MB._makeSet = makeSet;
 
@@ -95,15 +105,18 @@
     };
     tick();
   }
+  // Ten dots = the ten right answers you need. They fill green as you get them; a miss flashes the
+  // current dot red and adds another problem like it.
   function renderDots() {
-    $('mbDots').innerHTML = Array.from({ length: N }, (_, i) => `<i class="${MB.results[i] === true ? 'ok' : MB.results[i] === false ? 'bad' : i === MB.i ? 'cur' : ''}"></i>`).join('');
+    const missedNow = MB.results[MB.i] === false;
+    $('mbDots').innerHTML = Array.from({ length: GOAL }, (_, i) => `<i class="${i < MB.right ? 'ok' : i === MB.right ? (missedNow ? 'bad' : 'cur') : ''}"></i>`).join('');
     $('mbScore').textContent = `${MB.right} ✓`;
   }
   MB._show = () => show();
   function show() {
     const p = MB.set[MB.i]; MB.locked = false;
     const card = $('mbCard'); card.classList.remove('hide', 'right', 'wrong'); card.classList.toggle('stack', p.type === 'add' || p.type === 'sub'); card.classList.toggle('word', p.type === 'parity' || p.type === 'place');
-    $('mbNum').textContent = `Problem ${MB.i + 1} of ${N}`;
+    $('mbNum').textContent = `Problem ${MB.i + 1} of ${MB.set.length}` + (p.retry ? ' · another try' : '');
     if (p.type === 'parity') $('mbProb').innerHTML = `<span class="mb-ask">Is this number <b>even</b> or <b>odd</b>?</span><span class="mb-big-n">${fmtN(p.n)}</span>`;
     else if (p.type === 'place') $('mbProb').innerHTML = `<span class="mb-ask">What place is the <u>underlined digit</u> in?</span><span class="mb-big-n">${markDigit(p, 'mb-under')}</span>`;
     else if (p.type === 'mul') $('mbProb').innerHTML = `<span class="inline">${p.a} <em>×</em> ${p.b}</span><span class="eq">= ?</span>`;
@@ -120,29 +133,34 @@
     if (MB.locked) return; MB.locked = true;
     const p = MB.set[MB.i], ok = v === p.ans;
     MB.results[MB.i] = ok; if (ok) MB.right++;
+    // Missed it: another problem of the same kind goes on the end of the set.
+    else { const again = makeProblem(p.type, p); again.retry = true; MB.set.push(again); }
     const card = $('mbCard'); card.classList.add(ok ? 'right' : 'wrong');
     btn.classList.add(ok ? 'right' : 'wrong');
     if (!ok) [...$('mbChoices').children].forEach((b) => { if (b.dataset.v === String(p.ans)) b.classList.add('right'); });
     const q = $('mbProb').querySelector('.q, .eq'); if (q) q.textContent = (p.type === 'mul' ? '= ' : '') + fmtN(p.ans);
     ok ? chime() : buzz();
     renderDots();
-    setTimeout(() => { MB.i++; if (MB.i >= N) finish(); else show(); }, ok ? 420 : 1300);
+    setTimeout(() => { MB.i++; if (MB.right >= GOAL || MB.i >= MB.set.length) finish(); else show(); }, ok ? 420 : 1300);
   }
   function finish() {
-    clearInterval(MB.timer); const secs = (performance.now() - MB.t0) / 1000, pass = MB.right >= PASS;
+    clearInterval(MB.timer); const secs = (performance.now() - MB.t0) / 1000, tries = MB.i, misses = tries - MB.right;
     const d = HC.Progress.data, s = d.math = Object.assign({ sets: 0, passed: 0, solved: 0, correct: 0, best: 0 }, d.math || {});
-    s.sets++; s.solved += N; s.correct += MB.right; if (pass) { s.passed++; if (!s.best || secs < s.best) { s.newBest = true; s.best = secs; } else s.newBest = false; }
+    s.sets++; s.passed++; s.solved += tries; s.correct += MB.right;
+    if (!s.best || secs < s.best) { s.newBest = true; s.best = secs; } else s.newBest = false;
     HC.Progress.save();
     showStage('done');
-    const per = secs / N;
+    const per = secs / tries;
     const brain = per < 3 ? ['🚀', 'Rocket brain!'] : per < 5 ? ['🐆', 'Cheetah brain!'] : per < 8 ? ['🐰', 'Bunny brain!'] : ['🐢', 'Turtle brain — slow and steady!'];
-    $('mbBig').textContent = `${MB.right}/${N}`; $('mbBig').className = 'mb-big ' + (pass ? 'pass' : 'fail');
-    $('mbBrain').textContent = pass ? `${brain[0]} ${brain[1]}` : MB.right >= 7 ? '😮 So close!' : '💪 Keep practicing!';
-    $('mbMsg').textContent = pass ? `You're in! Time ${fmt(secs)}${s.newBest ? ' · New best!' : ''}` : `You need ${PASS} right to play. Try a fresh set!`;
-    $('mbGo').hidden = !pass; $('mbRetry').hidden = pass;
+    $('mbBig').textContent = misses ? `${MB.right}/${tries}` : '10/10'; $('mbBig').className = 'mb-big pass';
+    $('mbBrain').textContent = misses ? `${brain[0]} ${brain[1]}` : `🎯 Perfect! ${brain[1]}`;
+    $('mbMsg').textContent = `You're in! ${GOAL} right${misses ? ` in ${tries} tries` : ''} · Time ${fmt(secs)}${s.newBest ? ' · New best!' : ''}`;
+    $('mbGo').hidden = false; $('mbRetry').hidden = true;
     const line = (p) => p.type === 'parity' ? `${fmtN(p.n)} is ${p.ans.toLowerCase()}` : p.type === 'place' ? `${markDigit(p, 'mb-under')} → ${p.ans}` : `${p.a} ${p.op} ${p.b} = ${fmtN(p.ans)}`;
-    $('mbReview').innerHTML = MB.set.map((p, i) => `<span class="${MB.results[i] ? 'ok' : 'bad'}">${line(p)}</span>`).join('');
-    if (pass) HC.Audio.win(); else HC.Audio.lose();
+    // The review shows the ones you missed, with the right answer, so they can be talked through.
+    const missed = MB.set.slice(0, tries).filter((p, i) => MB.results[i] === false);
+    $('mbReview').innerHTML = missed.length ? `<span class="ok">Remember these:</span>` + missed.map((p) => `<span class="bad">${line(p)}</span>`).join('') : `<span class="ok">No misses at all 🌟</span>`;
+    HC.Audio.win();
   }
   function close() { MB.on = false; $('brain').hidden = true; clearInterval(MB.timer); clearTimeout(MB.cdT); }
 

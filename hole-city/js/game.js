@@ -53,7 +53,8 @@
       const h = new HC.Hole({ name: names[i], skin: skins[i % skins.length], x: s.x, z: s.z, maxLevel: mode === 'attract' ? 20 : cap });
       // Skill spread: one shark, a few solid players, a couple of snackers.
       const skill = i === 0 ? 0.84 : i < 3 ? 0.76 : 0.64;
-      HC.Bots.init(h, rng, skill + (opts.botSkillBonus || 0) + G.level.mods.botSkill);
+      HC.Bots.init(h, rng, skill + (opts.botSkillBonus || 0) + (opts.botSkillExtra || 0) + G.level.mods.botSkill);
+      if (opts.botDaze) h.ai.daze = opts.botDaze;
       if (opts.botSpeedMul) h.baseSpeed *= opts.botSpeedMul;
       G.holes.push(h);
     }
@@ -67,10 +68,10 @@
   };
 
   G.viewWidth = function (h) {
-    const C = CFG.camera, lv = (h.level - 1) / (CFG.hole.maxLevel - 1);
-    const n = U.lerp(C.viewHoleDiameters, C.viewHoleDiametersMax, Math.pow(lv, 0.7));
-    const raw = Math.max(C.minView, h.rv * 2 * n), k = C.viewKnee, span = C.viewMax - k;
-    return raw <= k ? raw : k + span * (1 - Math.exp(-(raw - k) / span));
+    const S = CFG.camera.holeShare, L = Math.min(S[S.length - 1][0], h.level + (h.progress || 0));
+    let share = S[0][1];
+    for (let i = 1; i < S.length; i++) if (L <= S[i][0]) { const [a, sa] = S[i - 1], [b, sb] = S[i]; share = sa + (sb - sa) * (L - a) / (b - a); break; } else share = S[i][1];
+    return Math.min(CFG.camera.viewMax, Math.max(h.rv, h.r * 0.8) * 2 / share);
   };
 
   function emit(type, data) { G.events.push(Object.assign({ type }, data)); if (G.onEvent) G.onEvent(type, data); }
@@ -186,7 +187,7 @@
       const left = G.holes.filter((h) => !h.eliminated);
       if (left.length <= 1 || G.player.eliminated) over = true;
     }
-    if (G.mode === 'solo' && HC.World.eatenPoints >= HC.World.totalPoints) over = true;
+    if (G.mode === 'solo' && HC.World.itemShare() >= CFG.match.soloGoal) over = true;
     if (over) { G.state = 'end'; G.endT = CFG.match.endFreeze; emit('end', { results: G.results() }); }
   }
 
@@ -197,7 +198,7 @@
       const dead = G.holes.filter((h) => h.eliminated).sort((a, b) => a.placeAt - b.placeAt);
       order = [...alive, ...dead];
     } else order = G.holes.slice().sort((a, b) => b.score - a.score || b.level - a.level);
-    return { mode: G.mode, level: G.levelId, order, place: G.player ? order.indexOf(G.player) + 1 : 0, player: G.player,
+    return { mode: G.mode, level: G.levelId, order, elapsed: G.elapsed, cleared: G.mode === 'solo' && HC.World.itemShare() >= CFG.match.soloGoal, items: HC.World.itemShare(), place: G.player ? order.indexOf(G.player) + 1 : 0, player: G.player,
       percent: HC.World.eatenPoints / HC.World.totalPoints, playerPercent: G.player ? G.player.score / HC.World.totalPoints : 0 };
   };
 

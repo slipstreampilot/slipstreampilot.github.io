@@ -122,7 +122,7 @@
     ['home', 'results', 'pause', 'skins', 'settings', 'levels'].forEach((id) => show(id, false));
     // Difficulty only changes rival speed and the size you start at (see CONFIG.difficulty).
     const D = HC.CONFIG.difficulty[HC.Progress.data.pace] || HC.CONFIG.difficulty.normal;
-    HC.Game.setup(mode, Object.assign({ level: HC.Progress.data.level, botSkillBonus: HC.CONFIG.bots.skillBonus, botSpeedMul: D.botSpeed, playerStartLevel: D.playerStartLevel }, opts)); HC.HUD.reset(); HC.HUD.show(true);
+    HC.Game.setup(mode, Object.assign({ level: HC.Progress.data.level, botSkillBonus: HC.CONFIG.bots.skillBonus, botSpeedMul: D.botSpeed, playerStartLevel: D.playerStartLevel, botSkillExtra: D.botSkill || 0, botDaze: D.botDaze || 0 }, opts)); HC.HUD.reset(); HC.HUD.show(true);
     HC.Input.enabled = true; HC.Game.paused = false;
     HC.Audio.startMusic();
     M.perf = { frames: 0, t: 0, checked: false };
@@ -159,14 +159,15 @@
     const sum = HC.flags && HC.flags.auto ? { rp: 0, unlocked: [], rank: P.rankInfo() } : P.recordMatch(res);
     let title, sub;
     if (res.mode === 'solo') {
-      const pct = (res.percent * 100).toFixed(1); const st = HC.CONFIG.scoring.soloStars, stars = st.filter((v) => res.percent >= v).length;
-      title = `${pct}%`; sub = `of the city swallowed ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`;
+      const t = HC.U.formatTime(Math.floor(res.elapsed || 0));
+      if (res.cleared) { title = `⏱ ${t}`; sub = `Cleared!${sum.bestTime ? ` Best ${HC.U.formatTime(Math.floor(sum.bestTime))}` : ''}${sum.newBestTime ? ' (new best!)' : ''}`; }
+      else { title = `${Math.floor((res.items || 0) * 100)}%`; sub = `eaten in ${t}`; }
     } else {
       title = res.place === 1 ? '🏆 1st place!' : `${ord(res.place)} place`;
       sub = res.mode === 'battle' ? (res.place === 1 ? 'Last hole standing!' : 'Battle over') : (res.place === 1 ? 'Biggest hole in the city!' : res.place <= 3 ? 'So close — one more?' : 'The city fights back. Again!');
     }
     $('resTitle').textContent = title; $('resSub').textContent = `${HC.Game.level.icon} ${HC.Game.level.name} · ${sub}`;
-    $('resTitle').className = 'res-title' + (res.place === 1 || (res.mode === 'solo' && res.percent >= HC.CONFIG.scoring.soloStars[0]) ? ' win' : '');
+    $('resTitle').className = 'res-title' + (res.place === 1 || res.cleared ? ' win' : '');
     $('resList').innerHTML = res.mode === 'solo' ? '' : res.order.slice(0, 7).map((h, i) => `<li class="${h === me ? 'me' : ''}"><span class="n">${i + 1}</span><i class="dot" style="--c:${h.skin.colors[0]}"></i><span class="nm">${esc(h.name)}</span><span class="lv">Lv ${h.level}</span><b>${h.score}</b></li>`).join('');
     const big = me && me.biggest ? me.biggest.kind.replace(/^\w/, (c) => c.toUpperCase()) : '—';
     $('resStats').innerHTML = me ? `<div><b>${me.score}</b><small>points</small></div><div><b>${me.level}</b><small>max level</small></div><div><b>${me.eaten}</b><small>swallowed</small></div><div><b>${me.kills}</b><small>holes eaten</small></div><div class="wide"><small>Biggest bite</small> <b>${big}</b></div>` +

@@ -12,7 +12,8 @@ HC.CONFIG = {
 
   match: {
     classicSeconds: 120,   // hole.io Classic is a strict 2:00
-    soloSeconds: 120,
+    soloSeconds: Infinity, // Solo has no clock: the round ends when you've eaten soloGoal of the level
+    soloGoal: 0.95,        // share of the level's items (by count) that clears it in Solo
     battleSeconds: 180,    // Battle: last hole standing, capped so it can never stall
     bots: 6,               // Classic = you + 6 rivals (7 holes, like hole.io)
     battleBots: 5,
@@ -68,15 +69,12 @@ HC.CONFIG = {
   camera: {
     fov: 42,
     pitchDeg: 60,          // tilt from horizontal; hole.io sits around 45–60°
-    viewHoleDiameters: 16, // how many hole diameters fit across the short screen axis at level 1
-    viewHoleDiametersMax: 6.2,
-    minView: 600,
-    // Zoom-out limit: past `viewKnee` the camera eases toward `viewMax` (world units across the
-    // screen's short side) and never goes further, so a giant hole fills more of the screen and you
-    // can still see what you're eating.
+    // How much of the screen's short side your hole fills, by level (interpolated in between). A middle
+    // ground between hole.io (≈25% at size 1, ≈60% from size 6 on) and our original far-out camera
+    // (≈6% at level 1, 40% at level 20).
+    holeShare: [[1, 0.12], [5, 0.18], [10, 0.25], [15, 0.33], [20, 0.46]],
+    viewMax: 2700,         // never show more than this many world units across the short side
     seeThrough: false,     // old effect that dithered tall things in front of your hole; off = never translucent
-    viewKnee: 1700,
-    viewMax: 2700,
     ease: 2.6,
   },
 
@@ -97,7 +95,7 @@ HC.CONFIG = {
   // Title-screen difficulty. Hard is the original game; Normal starts you one size bigger; Easy also
   // slows the rival holes by 15%. Rivals always start at level 1.
   difficulty: {
-    easy:   { botSpeed: 0.85, playerStartLevel: 2 },
+    easy:   { botSpeed: 0.85, playerStartLevel: 2, botSkill: -0.16, botDaze: 0.8 }, // dumber rivals too (see bots.js)
     normal: { botSpeed: 1,    playerStartLevel: 2 },
     hard:   { botSpeed: 1,    playerStartLevel: 1 },
   },
@@ -105,6 +103,6 @@ HC.CONFIG = {
   scoring: {
     rankPoints: [20, 10, 5, 2, 2, 1, 1],
     comboWindow: 0.9,      // seconds between swallows to keep a combo
-    soloStars: [0.2, 0.35, 0.5], // share of the whole city (by points) for 1/2/3 stars in Solo
+    soloStarTimes: [300, 210], // Solo: clearing = ★; under 5:00 = ★★; under 3:30 = ★★★
   },
 };

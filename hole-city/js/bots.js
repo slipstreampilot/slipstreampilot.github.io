@@ -44,6 +44,11 @@
 
   B.think = function (h, holes) {
     const ai = h.ai; B.holes = holes;
+    // Easy mode "daze": rivals sometimes wander off for a moment instead of doing the smart thing.
+    if (ai.daze && Math.random() < 0.16 * ai.daze) {
+      const a = Math.random() * Math.PI * 2, r = 200 + Math.random() * 400;
+      ai.mood = 'wander'; ai.tx = h.x + Math.cos(a) * r; ai.tz = h.z + Math.sin(a) * r; ai.obj = null; ai.prey = null; ai.dazeT = 1 + Math.random() * 1.5; return;
+    }
     // Threats.
     let fx = 0, fz = 0, threat = 0;
     for (const o of holes) {
@@ -51,7 +56,8 @@
       const d = Math.hypot(o.x - h.x, o.z - h.z), range = o.r * 2.5 + 260 * ai.p.caution + 120;
       if (d < range) { const w = (1 - d / range); fx += (h.x - o.x) / (d || 1) * w; fz += (h.z - o.z) / (d || 1) * w; threat = Math.max(threat, w); }
     }
-    if (threat > 0.15 + 0.3 * (1 - ai.p.caution)) { ai.mood = 'flee'; ai.fx = fx; ai.fz = fz; ai.prey = null; return; }
+    // Dazed (Easy) rivals notice danger late.
+    if (threat > 0.15 + 0.3 * (1 - ai.p.caution) + 0.25 * (ai.daze || 0)) { ai.mood = 'flee'; ai.fx = fx; ai.fz = fz; ai.prey = null; return; }
     // Prey.
     if (ai.prey && (!ai.prey.alive || ai.huntT <= 0 || h.r < ai.prey.r * CFG.hole.eatHoleRatio || ai.prey.protect > 0)) { ai.prey = null; ai.cool = 3 + Math.random() * 3; }
     if (!ai.prey && (ai.cool || 0) <= 0) {
@@ -65,7 +71,7 @@
         const s = ai.p.aggression * (1 - d / range) * (1 + o.score / 400) * (o.isPlayer ? CFG.bots.playerHuntFactor : 1);
         if (s > bs) { bs = s; best = o; }
       }
-      if (best && bs > 0.25) { ai.prey = best; ai.huntT = 3 + ai.p.aggression * 4; }
+      if (best && bs > 0.25 && Math.random() > 0.5 * (ai.daze || 0)) { ai.prey = best; ai.huntT = (3 + ai.p.aggression * 4) * (1 - 0.4 * (ai.daze || 0)); }
     }
     if (ai.prey) { ai.mood = 'hunt'; return; }
     // Stick with the current snack until it's gone (so we actually sit over it while it falls).
@@ -98,7 +104,8 @@
   B.steer = function (h, holes, dt) {
     const ai = h.ai;
     ai.think -= dt; if (ai.prey) ai.huntT -= dt; if (ai.cool > 0) ai.cool -= dt;
-    if (ai.think <= 0) { B.think(h, holes); ai.think = U.lerp(CFG.bots.thinkInterval[0], CFG.bots.thinkInterval[1], Math.random()); }
+    if (ai.dazeT > 0) ai.dazeT -= dt;
+    else if (ai.think <= 0) { B.think(h, holes); ai.think = U.lerp(CFG.bots.thinkInterval[0], CFG.bots.thinkInterval[1], Math.random()) * (1 + (ai.daze || 0)); }
     let dx = 0, dz = 0;
     if (ai.obj) ai.objT = (ai.objT || 0) + dt;
     if (ai.mood === 'flee') { dx = ai.fx; dz = ai.fz; }

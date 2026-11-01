@@ -24,7 +24,7 @@
   // Headless simulation for balance testing: runs N seconds of a match as fast as possible.
   HC.sim = function (mode, seconds, opts = {}) {
     const G = HC.Game; G.headless = true; G.allPhysical = !!opts.allPhysical; G.nonePhysical = !!opts.nonePhysical;
-    G.setup(mode, { seed: opts.seed, level: opts.level, botSkillBonus: opts.botSkillBonus || 0, botSpeedMul: opts.botSpeedMul, playerStartLevel: opts.playerStartLevel }); G.state = 'play'; G.autopilot = opts.idle ? (() => [0, 0]) : HC.autopilot;
+    G.setup(mode, { seed: opts.seed, level: opts.level, botSkillBonus: opts.botSkillBonus || 0, botSpeedMul: opts.botSpeedMul, playerStartLevel: opts.playerStartLevel, botSkillExtra: opts.botSkillExtra, botDaze: opts.botDaze }); G.state = 'play'; G.autopilot = opts.idle ? (() => [0, 0]) : HC.autopilot;
     if (opts.botPilot && G.player) { HC.Bots.init(G.player, HC.U.rng(5), opts.botPilot); G.autopilot = (h) => HC.Bots.steer(h, G.holes, 1 / 60); }
     const t0 = performance.now(), log = [], lv = {};
     let steps = Math.round(seconds * 60);

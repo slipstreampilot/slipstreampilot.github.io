@@ -11,7 +11,7 @@
     W.objects = [];
     W.off = city.land.min - 200;
     W.grid = new HC.U.Grid(city.land.max - W.off + 200, 250);
-    W.totalPoints = 0; W.eatenPoints = 0;
+    W.totalPoints = 0; W.eatenPoints = 0; W.eatenItems = 0;
     let id = 0;
     for (const src of city.objects) {
       const def = HC.CATALOG[src.kind];
@@ -23,6 +23,7 @@
     }
     if (HC.Movers) HC.Movers.init(W);
     for (const o of W.objects) { o.entry = { ref: o, x: o.x - W.off, y: o.z - W.off }; W.grid.insert(o.entry); }
+    W.totalItems = W.objects.length;
     if (HC.Coaster) HC.Coaster.init(W);
   };
 
@@ -32,7 +33,9 @@
     return out;
   };
   W.moved = function (o) { const e = o.entry; e.x = o.x - W.off; e.y = o.z - W.off; W.grid.move(e); };
-  W.markGone = function (o) { o.state = 'gone'; W.grid.remove(o.entry); W.eatenPoints += o.def.points; };
+  W.markGone = function (o) { o.state = 'gone'; W.grid.remove(o.entry); W.eatenPoints += o.def.points; W.eatenItems++; };
+  // Share of the level's items (by count, not points) swallowed so far — Solo's goal.
+  W.itemShare = () => W.eatenItems / Math.max(1, W.totalItems);
 
   HC.World = W;
 })();
